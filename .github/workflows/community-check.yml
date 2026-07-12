@@ -3,22 +3,44 @@ name: Community checks
 on:
   pull_request:
     paths:
+      - 'app/account_admin.py'
       - 'app/community.py'
+      - 'app/community_admin.py'
       - 'app/community_models.py'
+      - 'app/community_ops.py'
+      - 'app/community_schema.py'
       - 'app/redis_session.py'
+      - 'app/supported_sites.py'
+      - 'app/templates/account.html'
+      - 'app/templates/admin_*.html'
       - 'app/templates/base.html'
+      - 'app/templates/signup.html'
+      - 'app/templates/supported_sites.html'
       - 'app/templates/community/**'
+      - 'scripts/backup_community.py'
+      - 'scripts/community_smoke_test.py'
       - 'scripts/validate_community.py'
       - '.github/workflows/community-check.yml'
   push:
     branches:
       - feature/community
     paths:
+      - 'app/account_admin.py'
       - 'app/community.py'
+      - 'app/community_admin.py'
       - 'app/community_models.py'
+      - 'app/community_ops.py'
+      - 'app/community_schema.py'
       - 'app/redis_session.py'
+      - 'app/supported_sites.py'
+      - 'app/templates/account.html'
+      - 'app/templates/admin_*.html'
       - 'app/templates/base.html'
+      - 'app/templates/signup.html'
+      - 'app/templates/supported_sites.html'
       - 'app/templates/community/**'
+      - 'scripts/backup_community.py'
+      - 'scripts/community_smoke_test.py'
       - 'scripts/validate_community.py'
       - '.github/workflows/community-check.yml'
 
