@@ -6,6 +6,7 @@ SUPPORTED_SITES = [
         "mode": "자동 조회",
         "tier": "automatic",
         "accuracy": "높음",
+        "logo_url": "https://cdn.simpleicons.org/youtube/FF0000",
         "note": "로그인된 댓글 기록 페이지에서 댓글 본문, 영상 제목, 원문 링크를 분리해 수집합니다.",
     },
     {
@@ -14,7 +15,8 @@ SUPPORTED_SITES = [
         "scope": "내 댓글",
         "mode": "자동 조회",
         "tier": "automatic",
-        "accuracy": "부분",
+        "accuracy": "높음",
+        "logo_url": "https://cdn.simpleicons.org/instagram/E4405F",
         "note": "내 활동 → 반응 → 댓글 목록에서 본문이 확인된 내 댓글만 수집합니다.",
     },
     {
@@ -24,6 +26,7 @@ SUPPORTED_SITES = [
         "mode": "자동 조회",
         "tier": "automatic",
         "accuracy": "부분",
+        "logo_url": "https://cdn.simpleicons.org/threads/000000",
         "note": "로그인된 Threads 프로필의 게시글 탭과 답글 탭에서 본인 작성 항목만 수집합니다.",
     },
     {
@@ -32,7 +35,8 @@ SUPPORTED_SITES = [
         "scope": "내 게시글·댓글",
         "mode": "자동 조회",
         "tier": "automatic",
-        "accuracy": "부분",
+        "accuracy": "높음",
+        "logo_url": "https://cdn.simpleicons.org/facebook/0866FF",
         "note": "활동 로그의 내 게시물과 댓글 범주를 각각 조회하며, 본인 작성이 확인된 항목만 저장합니다.",
     },
     {
@@ -41,7 +45,8 @@ SUPPORTED_SITES = [
         "scope": "내 게시글·답글",
         "mode": "자동 조회",
         "tier": "automatic",
-        "accuracy": "부분",
+        "accuracy": "높음",
+        "logo_url": "https://cdn.simpleicons.org/x/000000",
         "note": "로그인 계정의 프로필에서 본문만 수집하고 작성자명·핸들·날짜는 제외합니다.",
     },
     {
@@ -51,6 +56,7 @@ SUPPORTED_SITES = [
         "mode": "자동 조회",
         "tier": "automatic",
         "accuracy": "부분",
+        "logo_url": "https://cdn.simpleicons.org/naver/03C75A",
         "note": "로그인된 블로그 ID를 확인한 뒤 실제 게시글 링크와 제목만 수집합니다.",
     },
     {
@@ -60,6 +66,7 @@ SUPPORTED_SITES = [
         "mode": "자동 조회",
         "tier": "automatic",
         "accuracy": "부분",
+        "logo_url": "https://cdn.simpleicons.org/naver/03C75A",
         "note": "지식iN MY 프로필의 질문 탭과 답변 탭에서 실제 Q&A 원문 링크만 수집합니다.",
     },
     {
@@ -69,6 +76,7 @@ SUPPORTED_SITES = [
         "mode": "수동 조회",
         "tier": "manual",
         "accuracy": "사이트별 차이",
+        "logo_url": None,
         "note": "지원 목록에 없는 커뮤니티의 내가 쓴 글·댓글 목록 페이지를 직접 연 뒤 사용합니다.",
     },
 ]

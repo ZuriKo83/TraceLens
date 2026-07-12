@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}커뮤니티 감사 로그 · {{ app_name }}{% endblock %}
+{% block head_extra %}
+<style>
+.wrap{max-width:1180px;margin:0 auto;padding:30px 0 64px}.head{display:flex;justify-content:space-between;gap:20px;align-items:end;margin-bottom:18px}.head h1{margin:6px 0}.card{background:#fff;border:1px solid #e7eaf0;border-radius:16px;padding:20px;margin-bottom:18px;box-shadow:0 8px 24px rgba(15,23,42,.035)}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:11px 9px;border-bottom:1px solid #edf0f4;text-align:left;vertical-align:top}.table th{font-size:13px;color:#667085}.muted{color:#7a8699}.links{display:flex;gap:12px}.links a{color:#4f46c8;text-decoration:none}@media(max-width:760px){.table{display:block;overflow:auto}.head{align-items:flex-start;flex-direction:column}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="wrap">
+  <div class="head"><div><small>COMMUNITY ADMIN</small><h1>감사 로그</h1><p class="muted">관리자 삭제, 신고 처리, 제재 변경 이력을 확인합니다.</p></div><div class="links"><a href="/community/admin">관리 화면</a><a href="/community/health">상태 진단</a></div></div>
+  <section class="card"><h2>현재 이용 제한</h2><table class="table"><thead><tr><th>사용자</th><th>채팅 제한</th><th>게시판 제한</th><th>사유</th><th>수정일</th></tr></thead><tbody>{% for item in restrictions %}<tr><td>#{{ item.user_id }}</td><td>{{ item.chat_blocked_until or '-' }}</td><td>{{ item.community_blocked_until or '-' }}</td><td>{{ item.reason or '-' }}</td><td>{{ item.updated_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>{% else %}<tr><td colspan="5" class="muted">제한 중인 사용자가 없습니다.</td></tr>{% endfor %}</tbody></table></section>
+  <section class="card"><h2>최근 작업 로그</h2><table class="table"><thead><tr><th>일시</th><th>관리자</th><th>작업</th><th>대상</th><th>상세</th></tr></thead><tbody>{% for log in logs %}<tr><td>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td><td>#{{ log.actor_id }}</td><td>{{ log.action }}</td><td>{{ log.target_type }}{% if log.target_id %} #{{ log.target_id }}{% endif %}</td><td>{{ log.detail or '-' }}</td></tr>{% else %}<tr><td colspan="5" class="muted">작업 로그가 없습니다.</td></tr>{% endfor %}</tbody></table></section>
+</section>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}커뮤니티 · {{ app_name }}{% endblock %}
+{% block head_extra %}
+<style>
+.community-wrap{max-width:1180px;margin:0 auto;padding:30px 0 64px}.community-head{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;margin-bottom:22px}.community-eyebrow{font-size:12px;font-weight:800;letter-spacing:.08em;color:#5b5bd6}.community-head h1{margin:6px 0 7px;font-size:32px;letter-spacing:-.04em}.community-head p{margin:0;color:#667085}.head-actions{display:flex;gap:10px;align-items:center}.community-grid{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px}.community-panel{background:rgba(255,255,255,.9);border:1px solid #e8ebf2;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.community-side{padding:12px}.community-side a{display:flex;align-items:center;justify-content:space-between;padding:12px 13px;border-radius:11px;color:#344054;text-decoration:none;font-weight:650}.community-side a:hover{background:#f6f7fb}.community-side a.active{background:#f0f1ff;color:#4f46e5}.community-side .chat-link{margin-top:8px;border-top:1px solid #edf0f5;border-radius:0;padding-top:18px}.count-badge{min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#e5484d;color:#fff;font-size:11px;display:inline-flex;align-items:center;justify-content:center}.community-main{padding:18px}.community-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) 150px 130px auto;gap:10px;margin-bottom:16px}.community-toolbar input,.community-toolbar select{height:44px;border:1px solid #dde2ea;border-radius:11px;padding:0 13px;background:#fff;color:#1f2937;font:inherit}.post-list{border-top:1px solid #edf0f5}.post-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;padding:18px 4px;border-bottom:1px solid #edf0f5;text-decoration:none;color:inherit}.post-row:hover{background:#fafbfe;padding-left:10px;padding-right:10px}.post-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.post-title{font-size:17px;font-weight:760;overflow-wrap:anywhere}.badge{display:inline-flex;padding:4px 9px;border-radius:999px;background:#f0f1ff;color:#5145cd;font-size:12px;font-weight:750}.badge.dark{background:#273142;color:#fff}.badge.private{background:#fff4e5;color:#9a6700}.post-meta{margin-top:8px;color:#7b8495;font-size:13px}.post-date{align-self:center;color:#98a2b3;font-size:13px;white-space:nowrap}.empty{padding:64px 0;text-align:center;color:#7b8495}.btn-primary,.btn-secondary{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 18px;border-radius:11px;text-decoration:none;font-weight:750}.btn-primary{border:0;background:#5b5bd6;color:#fff}.btn-secondary{border:1px solid #dde2ea;background:#fff;color:#344054}.pagination{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:20px}.pagination a,.pagination span{min-width:38px;height:38px;padding:0 10px;border:1px solid #e2e6ee;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:#344054}.pagination .current{background:#5b5bd6;color:#fff;border-color:#5b5bd6}.total-info{margin-top:14px;color:#8a93a3;font-size:13px;text-align:right}@media(max-width:850px){.community-grid{grid-template-columns:1fr}.community-side{display:flex;overflow:auto}.community-side a{white-space:nowrap}.community-side .chat-link{margin:0;border:0;padding-top:12px}.community-toolbar{grid-template-columns:1fr 1fr}.community-toolbar input{grid-column:1/-1}.community-toolbar .submit{grid-column:1/-1}.community-head{align-items:flex-start;flex-direction:column}.head-actions{width:100%;flex-wrap:wrap}}@media(max-width:560px){.community-toolbar{grid-template-columns:1fr}.post-row{grid-template-columns:1fr}.post-date{justify-self:start}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="community-wrap">
+  <div class="community-head">
+    <div><div class="community-eyebrow">TRACELENS COMMUNITY</div><h1>{% if waiting_mode %}관리자 답변 대기{% elif mine %}내가 쓴 글{% else %}{{ categories.get(category, '자유게시판') }}{% endif %}</h1>{% if waiting_mode %}<p>아직 관리자 답변이 등록되지 않은 게시글입니다.</p>{% endif %}</div>
+    <div class="head-actions"><a class="btn-secondary" href="/community/notifications">알림{% if unread_notifications %} <span class="count-badge">{{ unread_notifications }}</span>{% endif %}</a><a class="btn-primary" href="/community/new">글 작성</a></div>
+  </div>
+  <div class="community-grid">
+    <aside class="community-panel community-side">
+      <a class="{% if category=='free' and not mine and not waiting_mode %}active{% endif %}" href="/community?category=free">자유게시판</a>
+      <a class="{% if category=='suggestion' and not mine and not waiting_mode %}active{% endif %}" href="/community?category=suggestion">건의사항</a>
+      <a class="{% if category=='bug' and not mine and not waiting_mode %}active{% endif %}" href="/community?category=bug">오류 제보</a>
+      <a class="{% if category=='site_request' and not mine and not waiting_mode %}active{% endif %}" href="/community?category=site_request">지원 사이트 요청</a>
+      <a class="chat-link" href="/community/chat">실시간 채팅 <span>●</span></a>
+      <a class="{% if mine %}active{% endif %}" href="/community?mine=true">내가 쓴 글</a>
+      <a href="/community/notifications">알림{% if unread_notifications %}<span class="count-badge">{{ unread_notifications }}</span>{% endif %}</a>
+      {% if session_user.is_admin %}<a class="{% if waiting_mode %}active{% endif %}" href="/community?sort=waiting">관리자 답변 대기</a>{% endif %}
+    </aside>
+    <div class="community-panel community-main">
+      <form class="community-toolbar" method="get">
+        {% if waiting_mode %}<input type="hidden" name="sort" value="waiting">{% elif mine %}<input type="hidden" name="mine" value="true">{% else %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
+        <input type="search" name="q" value="{{ q }}" placeholder="제목과 내용 검색">
+        <select name="status"><option value="">전체 상태</option>{% for key,label in statuses.items() %}<option value="{{ key }}" {% if status==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        <select name="sort" {% if waiting_mode %}disabled{% endif %}><option value="latest" {% if sort=='latest' %}selected{% endif %}>최신순</option><option value="popular" {% if sort=='popular' %}selected{% endif %}>공감순</option><option value="waiting" {% if sort=='waiting' %}selected{% endif %}>답변 대기</option></select>
+        <button class="btn-primary submit" type="submit">조회</button>
+      </form>
+      <div class="post-list">
+      {% for post,reaction_count,comment_count in rows %}
+      <a class="post-row" href="/community/{{ post.id }}">
+        <div><div class="post-top">{% if post.is_notice %}<span class="badge dark">상단 고정</span>{% endif %}<span class="badge">{{ categories.get(post.category, post.category) }}</span>{% if post.is_private %}<span class="badge private">비밀글</span>{% endif %}<span class="post-title">{{ post.title }}</span></div><div class="post-meta">{{ statuses.get(post.status, post.status) }} · 공감 {{ reaction_count }} · 댓글 {{ comment_count }} · 조회 {{ post.view_count }}</div></div>
+        <div class="post-date">{{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+      </a>
+      {% else %}<div class="empty">{% if waiting_mode %}관리자 답변을 기다리는 게시글이 없습니다.{% else %}이 게시판에 등록된 글이 없습니다.{% endif %}</div>{% endfor %}
+      </div>
+      <div class="total-info">총 {{ total }}개</div>
+      {% if total_pages > 1 %}<nav class="pagination">{% if page > 1 %}<a href="?{% if waiting_mode %}sort=waiting{% elif mine %}mine=true{% else %}category={{ category }}{% endif %}&q={{ q }}&status={{ status }}&page={{ page-1 }}">이전</a>{% endif %}{% for p in range(1,total_pages+1) %}{% if p >= page-2 and p <= page+2 %}{% if p==page %}<span class="current">{{ p }}</span>{% else %}<a href="?{% if waiting_mode %}sort=waiting{% elif mine %}mine=true{% else %}category={{ category }}{% endif %}&q={{ q }}&status={{ status }}&page={{ p }}">{{ p }}</a>{% endif %}{% endif %}{% endfor %}{% if page < total_pages %}<a href="?{% if waiting_mode %}sort=waiting{% elif mine %}mine=true{% else %}category={{ category }}{% endif %}&q={{ q }}&status={{ status }}&page={{ page+1 }}">다음</a>{% endif %}</nav>{% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}
