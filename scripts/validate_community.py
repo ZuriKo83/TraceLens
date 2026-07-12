@@ -40,6 +40,7 @@ def validate_required_files() -> list[str]:
         APP / "templates" / "community" / "list.html",
         APP / "templates" / "community" / "form.html",
         APP / "templates" / "community" / "detail.html",
+        APP / "templates" / "community" / "chat.html",
     ]
     return [f"Missing required file: {path.relative_to(ROOT)}" for path in required if not path.is_file()]
 
