@@ -1,0 +1,68 @@
+{
+  "manifest_version": 3,
+  "name": "TraceLens",
+  "version": "1.0.0",
+  "description": "내가 작성한 게시글과 댓글을 여러 사이트에서 찾아 TraceLens 보관함에 정리합니다.",
+  "minimum_chrome_version": "109",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://tracelens.kr/*",
+    "https://www.tracelens.kr/*",
+    "https://tracelens.kr/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://www.youtube.com/*",
+    "https://myactivity.google.com/*",
+    "https://accounts.google.com/*",
+    "https://www.instagram.com/*",
+    "https://instagram.com/*",
+    "https://www.facebook.com/*",
+    "https://facebook.com/*",
+    "https://m.facebook.com/*",
+    "https://www.threads.com/*",
+    "https://threads.com/*",
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://blog.naver.com/*",
+    "https://kin.naver.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://tracelens.kr/*",
+        "https://www.tracelens.kr/*",
+        "https://tracelens.kr/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "content_script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "TraceLens",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "short_name": "TraceLens",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
