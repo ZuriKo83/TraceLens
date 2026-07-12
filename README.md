@@ -129,6 +129,6 @@ FastAPI가 `user_id`를 정수로 변환하지 못하던 문제를 수정했습�
 
 이 명령은 모든 사용자의 보관함 데이터를 영구 삭제합니다.
 
-sudo -u postgres psql -d tracelens -c "
+``` sudo -u postgres psql -d tracelens -c "
 TRUNCATE TABLE scan_logs, activities RESTART IDENTITY CASCADE;
-"
+" ```
