@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,19 @@ ACCOUNT_TOOL_PATHS = {
     "/admin/access-codes",
     PUBLIC_APPROVED_SIGNUP_PATH,
 }
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _is_future(value: datetime | None) -> bool:
+    normalized = _as_utc(value)
+    return normalized is not None and normalized > utcnow()
 
 
 class RedisSessionMiddleware:
@@ -118,9 +132,8 @@ class RedisSessionMiddleware:
             with Session(engine) as db:
                 restriction = db.scalar(select(CommunityUserRestriction).where(CommunityUserRestriction.user_id == int(user_id)))
             if restriction is not None:
-                now = utcnow()
-                chat_blocked = restriction.chat_blocked_until is not None and restriction.chat_blocked_until > now
-                community_blocked = restriction.community_blocked_until is not None and restriction.community_blocked_until > now
+                chat_blocked = _is_future(restriction.chat_blocked_until)
+                community_blocked = _is_future(restriction.community_blocked_until)
                 is_chat_write = path.startswith("/community/chat") and (scope_type == "websocket" or scope.get("method") == "POST")
                 is_community_write = scope_type == "http" and scope.get("method") == "POST" and not path.startswith("/community/admin")
                 if (chat_blocked and is_chat_write) or (community_blocked and is_community_write):
