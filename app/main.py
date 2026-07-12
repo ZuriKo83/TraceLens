@@ -11,7 +11,7 @@ from urllib.parse import quote, urlparse
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, inspect, or_, select, text
@@ -1247,3 +1247,18 @@ def collector_status(db: Session = Depends(get_db), user: User = Depends(collect
 @app.get("/health")
 def health():
     return {"status": "ok", "mode": "multi_user", "version": "1.0.4"}
+
+
+@app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
+def sitemap_xml():
+    return FileResponse(
+        Path(__file__).resolve().parent.parent / "sitemap.xml",
+        media_type="application/xml",
+    )
+
+@app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
+def robots_txt():
+    return FileResponse(
+        Path(__file__).resolve().parent.parent / "robots.txt",
+        media_type="text/plain",
+    )
