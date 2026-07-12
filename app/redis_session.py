@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, URLSafeSerializer
 from redis.asyncio import Redis
@@ -33,12 +33,15 @@ account_tools_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 account_tools_app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 account_tools_app.include_router(account_admin_router)
 
+PUBLIC_APPROVED_SIGNUP_PATH = "/account/admin-approved-signup"
+LEGACY_APPROVED_SIGNUP_PATH = "/admin-invite"
+
 ACCOUNT_TOOL_PATHS = {
     "/auth/signup/request-code",
     "/auth/signup/verify",
     "/admin/users",
     "/admin/access-codes",
-    "/admin-invite",
+    PUBLIC_APPROVED_SIGNUP_PATH,
 }
 
 
@@ -89,6 +92,15 @@ class RedisSessionMiddleware:
 
         path = scope.get("path", "")
         user_id = session.get("user_id")
+
+        if path == LEGACY_APPROVED_SIGNUP_PATH:
+            response = RedirectResponse(PUBLIC_APPROVED_SIGNUP_PATH, status_code=308)
+            await response(scope, receive, send)
+            return
+
+        if path == PUBLIC_APPROVED_SIGNUP_PATH:
+            scope["path"] = LEGACY_APPROVED_SIGNUP_PATH
+            scope["raw_path"] = LEGACY_APPROVED_SIGNUP_PATH.encode("ascii")
 
         if path == "/app/account/emails":
             response = PlainTextResponse("추가 이메일 연결 기능은 지원하지 않습니다.", status_code=404)
