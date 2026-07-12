@@ -113,3 +113,15 @@ FastAPI가 `user_id`를 정수로 변환하지 못하던 문제를 수정했습�
 - Tunnel 원본 서비스: `http://localhost:8021`
 
 외부 포트가 HTTP 기본 포트 80이므로 주소에서 포트 번호를 생략할 수 있습니다.
+
+
+
+
+## 실행 명령어
+
+- cd ~/Desktop/TraceLens
+- nano .env
+
+- sudo systemctl restart tracelens-web tracelens-worker tracelens-maintenance
+- sudo systemctl status tracelens-web tracelens-worker tracelens-maintenance --no-pager
+- sudo journalctl -u tracelens-web -n 50 --no-pager
