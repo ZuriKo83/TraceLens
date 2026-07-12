@@ -15,13 +15,14 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import app.community as community_module
 from app.account_admin_hardened import AccountDeletionHistory, router as account_admin_router
+from app.chat_redis import RedisChatManager
 from app.community import router as community_router
 from app.community_admin import router as community_admin_router
 from app.community_ops import router as community_ops_router
 from app.community_models import CommunityUserRestriction
-from app.community_schema import ensure_community_schema
-from app.db import Base, engine
+from app.db import engine
 from app.models import User, utcnow
 
 logger = logging.getLogger(__name__)
@@ -71,8 +72,7 @@ class RedisSessionMiddleware:
         self.https_only = https_only
         self.same_site = same_site
         self.prefix = prefix
-        ensure_community_schema()
-        Base.metadata.create_all(engine)
+        community_module.chat_manager = RedisChatManager(redis_url)
 
     async def __call__(self, scope: dict[str, Any], receive, send) -> None:
         scope_type = scope.get("type")
@@ -103,6 +103,7 @@ class RedisSessionMiddleware:
                 except (TypeError, ValueError):
                     session.pop("user_id", None)
         except Exception:
+            logger.exception("Redis session read failed")
             session = {}
         scope["session"] = session
 
