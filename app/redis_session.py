@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+from contextlib import asynccontextmanager
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
@@ -11,9 +12,16 @@ from itsdangerous import BadSignature, URLSafeSerializer
 from redis.asyncio import Redis
 
 from app.community import router as community_router
+from app.community_schema import ensure_community_schema
 
 
-community_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+@asynccontextmanager
+async def community_lifespan(_: FastAPI):
+    ensure_community_schema()
+    yield
+
+
+community_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=community_lifespan)
 community_app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 community_app.include_router(community_router)
 
