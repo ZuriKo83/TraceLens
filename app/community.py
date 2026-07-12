@@ -1,23 +1,25 @@
+import asyncio
 import secrets
+import time
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.community_models import CommunityComment, CommunityPost, CommunityReaction
-from app.db import get_db
+from app.community_models import CommunityChatMessage, CommunityComment, CommunityPost, CommunityReaction
+from app.db import engine, get_db
 from app.models import User
 
 router = APIRouter(prefix="/community", tags=["community"])
 templates = Jinja2Templates(directory="app/templates")
 
 CATEGORIES = {
+    "free": "자유게시판",
     "suggestion": "건의사항",
     "bug": "오류 제보",
     "site_request": "지원 사이트 요청",
-    "free": "자유게시판",
 }
 STATUSES = {
     "received": "접수",
@@ -26,6 +28,38 @@ STATUSES = {
     "completed": "반영 완료",
     "on_hold": "보류",
 }
+
+
+class ChatManager:
+    def __init__(self) -> None:
+        self.connections: set[WebSocket] = set()
+        self.lock = asyncio.Lock()
+
+    async def connect(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        async with self.lock:
+            self.connections.add(websocket)
+        await self.broadcast({"type": "presence", "online": len(self.connections)})
+
+    async def disconnect(self, websocket: WebSocket) -> None:
+        async with self.lock:
+            self.connections.discard(websocket)
+        await self.broadcast({"type": "presence", "online": len(self.connections)})
+
+    async def broadcast(self, payload: dict) -> None:
+        stale: list[WebSocket] = []
+        for connection in tuple(self.connections):
+            try:
+                await connection.send_json(payload)
+            except Exception:
+                stale.append(connection)
+        if stale:
+            async with self.lock:
+                for connection in stale:
+                    self.connections.discard(connection)
+
+
+chat_manager = ChatManager()
 
 
 def current_user(request: Request, db: Session) -> User | None:
@@ -81,7 +115,7 @@ def render(request: Request, name: str, db: Session, user: User, **context):
 @router.get("", response_class=HTMLResponse)
 def community_list(
     request: Request,
-    category: str = "",
+    category: str = "free",
     status: str = "",
     q: str = "",
     sort: str = "latest",
@@ -101,16 +135,17 @@ def community_list(
     ).correlate(CommunityPost).scalar_subquery()
 
     stmt = select(CommunityPost, reaction_count.label("reaction_count"), comment_count.label("comment_count"))
-    if user.is_admin:
-        pass
-    else:
+    if not user.is_admin:
         stmt = stmt.where(
             CommunityPost.is_hidden.is_(False),
             or_(CommunityPost.is_private.is_(False), CommunityPost.author_id == user.id),
         )
     if mine:
         stmt = stmt.where(CommunityPost.author_id == user.id)
-    if category in CATEGORIES:
+    elif category in CATEGORIES:
+        stmt = stmt.where(CommunityPost.category == category)
+    else:
+        category = "free"
         stmt = stmt.where(CommunityPost.category == category)
     if status in STATUSES:
         stmt = stmt.where(CommunityPost.status == status)
@@ -131,6 +166,73 @@ def community_list(
         request, "community/list.html", db, user,
         rows=rows, category=category, status=status, q=q, sort=sort, mine=mine,
     )
+
+
+@router.get("/chat", response_class=HTMLResponse)
+def chat_page(request: Request, db: Session = Depends(get_db)):
+    user = require_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    messages = list(db.scalars(
+        select(CommunityChatMessage).order_by(CommunityChatMessage.id.desc()).limit(100)
+    ))
+    messages.reverse()
+    return render(request, "community/chat.html", db, user, messages=messages)
+
+
+@router.websocket("/chat/ws")
+async def chat_socket(websocket: WebSocket):
+    session = websocket.scope.get("session") or {}
+    user_id = session.get("user_id")
+    if not user_id:
+        await websocket.close(code=4401)
+        return
+    with Session(engine) as db:
+        user = db.get(User, int(user_id))
+        if user is None or user.deleted_at is not None or not user.is_verified:
+            await websocket.close(code=4401)
+            return
+
+    await chat_manager.connect(websocket)
+    last_sent = 0.0
+    try:
+        while True:
+            payload = await websocket.receive_json()
+            content = str(payload.get("content") or "").strip()
+            now = time.monotonic()
+            if now - last_sent < 1.0:
+                await websocket.send_json({"type": "error", "message": "메시지는 1초에 한 번만 보낼 수 있습니다."})
+                continue
+            if not content or len(content) > 500:
+                await websocket.send_json({"type": "error", "message": "메시지는 1자 이상 500자 이하로 입력하세요."})
+                continue
+            last_sent = now
+            with Session(engine) as db:
+                user = db.get(User, int(user_id))
+                if user is None or user.deleted_at is not None or not user.is_verified:
+                    await websocket.close(code=4401)
+                    return
+                message = CommunityChatMessage(author_id=user.id, content=content)
+                db.add(message)
+                db.commit()
+                db.refresh(message)
+                outgoing = {
+                    "type": "message",
+                    "id": message.id,
+                    "author_id": user.id,
+                    "content": message.content,
+                    "created_at": message.created_at.isoformat(),
+                }
+            await chat_manager.broadcast(outgoing)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
+    finally:
+        await chat_manager.disconnect(websocket)
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -190,14 +292,9 @@ def post_detail(post_id: int, request: Request, db: Session = Depends(get_db)):
     if not can_view(post, user):
         raise HTTPException(403, "이 비밀글을 볼 권한이 없습니다.")
     post.view_count += 1
-    author = db.get(User, post.author_id)
-    comment_authors = {comment.author_id: db.get(User, comment.author_id) for comment in post.comments}
     reacted = any(reaction.user_id == user.id for reaction in post.reactions)
     db.commit()
-    return render(
-        request, "community/detail.html", db, user,
-        post=post, author=author, comment_authors=comment_authors, reacted=reacted,
-    )
+    return render(request, "community/detail.html", db, user, post=post, reacted=reacted)
 
 
 @router.get("/{post_id}/edit", response_class=HTMLResponse)
@@ -261,7 +358,7 @@ def delete_post(post_id: int, request: Request, csrf: str = Form(...), db: Sessi
         raise HTTPException(403)
     db.delete(post)
     db.commit()
-    return RedirectResponse("/community", status_code=303)
+    return RedirectResponse(f"/community?category={post.category}", status_code=303)
 
 
 @router.post("/{post_id}/comments")
