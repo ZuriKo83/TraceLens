@@ -16,7 +16,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import app.community as community_module
-from app.account_admin_hardened import AccountDeletionHistory, router as account_admin_router
+from app.account_admin import AccountDeletionHistory
+from app.account_admin_secure import router as account_admin_router
 from app.chat_redis import RedisChatManager
 from app.community import router as community_router
 from app.community_admin import router as community_admin_router
