@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}커뮤니티 관리 · {{ app_name }}{% endblock %}
+{% block head_extra %}
+<style>
+.admin-wrap{max-width:1180px;margin:0 auto;padding:30px 0 64px}.head{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:20px}.head h1{margin:6px 0}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.stat,.card{background:#fff;border:1px solid #e7eaf0;border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,.035)}.stat{padding:18px}.stat strong{display:block;font-size:28px;margin-top:6px}.card{padding:20px;margin-bottom:18px}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:12px 10px;border-bottom:1px solid #edf0f4;text-align:left;vertical-align:top}.table th{font-size:13px;color:#667085}.controls{display:flex;gap:8px;flex-wrap:wrap}.btn{min-height:36px;padding:0 12px;border:1px solid #dfe3ea;border-radius:9px;background:#fff;cursor:pointer}.btn.primary{background:#4f46c8;color:#fff;border-color:#4f46c8}.field-row{display:grid;grid-template-columns:120px 140px 140px 1fr auto;gap:10px}.field-row input,.field-row select{height:42px;border:1px solid #dfe3ea;border-radius:10px;padding:0 10px}.muted{color:#7a8699}.nav{display:flex;gap:10px}.nav a{text-decoration:none;color:#4f46c8}@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}.field-row{grid-template-columns:1fr}.table{display:block;overflow:auto}}@media(max-width:520px){.grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="admin-wrap">
+  <div class="head"><div><small>COMMUNITY ADMIN</small><h1>커뮤니티 관리</h1><p class="muted">신고 처리, 이용 제한, 운영 현황을 관리합니다.</p></div><div class="nav"><a href="/community">커뮤니티</a><a href="/community/chat">채팅</a></div></div>
+  <div class="grid">
+    <div class="stat"><span>미처리 신고</span><strong>{{ stats.open_reports }}</strong></div>
+    <div class="stat"><span>게시글</span><strong>{{ stats.posts }}</strong></div>
+    <div class="stat"><span>댓글</span><strong>{{ stats.comments }}</strong></div>
+    <div class="stat"><span>채팅</span><strong>{{ stats.chat }}</strong></div>
+  </div>
+  <section class="card">
+    <h2>사용자 이용 제한</h2>
+    <form class="field-row" method="post" action="/community/admin/restrictions">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="number" name="user_id" min="1" required placeholder="사용자 번호">
+      <select name="scope"><option value="chat">채팅만</option><option value="community">게시판 작성</option><option value="all">전체 작성</option></select>
+      <input type="number" name="duration_hours" min="1" max="87600" value="24" required placeholder="시간">
+      <input type="text" name="reason" maxlength="500" placeholder="제한 사유">
+      <button class="btn primary" type="submit">제한 적용</button>
+    </form>
+    {% if restrictions %}<table class="table"><thead><tr><th>사용자</th><th>채팅 제한</th><th>게시판 제한</th><th>사유</th><th></th></tr></thead><tbody>{% for item in restrictions %}<tr><td>#{{ item.user_id }}</td><td>{{ item.chat_blocked_until or '-' }}</td><td>{{ item.community_blocked_until or '-' }}</td><td>{{ item.reason or '-' }}</td><td><form method="post" action="/community/admin/restrictions/{{ item.user_id }}/clear"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="btn" type="submit">해제</button></form></td></tr>{% endfor %}</tbody></table>{% endif %}
+  </section>
+  <section class="card">
+    <h2>신고 목록</h2>
+    <table class="table"><thead><tr><th>상태</th><th>대상</th><th>신고자</th><th>사유</th><th>일시</th><th>처리</th></tr></thead><tbody>
+    {% for report in reports %}<tr><td>{{ report.status }}</td><td>{{ report.target_type }} #{{ report.target_id }}</td><td>#{{ report.reporter_id }}</td><td>{{ report.reason }}</td><td>{{ report.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{% if report.status=='open' %}<div class="controls"><form method="post" action="/community/admin/reports/{{ report.id }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="decision" value="resolved"><button class="btn primary" type="submit">처리 완료</button></form><form method="post" action="/community/admin/reports/{{ report.id }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="decision" value="dismissed"><button class="btn" type="submit">기각</button></form></div>{% else %}-{% endif %}</td></tr>{% else %}<tr><td colspan="6" class="muted">신고가 없습니다.</td></tr>{% endfor %}
+    </tbody></table>
+  </section>
+</section>
+{% endblock %}
