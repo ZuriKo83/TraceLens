@@ -2,41 +2,40 @@
 {% block title %}커뮤니티 · {{ app_name }}{% endblock %}
 {% block head_extra %}
 <style>
-:root{--community-accent:#5b5bd6;--community-accent-soft:#f1f2ff;--community-text:#182230;--community-muted:#667085;--community-border:#e6e9f0;--community-surface:#fff;--community-bg:#f7f8fb}
-body{background:var(--community-bg)}
-.community-wrap{max-width:1180px;margin:0 auto;padding:32px 0 64px}.community-head{display:flex;justify-content:space-between;gap:24px;align-items:center;margin-bottom:22px}.eyebrow{display:block;margin-bottom:6px;color:var(--community-accent);font-size:12px;font-weight:800;letter-spacing:.08em}.community-head h1{margin:0 0 7px;font-size:32px;line-height:1.2;color:var(--community-text)}.community-head p{margin:0;color:var(--community-muted);font-size:15px}.community-grid{display:grid;grid-template-columns:210px minmax(0,1fr);gap:18px}.community-panel{background:var(--community-surface);border:1px solid var(--community-border);border-radius:16px;box-shadow:0 8px 24px rgba(16,24,40,.035)}.community-side{padding:12px;height:max-content;position:sticky;top:84px}.community-side a{display:flex;align-items:center;min-height:42px;padding:0 13px;border-radius:10px;color:#3e4c5f;text-decoration:none;font-size:14px}.community-side a:hover{background:#f7f8fb;color:var(--community-text)}.community-side a.active{background:var(--community-accent-soft);color:#4b4bbd;font-weight:750}.community-main{padding:18px}.community-toolbar{display:grid;grid-template-columns:minmax(240px,1fr) 150px 135px auto;gap:10px;padding-bottom:18px;border-bottom:1px solid #eef0f4}.community-toolbar input,.community-toolbar select{height:44px;border:1px solid #dfe3ea;border-radius:10px;padding:0 13px;background:#fff;color:#273142;font:inherit;outline:none}.community-toolbar input:focus,.community-toolbar select:focus{border-color:#a9a9ef;box-shadow:0 0 0 3px rgba(91,91,214,.10)}.btn-primary{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 18px;border:0;border-radius:10px;background:#4f46c8;color:#fff;text-decoration:none;font-weight:750;cursor:pointer;box-shadow:0 6px 14px rgba(79,70,200,.16)}.btn-primary:hover{background:#4338b8}.post-list{margin-top:4px}.post-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;padding:18px 6px;border-bottom:1px solid #eef0f4;text-decoration:none;color:inherit;transition:background .15s ease}.post-row:last-child{border-bottom:0}.post-row:hover{background:#fafbff}.post-main{min-width:0}.post-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.post-title{font-size:16px;font-weight:760;color:var(--community-text);overflow-wrap:anywhere}.badge{display:inline-flex;align-items:center;min-height:24px;padding:0 8px;border-radius:999px;background:#f2f4f7;color:#475467;font-size:11px;font-weight:750}.badge.category{background:var(--community-accent-soft);color:#4f46c8}.badge.dark{background:#273142;color:#fff}.badge.private{background:#fff5e8;color:#a15c00}.post-meta{margin-top:8px;color:#7a8699;font-size:12.5px}.post-date{align-self:center;color:#8b95a7;font-size:12.5px;white-space:nowrap}.empty{padding:64px 16px;text-align:center;color:var(--community-muted)}
-@media(max-width:900px){.community-toolbar{grid-template-columns:1fr 1fr}.community-toolbar input{grid-column:1/-1}.community-toolbar .btn-primary{width:100%}}
-@media(max-width:760px){.community-wrap{padding:24px 0 48px}.community-head{align-items:flex-start;flex-direction:column}.community-head .btn-primary{width:100%}.community-grid{grid-template-columns:1fr}.community-side{position:static;display:flex;gap:6px;overflow-x:auto;padding:10px}.community-side a{white-space:nowrap}.community-main{padding:14px}.post-row{grid-template-columns:1fr}.post-date{justify-self:start}.community-toolbar{grid-template-columns:1fr}.community-toolbar input{grid-column:auto}}
+.community-wrap{max-width:1180px;margin:0 auto;padding:30px 0 64px}.community-head{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;margin-bottom:22px}.community-eyebrow{font-size:12px;font-weight:800;letter-spacing:.08em;color:#5b5bd6}.community-head h1{margin:6px 0 7px;font-size:32px;letter-spacing:-.04em}.community-head p{margin:0;color:#667085}.community-grid{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px}.community-panel{background:rgba(255,255,255,.9);border:1px solid #e8ebf2;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.04)}.community-side{padding:12px}.community-side a{display:flex;align-items:center;justify-content:space-between;padding:12px 13px;border-radius:11px;color:#344054;text-decoration:none;font-weight:650}.community-side a:hover{background:#f6f7fb}.community-side a.active{background:#f0f1ff;color:#4f46e5}.community-side .chat-link{margin-top:8px;border-top:1px solid #edf0f5;border-radius:0;padding-top:18px}.community-main{padding:18px}.community-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) 150px 130px auto;gap:10px;margin-bottom:16px}.community-toolbar input,.community-toolbar select{height:44px;border:1px solid #dde2ea;border-radius:11px;padding:0 13px;background:#fff;color:#1f2937;font:inherit}.community-toolbar input:focus,.community-toolbar select:focus{outline:2px solid #dddafe;border-color:#8b83f6}.post-list{border-top:1px solid #edf0f5}.post-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;padding:18px 4px;border-bottom:1px solid #edf0f5;text-decoration:none;color:inherit;transition:.15s ease}.post-row:hover{background:#fafbfe;padding-left:10px;padding-right:10px}.post-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.post-title{font-size:17px;font-weight:760;overflow-wrap:anywhere}.badge{display:inline-flex;padding:4px 9px;border-radius:999px;background:#f0f1ff;color:#5145cd;font-size:12px;font-weight:750}.badge.dark{background:#273142;color:#fff}.badge.private{background:#fff4e5;color:#9a6700}.post-meta{margin-top:8px;color:#7b8495;font-size:13px}.post-date{align-self:center;color:#98a2b3;font-size:13px;white-space:nowrap}.empty{padding:64px 0;text-align:center;color:#7b8495}.btn-primary{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 18px;border:0;border-radius:11px;background:#5b5bd6;color:#fff;text-decoration:none;font-weight:750;box-shadow:0 6px 14px rgba(91,91,214,.18);cursor:pointer}.btn-primary:hover{background:#4d4dc5}@media(max-width:850px){.community-grid{grid-template-columns:1fr}.community-side{display:flex;overflow:auto}.community-side a{white-space:nowrap}.community-side .chat-link{margin:0;border:0;padding-top:12px}.community-toolbar{grid-template-columns:1fr 1fr}.community-toolbar input{grid-column:1/-1}.community-toolbar .submit{grid-column:1/-1}.community-head{align-items:flex-start;flex-direction:column}}@media(max-width:560px){.community-toolbar{grid-template-columns:1fr}.community-toolbar input{grid-column:auto}.community-toolbar .submit{grid-column:auto}.post-row{grid-template-columns:1fr}.post-date{justify-self:start}}
 </style>
 {% endblock %}
 {% block content %}
 <section class="community-wrap">
   <div class="community-head">
-    <div><span class="eyebrow">TRACELENS COMMUNITY</span><h1>커뮤니티</h1><p>기능 건의, 오류 제보, 지원 사이트 요청과 사용 경험을 공유하세요.</p></div>
+    <div><div class="community-eyebrow">TRACELENS COMMUNITY</div><h1>{{ '내가 쓴 글' if mine else categories.get(category, '자유게시판') }}</h1><p>기능 건의, 오류 제보, 지원 사이트 요청과 사용 경험을 공유하세요.</p></div>
     <a class="btn-primary" href="/community/new">글 작성</a>
   </div>
   <div class="community-grid">
     <aside class="community-panel community-side">
-      <a class="{% if not category and not mine %}active{% endif %}" href="/community">전체 게시글</a>
-      {% for key,label in categories.items() %}<a class="{% if category==key %}active{% endif %}" href="/community?category={{ key }}">{{ label }}</a>{% endfor %}
+      <a class="{% if category=='free' and not mine %}active{% endif %}" href="/community?category=free">자유게시판</a>
+      <a class="{% if category=='suggestion' and not mine %}active{% endif %}" href="/community?category=suggestion">건의사항</a>
+      <a class="{% if category=='bug' and not mine %}active{% endif %}" href="/community?category=bug">오류 제보</a>
+      <a class="{% if category=='site_request' and not mine %}active{% endif %}" href="/community?category=site_request">지원 사이트 요청</a>
+      <a class="chat-link" href="/community/chat">실시간 채팅 <span>●</span></a>
       <a class="{% if mine %}active{% endif %}" href="/community?mine=true">내가 쓴 글</a>
-      {% if session_user.is_admin %}<a href="/community?sort=waiting">관리자 답변 대기</a>{% endif %}
+      {% if session_user.is_admin %}<a href="/community?category=free&sort=waiting">관리자 답변 대기</a>{% endif %}
     </aside>
     <div class="community-panel community-main">
       <form class="community-toolbar" method="get">
-        {% if category %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
+        {% if mine %}<input type="hidden" name="mine" value="true">{% else %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
         <input type="search" name="q" value="{{ q }}" placeholder="제목과 내용 검색">
         <select name="status"><option value="">전체 상태</option>{% for key,label in statuses.items() %}<option value="{{ key }}" {% if status==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
         <select name="sort"><option value="latest" {% if sort=='latest' %}selected{% endif %}>최신순</option><option value="popular" {% if sort=='popular' %}selected{% endif %}>공감순</option><option value="waiting" {% if sort=='waiting' %}selected{% endif %}>답변 대기</option></select>
-        <button class="btn-primary" type="submit">조회</button>
+        <button class="btn-primary submit" type="submit">조회</button>
       </form>
       <div class="post-list">
       {% for post,reaction_count,comment_count in rows %}
       <a class="post-row" href="/community/{{ post.id }}">
-        <div class="post-main">
+        <div>
           <div class="post-top">
             {% if post.is_notice %}<span class="badge dark">상단 고정</span>{% endif %}
-            <span class="badge category">{{ categories.get(post.category, post.category) }}</span>
+            <span class="badge">{{ categories.get(post.category, post.category) }}</span>
             {% if post.is_private %}<span class="badge private">비밀글</span>{% endif %}
             <span class="post-title">{{ post.title }}</span>
           </div>
@@ -44,7 +43,7 @@ body{background:var(--community-bg)}
         </div>
         <div class="post-date">{{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
       </a>
-      {% else %}<div class="empty">조건에 맞는 게시글이 없습니다.</div>{% endfor %}
+      {% else %}<div class="empty">이 게시판에 등록된 글이 없습니다.</div>{% endfor %}
       </div>
     </div>
   </div>
