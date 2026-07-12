@@ -35,10 +35,12 @@ def validate_templates() -> list[str]:
 
 def validate_required_files() -> list[str]:
     required = [
+        APP / "account_admin_hardened.py",
         APP / "community.py",
         APP / "community_admin.py",
         APP / "community_models.py",
         APP / "community_schema.py",
+        APP / "redis_session.py",
         APP / "templates" / "community" / "list.html",
         APP / "templates" / "community" / "form.html",
         APP / "templates" / "community" / "detail.html",
