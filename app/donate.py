@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,7 @@ from app.models import User
 settings = get_settings()
 templates = Jinja2Templates(directory="app/templates")
 router = APIRouter()
+QR_PATH = Path(__file__).resolve().parent / "templates" / "AQR.png"
 
 
 @router.get("/donate", response_class=HTMLResponse)
@@ -36,4 +39,16 @@ def donate_page(request: Request, db: Session = Depends(get_db)):
             "csrf_token": request.session.get("csrf_token", ""),
             "donate_url": "https://aq.gy/f/I9J3b",
         },
+    )
+
+
+@router.get("/donate/qr", response_class=FileResponse)
+def donate_qr():
+    if not QR_PATH.is_file():
+        raise HTTPException(status_code=404, detail="후원 QR 이미지를 찾을 수 없습니다.")
+    return FileResponse(
+        path=QR_PATH,
+        media_type="image/png",
+        filename="TraceLens-AQR.png",
+        headers={"Cache-Control": "public, max-age=3600"},
     )
