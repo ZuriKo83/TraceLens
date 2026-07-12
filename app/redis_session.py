@@ -6,16 +6,24 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, URLSafeSerializer
 from redis.asyncio import Redis
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.community import router as community_router
+from app.community_admin import router as community_admin_router
+from app.community_models import CommunityUserRestriction
 from app.community_schema import ensure_community_schema
+from app.db import engine
+from app.models import utcnow
 
 
 community_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 community_app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
+community_app.include_router(community_admin_router)
 community_app.include_router(community_router)
 
 
@@ -63,6 +71,27 @@ class RedisSessionMiddleware:
             session = {}
         scope["session"] = session
 
+        path = scope.get("path", "")
+        user_id = session.get("user_id")
+        if user_id and path.startswith("/community"):
+            with Session(engine) as db:
+                restriction = db.scalar(select(CommunityUserRestriction).where(CommunityUserRestriction.user_id == int(user_id)))
+            if restriction is not None:
+                now = utcnow()
+                chat_blocked = restriction.chat_blocked_until is not None and restriction.chat_blocked_until > now
+                community_blocked = restriction.community_blocked_until is not None and restriction.community_blocked_until > now
+                is_chat_write = path.startswith("/community/chat") and (
+                    scope_type == "websocket" or scope.get("method") == "POST"
+                )
+                is_community_write = scope_type == "http" and scope.get("method") == "POST" and not path.startswith("/community/admin")
+                if (chat_blocked and is_chat_write) or (community_blocked and is_community_write):
+                    if scope_type == "websocket":
+                        await send({"type": "websocket.close", "code": 4403, "reason": "이용이 제한되었습니다."})
+                    else:
+                        response = PlainTextResponse("커뮤니티 이용이 일시적으로 제한되었습니다.", status_code=403)
+                        await response(scope, receive, send)
+                    return
+
         async def send_wrapper(message):
             if scope_type == "http" and message["type"] == "http.response.start":
                 try:
@@ -81,5 +110,5 @@ class RedisSessionMiddleware:
                 message.setdefault("headers", []).append((b"set-cookie", "; ".join(parts).encode("latin-1")))
             await send(message)
 
-        target_app = community_app if scope.get("path", "").startswith("/community") else self.app
+        target_app = community_app if path.startswith("/community") else self.app
         await target_app(scope, receive, send_wrapper)
