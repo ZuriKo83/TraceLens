@@ -4,8 +4,15 @@ import secrets
 from http.cookies import SimpleCookie
 from typing import Any
 
+from fastapi import FastAPI
 from itsdangerous import BadSignature, URLSafeSerializer
 from redis.asyncio import Redis
+
+from app.community import router as community_router
+
+
+community_app = FastAPI()
+community_app.include_router(community_router)
 
 
 class RedisSessionMiddleware:
@@ -68,4 +75,5 @@ class RedisSessionMiddleware:
                 message.setdefault("headers", []).append((b"set-cookie", "; ".join(parts).encode("latin-1")))
             await send(message)
 
-        await self.app(scope, receive, send_wrapper)
+        target_app = community_app if scope.get("path", "").startswith("/community") else self.app
+        await target_app(scope, receive, send_wrapper)
