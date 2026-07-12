@@ -8,7 +8,7 @@
 {% block content %}
 <section class="community-wrap">
   <div class="community-head">
-    <div><div class="community-eyebrow">TRACELENS COMMUNITY</div><h1>{% if waiting_mode %}관리자 답변 대기{% elif mine %}내가 쓴 글{% else %}{{ categories.get(category, '자유게시판') }}{% endif %}</h1><p>{% if waiting_mode %}아직 관리자 답변이 등록되지 않은 게시글입니다.{% else %}기능 건의, 오류 제보, 지원 사이트 요청과 사용 경험을 공유하세요.{% endif %}</p></div>
+    <div><div class="community-eyebrow">TRACELENS COMMUNITY</div><h1>{% if waiting_mode %}관리자 답변 대기{% elif mine %}내가 쓴 글{% else %}{{ categories.get(category, '자유게시판') }}{% endif %}</h1>{% if waiting_mode %}<p>아직 관리자 답변이 등록되지 않은 게시글입니다.</p>{% endif %}</div>
     <div class="head-actions"><a class="btn-secondary" href="/community/notifications">알림{% if unread_notifications %} <span class="count-badge">{{ unread_notifications }}</span>{% endif %}</a><a class="btn-primary" href="/community/new">글 작성</a></div>
   </div>
   <div class="community-grid">
