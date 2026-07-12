@@ -24,6 +24,7 @@ from app.community_admin import router as community_admin_router
 from app.community_ops import router as community_ops_router
 from app.community_models import CommunityUserRestriction
 from app.db import engine
+from app.donate import router as donate_router
 from app.models import User, utcnow
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ community_app.include_router(community_router)
 account_tools_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 account_tools_app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 account_tools_app.include_router(account_admin_router)
+account_tools_app.include_router(donate_router)
 
 PUBLIC_APPROVED_SIGNUP_PATH = "/account/admin-approved-signup"
 LEGACY_APPROVED_SIGNUP_PATH = "/admin-invite"
@@ -46,6 +48,8 @@ ACCOUNT_TOOL_PATHS = {
     "/auth/signup/verify",
     "/admin/users",
     "/admin/access-codes",
+    "/donate",
+    "/donate/qr",
     PUBLIC_APPROVED_SIGNUP_PATH,
 }
 
