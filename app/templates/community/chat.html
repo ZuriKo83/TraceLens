@@ -8,7 +8,7 @@
 {% block content %}
 <section class="community-wrap">
   <div class="community-head">
-    <div><div class="community-eyebrow">TRACELENS COMMUNITY</div><h1>실시간 채팅</h1><p>최근 {{ chat_limit }}개 메시지만 화면에 표시됩니다. 저장 기간 제한은 없습니다.</p></div>
+    <div><div class="community-eyebrow">TRACELENS COMMUNITY</div><h1>실시간 채팅</h1></div>
     <div class="head-tools"><div class="chat-status"><span class="status-dot" id="statusDot"></span><span id="onlineCount">연결 중</span></div>{% if session_user.is_admin %}<form method="post" action="/community/chat/admin/clear" onsubmit="return confirm('실시간 채팅 메시지를 전부 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="admin-clear" type="submit">채팅 전체 삭제</button></form>{% endif %}</div>
   </div>
   <div class="community-grid">
