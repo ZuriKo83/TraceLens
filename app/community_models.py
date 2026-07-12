@@ -88,6 +88,8 @@ class CommunityReport(Base):
     target_id: Mapped[int] = mapped_column(Integer, index=True)
     reason: Mapped[str] = mapped_column(String(500))
     status: Mapped[str] = mapped_column(String(20), default="open", index=True)
+    resolved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
@@ -114,3 +116,16 @@ class CommunityAuditLog(Base):
     target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class CommunityUserRestriction(Base):
+    __tablename__ = "community_user_restrictions"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_community_restriction_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    chat_blocked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    community_blocked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
