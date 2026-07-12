@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import secrets
 from http.cookies import SimpleCookie
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, URLSafeSerializer
 from redis.asyncio import Redis
 
 from app.community import router as community_router
 
 
-community_app = FastAPI()
+community_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+community_app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 community_app.include_router(community_router)
 
 
