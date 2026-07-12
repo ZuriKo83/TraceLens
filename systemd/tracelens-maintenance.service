@@ -1,0 +1,18 @@
+[Unit]
+Description=TraceLens Maintenance
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+Requires=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=zuri
+Group=zuri
+WorkingDirectory=/home/zuri/Desktop/TraceLens
+EnvironmentFile=/home/zuri/Desktop/TraceLens/.env
+ExecStart=/home/zuri/Desktop/TraceLens/start_maintenance.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
