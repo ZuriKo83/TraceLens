@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.community import router as community_router
 from app.community_admin import router as community_admin_router
+from app.community_ops import router as community_ops_router
 from app.community_models import CommunityUserRestriction
 from app.community_schema import ensure_community_schema
 from app.db import engine
@@ -24,6 +25,7 @@ from app.models import utcnow
 community_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 community_app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 community_app.include_router(community_admin_router)
+community_app.include_router(community_ops_router)
 community_app.include_router(community_router)
 
 
