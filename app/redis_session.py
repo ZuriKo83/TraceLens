@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import secrets
-from contextlib import asynccontextmanager
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
@@ -15,13 +14,7 @@ from app.community import router as community_router
 from app.community_schema import ensure_community_schema
 
 
-@asynccontextmanager
-async def community_lifespan(_: FastAPI):
-    ensure_community_schema()
-    yield
-
-
-community_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=community_lifespan)
+community_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 community_app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 community_app.include_router(community_router)
 
@@ -36,6 +29,7 @@ class RedisSessionMiddleware:
         self.https_only = https_only
         self.same_site = same_site
         self.prefix = prefix
+        ensure_community_schema()
 
     async def __call__(self, scope: dict[str, Any], receive, send) -> None:
         scope_type = scope.get("type")
