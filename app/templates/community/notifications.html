@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}알림 · {{ app_name }}{% endblock %}
+{% block head_extra %}
+<style>
+.notice-wrap{max-width:860px;margin:0 auto;padding:34px 0 64px}.notice-head{display:flex;justify-content:space-between;align-items:end;gap:16px;margin-bottom:20px}.notice-head h1{margin:6px 0;font-size:30px}.notice-head p{margin:0;color:#667085}.notice-card{background:#fff;border:1px solid #e7eaf0;border-radius:16px;box-shadow:0 8px 24px rgba(15,23,42,.04);overflow:hidden}.notice-row{display:block;padding:18px 20px;border-bottom:1px solid #edf0f4;color:#273142;text-decoration:none}.notice-row:last-child{border-bottom:0}.notice-row:hover{background:#fafbfe}.notice-message{font-weight:700;line-height:1.5}.notice-time{margin-top:6px;color:#8a93a3;font-size:12px}.empty{padding:60px 20px;text-align:center;color:#8a93a3}.back{color:#5b5bd6;text-decoration:none;font-weight:700}
+</style>
+{% endblock %}
+{% block content %}
+<section class="notice-wrap"><div class="notice-head"><div><small>TRACELENS COMMUNITY</small><h1>알림</h1><p>관리자 답변과 게시글 상태 변경 내역입니다.</p></div><a class="back" href="/community">커뮤니티로 돌아가기</a></div><div class="notice-card">{% for notification in notifications %}{% if notification.post_id %}<a class="notice-row" href="/community/{{ notification.post_id }}"><div class="notice-message">{{ notification.message }}</div><div class="notice-time">{{ notification.created_at.strftime('%Y-%m-%d %H:%M') }}</div></a>{% else %}<div class="notice-row"><div class="notice-message">{{ notification.message }}</div><div class="notice-time">{{ notification.created_at.strftime('%Y-%m-%d %H:%M') }}</div></div>{% endif %}{% else %}<div class="empty">새 알림이 없습니다.</div>{% endfor %}</div></section>
+{% endblock %}
