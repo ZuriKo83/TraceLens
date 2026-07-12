@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}커뮤니티 · {{ app_name }}{% endblock %}
+{% block head_extra %}
+<style>
+.community-wrap{max-width:1100px;margin:0 auto;padding:42px 0 70px}.community-head{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;margin-bottom:24px}.community-head h1{margin:5px 0 8px;font-size:34px}.community-head p{margin:0;color:#667085}.community-grid{display:grid;grid-template-columns:220px 1fr;gap:22px}.community-panel{background:#fff;border:1px solid #e3e7ef;border-radius:18px;padding:20px}.community-side a{display:block;padding:11px 12px;border-radius:10px;color:#344054;text-decoration:none}.community-side a:hover,.community-side a.active{background:#eef2ff;color:#4338ca;font-weight:700}.community-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}.community-toolbar input,.community-toolbar select{height:42px;border:1px solid #d7dce5;border-radius:10px;padding:0 12px;background:#fff}.community-toolbar input{flex:1;min-width:220px}.post-row{display:block;padding:18px 4px;border-top:1px solid #edf0f5;text-decoration:none;color:inherit}.post-row:first-of-type{border-top:0}.post-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.post-title{font-size:17px;font-weight:750}.badge{display:inline-flex;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:12px;font-weight:700}.badge.dark{background:#111827;color:#fff}.badge.private{background:#fff4e5;color:#b54708}.post-meta{margin-top:8px;color:#667085;font-size:13px}.empty{padding:60px 0;text-align:center;color:#667085}.btn-primary{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 18px;border-radius:11px;background:#111827;color:#fff;text-decoration:none;font-weight:700}@media(max-width:800px){.community-grid{grid-template-columns:1fr}.community-head{align-items:flex-start;flex-direction:column}.community-side{display:flex;overflow:auto}.community-side a{white-space:nowrap}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="community-wrap">
+  <div class="community-head">
+    <div><small>TRACELENS COMMUNITY</small><h1>커뮤니티</h1><p>기능 건의, 오류 제보, 지원 사이트 요청과 사용 경험을 공유하세요.</p></div>
+    <a class="btn-primary" href="/community/new">글 작성</a>
+  </div>
+  <div class="community-grid">
+    <aside class="community-panel community-side">
+      <a class="{% if not category and not mine %}active{% endif %}" href="/community">전체 게시글</a>
+      {% for key,label in categories.items() %}<a class="{% if category==key %}active{% endif %}" href="/community?category={{ key }}">{{ label }}</a>{% endfor %}
+      <a class="{% if mine %}active{% endif %}" href="/community?mine=true">내가 쓴 글</a>
+      {% if session_user.is_admin %}<a href="/community?sort=waiting">관리자 답변 대기</a>{% endif %}
+    </aside>
+    <div class="community-panel">
+      <form class="community-toolbar" method="get">
+        {% if category %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
+        <input type="search" name="q" value="{{ q }}" placeholder="제목과 내용 검색">
+        <select name="status"><option value="">전체 상태</option>{% for key,label in statuses.items() %}<option value="{{ key }}" {% if status==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        <select name="sort"><option value="latest" {% if sort=='latest' %}selected{% endif %}>최신순</option><option value="popular" {% if sort=='popular' %}selected{% endif %}>공감순</option><option value="waiting" {% if sort=='waiting' %}selected{% endif %}>답변 대기</option></select>
+        <button class="btn-primary" type="submit">조회</button>
+      </form>
+      {% for post,reaction_count,comment_count in rows %}
+      <a class="post-row" href="/community/{{ post.id }}">
+        <div class="post-top">
+          {% if post.is_notice %}<span class="badge dark">공지</span>{% endif %}
+          <span class="badge">{{ categories.get(post.category, post.category) }}</span>
+          {% if post.is_private %}<span class="badge private">비밀글</span>{% endif %}
+          <span class="post-title">{{ post.title }}</span>
+        </div>
+        <div class="post-meta">{{ statuses.get(post.status, post.status) }} · 공감 {{ reaction_count }} · 댓글 {{ comment_count }} · 조회 {{ post.view_count }} · {{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+      </a>
+      {% else %}<div class="empty">조건에 맞는 게시글이 없습니다.</div>{% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}
