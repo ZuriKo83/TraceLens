@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
@@ -14,7 +15,7 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.account_admin import AccountDeletionHistory, router as account_admin_router
+from app.account_admin_hardened import AccountDeletionHistory, router as account_admin_router
 from app.community import router as community_router
 from app.community_admin import router as community_admin_router
 from app.community_ops import router as community_ops_router
@@ -23,6 +24,7 @@ from app.community_schema import ensure_community_schema
 from app.db import Base, engine
 from app.models import User, utcnow
 
+logger = logging.getLogger(__name__)
 
 community_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 community_app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
@@ -156,7 +158,7 @@ class RedisSessionMiddleware:
                                 db.add(AccountDeletionHistory(user_id=old_user_id, email=old_email, deleted_at=user.deleted_at))
                                 db.commit()
                     except Exception:
-                        pass
+                        logger.exception("Failed to persist account deletion history for user_id=%s", old_user_id)
                 try:
                     if session:
                         await self.redis.delete(key)
@@ -165,7 +167,7 @@ class RedisSessionMiddleware:
                     else:
                         await self.redis.delete(key)
                 except Exception:
-                    pass
+                    logger.exception("Failed to persist Redis session")
                 signed = self.serializer.dumps(sid)
                 parts = [f"{self.cookie_name}={signed}", "Path=/", "HttpOnly", f"Max-Age={self.max_age}", f"SameSite={self.same_site.capitalize()}"]
                 if self.https_only:
