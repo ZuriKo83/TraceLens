@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}지원 사이트 · {{ app_name }}{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">SUPPORTED SOURCES</p><h1>지원 사이트와 조회 범위</h1><p class="lead">각 사이트의 본인 활동 전용 화면만 대상으로 하며, 화면 구조 변경에 따라 일부 누락될 수 있습니다.</p></div>{% if session_user %}<a class="button secondary" href="/app">내 활동으로</a>{% endif %}</section>
+<div class="site-cards">{% for site in sites %}<article class="site-card"><div class="site-card-top"><span class="platform-mark">{{ site.name[:1] }}</span><div><h2>{{ site.name }}</h2><p>{{ site.scope }}</p></div></div><dl><div><dt>방식</dt><dd>{{ site.mode }}</dd></div><div><dt>정확도</dt><dd>{{ site.accuracy }}</dd></div></dl><p class="site-note">{{ site.note }}</p></article>{% endfor %}</div>
+{% endblock %}
