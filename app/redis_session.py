@@ -30,7 +30,8 @@ class RedisSessionMiddleware:
         self.prefix = prefix
 
     async def __call__(self, scope: dict[str, Any], receive, send) -> None:
-        if scope["type"] != "http":
+        scope_type = scope.get("type")
+        if scope_type not in {"http", "websocket"}:
             await self.app(scope, receive, send)
             return
 
@@ -47,7 +48,7 @@ class RedisSessionMiddleware:
             sid = secrets.token_urlsafe(32)
 
         key = f"{self.prefix}{sid}"
-        session = {}
+        session: dict[str, Any] = {}
         try:
             raw = await self.redis.hgetall(key)
             session = dict(raw or {})
@@ -61,7 +62,7 @@ class RedisSessionMiddleware:
         scope["session"] = session
 
         async def send_wrapper(message):
-            if message["type"] == "http.response.start":
+            if scope_type == "http" and message["type"] == "http.response.start":
                 try:
                     if session:
                         await self.redis.delete(key)
