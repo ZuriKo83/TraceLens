@@ -89,6 +89,12 @@ class RedisSessionMiddleware:
 
         path = scope.get("path", "")
         user_id = session.get("user_id")
+
+        if path == "/app/account/emails":
+            response = PlainTextResponse("추가 이메일 연결 기능은 지원하지 않습니다.", status_code=404)
+            await response(scope, receive, send)
+            return
+
         deleted_account_snapshot: tuple[int, str] | None = None
         if path == "/app/account/delete" and scope_type == "http" and scope.get("method") == "POST" and user_id:
             with Session(engine) as db:
