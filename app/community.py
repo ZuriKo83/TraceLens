@@ -3,9 +3,9 @@ import secrets
 import time
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.community_models import CommunityChatMessage, CommunityComment, CommunityPost, CommunityReaction
@@ -100,6 +100,15 @@ def can_view(post: CommunityPost, user: User) -> bool:
     return not post.is_private or user.is_admin or post.author_id == user.id
 
 
+def serialize_chat(message: CommunityChatMessage) -> dict:
+    return {
+        "id": message.id,
+        "author_id": message.author_id,
+        "content": message.content,
+        "created_at": message.created_at.isoformat(),
+    }
+
+
 def render(request: Request, name: str, db: Session, user: User, **context):
     context.update({
         "request": request,
@@ -130,8 +139,7 @@ def community_list(
         CommunityReaction.post_id == CommunityPost.id
     ).correlate(CommunityPost).scalar_subquery()
     comment_count = select(func.count(CommunityComment.id)).where(
-        CommunityComment.post_id == CommunityPost.id,
-        CommunityComment.is_hidden.is_(False),
+        CommunityComment.post_id == CommunityPost.id
     ).correlate(CommunityPost).scalar_subquery()
 
     stmt = select(CommunityPost, reaction_count.label("reaction_count"), comment_count.label("comment_count"))
@@ -140,13 +148,27 @@ def community_list(
             CommunityPost.is_hidden.is_(False),
             or_(CommunityPost.is_private.is_(False), CommunityPost.author_id == user.id),
         )
+
+    waiting_mode = sort == "waiting" and user.is_admin
     if mine:
         stmt = stmt.where(CommunityPost.author_id == user.id)
-    elif category in CATEGORIES:
-        stmt = stmt.where(CommunityPost.category == category)
+    elif waiting_mode:
+        admin_reply_exists = exists(
+            select(CommunityComment.id).where(
+                CommunityComment.post_id == CommunityPost.id,
+                CommunityComment.is_admin_reply.is_(True),
+            )
+        )
+        stmt = stmt.where(
+            CommunityPost.status.in_(["received", "reviewing"]),
+            ~admin_reply_exists,
+        )
+        category = ""
     else:
-        category = "free"
+        if category not in CATEGORIES:
+            category = "free"
         stmt = stmt.where(CommunityPost.category == category)
+
     if status in STATUSES:
         stmt = stmt.where(CommunityPost.status == status)
     if q.strip():
@@ -155,8 +177,7 @@ def community_list(
 
     if sort == "popular":
         stmt = stmt.order_by(CommunityPost.is_notice.desc(), reaction_count.desc(), CommunityPost.created_at.desc())
-    elif sort == "waiting":
-        stmt = stmt.where(CommunityPost.status.in_(["received", "reviewing"]))
+    elif waiting_mode:
         stmt = stmt.order_by(CommunityPost.is_notice.desc(), CommunityPost.created_at.asc())
     else:
         stmt = stmt.order_by(CommunityPost.is_notice.desc(), CommunityPost.created_at.desc())
@@ -165,6 +186,7 @@ def community_list(
     return render(
         request, "community/list.html", db, user,
         rows=rows, category=category, status=status, q=q, sort=sort, mine=mine,
+        waiting_mode=waiting_mode,
     )
 
 
@@ -178,6 +200,36 @@ def chat_page(request: Request, db: Session = Depends(get_db)):
     ))
     messages.reverse()
     return render(request, "community/chat.html", db, user, messages=messages)
+
+
+@router.get("/chat/messages")
+def chat_messages(request: Request, after_id: int = 0, db: Session = Depends(get_db)):
+    user = require_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return JSONResponse({"ok": False, "detail": "로그인이 필요합니다."}, status_code=401)
+    stmt = select(CommunityChatMessage).where(CommunityChatMessage.id > max(0, after_id)).order_by(CommunityChatMessage.id).limit(100)
+    return {"ok": True, "messages": [serialize_chat(message) for message in db.scalars(stmt)]}
+
+
+@router.post("/chat/messages")
+def send_chat_message(
+    request: Request,
+    content: str = Form(...),
+    csrf: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = require_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return JSONResponse({"ok": False, "detail": "로그인이 필요합니다."}, status_code=401)
+    require_csrf(request, csrf)
+    content = content.strip()
+    if not (1 <= len(content) <= 500):
+        return JSONResponse({"ok": False, "detail": "메시지는 1자 이상 500자 이하로 입력하세요."}, status_code=400)
+    message = CommunityChatMessage(author_id=user.id, content=content)
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+    return {"ok": True, "message": serialize_chat(message)}
 
 
 @router.websocket("/chat/ws")
@@ -203,7 +255,7 @@ async def chat_socket(websocket: WebSocket):
             if now - last_sent < 1.0:
                 await websocket.send_json({"type": "error", "message": "메시지는 1초에 한 번만 보낼 수 있습니다."})
                 continue
-            if not content or len(content) > 500:
+            if not (1 <= len(content) <= 500):
                 await websocket.send_json({"type": "error", "message": "메시지는 1자 이상 500자 이하로 입력하세요."})
                 continue
             last_sent = now
@@ -216,13 +268,7 @@ async def chat_socket(websocket: WebSocket):
                 db.add(message)
                 db.commit()
                 db.refresh(message)
-                outgoing = {
-                    "type": "message",
-                    "id": message.id,
-                    "author_id": user.id,
-                    "content": message.content,
-                    "created_at": message.created_at.isoformat(),
-                }
+                outgoing = {"type": "message", **serialize_chat(message)}
             await chat_manager.broadcast(outgoing)
     except WebSocketDisconnect:
         pass
@@ -290,7 +336,7 @@ def post_detail(post_id: int, request: Request, db: Session = Depends(get_db)):
     if post is None:
         raise HTTPException(404, "게시글을 찾을 수 없습니다.")
     if not can_view(post, user):
-        raise HTTPException(403, "이 비밀글을 볼 권한이 없습니다.")
+        raise HTTPException(403, "이 게시글을 볼 권한이 없습니다.")
     post.view_count += 1
     reacted = any(reaction.user_id == user.id for reaction in post.reactions)
     db.commit()
@@ -305,8 +351,8 @@ def edit_post_page(post_id: int, request: Request, db: Session = Depends(get_db)
     post = db.get(CommunityPost, post_id)
     if post is None:
         raise HTTPException(404)
-    if post.author_id != user.id and not user.is_admin:
-        raise HTTPException(403)
+    if post.author_id != user.id:
+        raise HTTPException(403, "작성자만 게시글을 수정할 수 있습니다.")
     return render(request, "community/form.html", db, user, post=post, error=None)
 
 
@@ -330,8 +376,8 @@ def edit_post(
     post = db.get(CommunityPost, post_id)
     if post is None:
         raise HTTPException(404)
-    if post.author_id != user.id and not user.is_admin:
-        raise HTTPException(403)
+    if post.author_id != user.id:
+        raise HTTPException(403, "작성자만 게시글을 수정할 수 있습니다.")
     title, content = title.strip(), content.strip()
     if category not in CATEGORIES or not (2 <= len(title) <= 160) or not (5 <= len(content) <= 10000):
         return render(request, "community/form.html", db, user, post=post, error="카테고리, 제목, 내용을 올바르게 입력하세요.")
@@ -356,9 +402,10 @@ def delete_post(post_id: int, request: Request, csrf: str = Form(...), db: Sessi
         raise HTTPException(404)
     if post.author_id != user.id and not user.is_admin:
         raise HTTPException(403)
+    category = post.category
     db.delete(post)
     db.commit()
-    return RedirectResponse(f"/community?category={post.category}", status_code=303)
+    return RedirectResponse(f"/community?category={category}", status_code=303)
 
 
 @router.post("/{post_id}/comments")
@@ -380,6 +427,31 @@ def add_comment(
     if not (1 <= len(content) <= 3000):
         raise HTTPException(400, "댓글은 1자 이상 3000자 이하로 입력하세요.")
     db.add(CommunityComment(post_id=post.id, author_id=user.id, content=content, is_admin_reply=user.is_admin))
+    db.commit()
+    return RedirectResponse(f"/community/{post.id}#comments", status_code=303)
+
+
+@router.post("/{post_id}/comments/{comment_id}/delete")
+def delete_comment(
+    post_id: int,
+    comment_id: int,
+    request: Request,
+    csrf: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = require_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    require_csrf(request, csrf)
+    post = db.get(CommunityPost, post_id)
+    comment = db.get(CommunityComment, comment_id)
+    if post is None or comment is None or comment.post_id != post.id:
+        raise HTTPException(404)
+    if not can_view(post, user):
+        raise HTTPException(403)
+    if comment.author_id != user.id and not user.is_admin:
+        raise HTTPException(403, "본인 댓글만 삭제할 수 있습니다.")
+    db.delete(comment)
     db.commit()
     return RedirectResponse(f"/community/{post.id}#comments", status_code=303)
 
