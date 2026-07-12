@@ -49,6 +49,7 @@ ACCOUNT_TOOL_PATHS = {
     "/admin/users",
     "/admin/access-codes",
     "/donate",
+    "/donate/qr",
     PUBLIC_APPROVED_SIGNUP_PATH,
 }
 
