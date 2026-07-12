@@ -8,25 +8,25 @@
 {% block content %}
 <section class="community-wrap">
   <div class="community-head">
-    <div><div class="community-eyebrow">TRACELENS COMMUNITY</div><h1>{{ '내가 쓴 글' if mine else categories.get(category, '자유게시판') }}</h1><p>기능 건의, 오류 제보, 지원 사이트 요청과 사용 경험을 공유하세요.</p></div>
+    <div><div class="community-eyebrow">TRACELENS COMMUNITY</div><h1>{% if waiting_mode %}관리자 답변 대기{% elif mine %}내가 쓴 글{% else %}{{ categories.get(category, '자유게시판') }}{% endif %}</h1><p>{% if waiting_mode %}아직 관리자 답변이 등록되지 않은 게시글입니다.{% else %}기능 건의, 오류 제보, 지원 사이트 요청과 사용 경험을 공유하세요.{% endif %}</p></div>
     <a class="btn-primary" href="/community/new">글 작성</a>
   </div>
   <div class="community-grid">
     <aside class="community-panel community-side">
-      <a class="{% if category=='free' and not mine %}active{% endif %}" href="/community?category=free">자유게시판</a>
-      <a class="{% if category=='suggestion' and not mine %}active{% endif %}" href="/community?category=suggestion">건의사항</a>
-      <a class="{% if category=='bug' and not mine %}active{% endif %}" href="/community?category=bug">오류 제보</a>
-      <a class="{% if category=='site_request' and not mine %}active{% endif %}" href="/community?category=site_request">지원 사이트 요청</a>
+      <a class="{% if category=='free' and not mine and not waiting_mode %}active{% endif %}" href="/community?category=free">자유게시판</a>
+      <a class="{% if category=='suggestion' and not mine and not waiting_mode %}active{% endif %}" href="/community?category=suggestion">건의사항</a>
+      <a class="{% if category=='bug' and not mine and not waiting_mode %}active{% endif %}" href="/community?category=bug">오류 제보</a>
+      <a class="{% if category=='site_request' and not mine and not waiting_mode %}active{% endif %}" href="/community?category=site_request">지원 사이트 요청</a>
       <a class="chat-link" href="/community/chat">실시간 채팅 <span>●</span></a>
       <a class="{% if mine %}active{% endif %}" href="/community?mine=true">내가 쓴 글</a>
-      {% if session_user.is_admin %}<a href="/community?category=free&sort=waiting">관리자 답변 대기</a>{% endif %}
+      {% if session_user.is_admin %}<a class="{% if waiting_mode %}active{% endif %}" href="/community?sort=waiting">관리자 답변 대기</a>{% endif %}
     </aside>
     <div class="community-panel community-main">
       <form class="community-toolbar" method="get">
-        {% if mine %}<input type="hidden" name="mine" value="true">{% else %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
+        {% if waiting_mode %}<input type="hidden" name="sort" value="waiting">{% elif mine %}<input type="hidden" name="mine" value="true">{% else %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
         <input type="search" name="q" value="{{ q }}" placeholder="제목과 내용 검색">
         <select name="status"><option value="">전체 상태</option>{% for key,label in statuses.items() %}<option value="{{ key }}" {% if status==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-        <select name="sort"><option value="latest" {% if sort=='latest' %}selected{% endif %}>최신순</option><option value="popular" {% if sort=='popular' %}selected{% endif %}>공감순</option><option value="waiting" {% if sort=='waiting' %}selected{% endif %}>답변 대기</option></select>
+        <select name="sort" {% if waiting_mode %}disabled{% endif %}><option value="latest" {% if sort=='latest' %}selected{% endif %}>최신순</option><option value="popular" {% if sort=='popular' %}selected{% endif %}>공감순</option><option value="waiting" {% if sort=='waiting' %}selected{% endif %}>답변 대기</option></select>
         <button class="btn-primary submit" type="submit">조회</button>
       </form>
       <div class="post-list">
@@ -43,7 +43,7 @@
         </div>
         <div class="post-date">{{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
       </a>
-      {% else %}<div class="empty">이 게시판에 등록된 글이 없습니다.</div>{% endfor %}
+      {% else %}<div class="empty">{% if waiting_mode %}관리자 답변을 기다리는 게시글이 없습니다.{% else %}이 게시판에 등록된 글이 없습니다.{% endif %}</div>{% endfor %}
       </div>
     </div>
   </div>
