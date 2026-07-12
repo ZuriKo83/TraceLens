@@ -49,6 +49,47 @@ def audit(db: Session, user: User, action: str, target_type: str, target_id: int
     ))
 
 
+def report_target_info(db: Session, report: CommunityReport) -> dict:
+    info = {
+        "label": f"{report.target_type} #{report.target_id}",
+        "url": None,
+        "preview": "대상이 삭제되었거나 존재하지 않습니다.",
+        "author_id": None,
+        "missing": True,
+    }
+    if report.target_type == "post":
+        post = db.get(CommunityPost, report.target_id)
+        if post is not None:
+            info.update(
+                label=f"게시글 #{post.id}",
+                url=f"/community/{post.id}",
+                preview=f"{post.title} — {post.content[:160]}",
+                author_id=post.author_id,
+                missing=False,
+            )
+    elif report.target_type == "comment":
+        comment = db.get(CommunityComment, report.target_id)
+        if comment is not None:
+            info.update(
+                label=f"댓글 #{comment.id}",
+                url=f"/community/{comment.post_id}#comment-{comment.id}",
+                preview=comment.content[:180],
+                author_id=comment.author_id,
+                missing=False,
+            )
+    elif report.target_type == "chat":
+        message = db.get(CommunityChatMessage, report.target_id)
+        if message is not None:
+            info.update(
+                label=f"채팅 #{message.id}",
+                url=f"/community/chat#chat-message-{message.id}",
+                preview=message.content[:180],
+                author_id=message.author_id,
+                missing=False,
+            )
+    return info
+
+
 @router.get("", response_class=HTMLResponse)
 def moderation_dashboard(request: Request, db: Session = Depends(get_db)):
     user = admin_user(request, db)
@@ -58,6 +99,7 @@ def moderation_dashboard(request: Request, db: Session = Depends(get_db)):
             CommunityReport.created_at.desc(),
         ).limit(200)
     ))
+    report_rows = [{"report": report, "target": report_target_info(db, report)} for report in reports]
     restrictions = list(db.scalars(
         select(CommunityUserRestriction).order_by(CommunityUserRestriction.updated_at.desc()).limit(100)
     ))
@@ -80,7 +122,7 @@ def moderation_dashboard(request: Request, db: Session = Depends(get_db)):
             "app_name": "TraceLens",
             "session_user": user,
             "csrf_token": csrf,
-            "reports": reports,
+            "report_rows": report_rows,
             "restrictions": restrictions,
             "stats": stats,
         },
