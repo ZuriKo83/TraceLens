@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'app/account_admin.py'
+      - 'app/account_admin_hardened.py'
+      - 'app/chat_redis.py'
       - 'app/community.py'
       - 'app/community_admin.py'
       - 'app/community_models.py'
@@ -11,21 +13,19 @@ on:
       - 'app/community_schema.py'
       - 'app/redis_session.py'
       - 'app/supported_sites.py'
-      - 'app/templates/account.html'
-      - 'app/templates/admin_*.html'
-      - 'app/templates/base.html'
-      - 'app/templates/signup.html'
-      - 'app/templates/supported_sites.html'
-      - 'app/templates/community/**'
-      - 'scripts/backup_community.py'
-      - 'scripts/community_smoke_test.py'
-      - 'scripts/validate_community.py'
+      - 'app/templates/**'
+      - 'alembic.ini'
+      - 'alembic/**'
+      - 'requirements.txt'
+      - 'scripts/**'
       - '.github/workflows/community-check.yml'
   push:
     branches:
       - feature/community
     paths:
       - 'app/account_admin.py'
+      - 'app/account_admin_hardened.py'
+      - 'app/chat_redis.py'
       - 'app/community.py'
       - 'app/community_admin.py'
       - 'app/community_models.py'
@@ -33,15 +33,11 @@ on:
       - 'app/community_schema.py'
       - 'app/redis_session.py'
       - 'app/supported_sites.py'
-      - 'app/templates/account.html'
-      - 'app/templates/admin_*.html'
-      - 'app/templates/base.html'
-      - 'app/templates/signup.html'
-      - 'app/templates/supported_sites.html'
-      - 'app/templates/community/**'
-      - 'scripts/backup_community.py'
-      - 'scripts/community_smoke_test.py'
-      - 'scripts/validate_community.py'
+      - 'app/templates/**'
+      - 'alembic.ini'
+      - 'alembic/**'
+      - 'requirements.txt'
+      - 'scripts/**'
       - '.github/workflows/community-check.yml'
 
 permissions:
@@ -58,6 +54,8 @@ jobs:
           python-version: '3.12'
           cache: pip
       - name: Install validation dependencies
-        run: python -m pip install --upgrade pip jinja2
+        run: python -m pip install --upgrade pip jinja2 alembic sqlalchemy pydantic-settings
       - name: Validate Python and templates
         run: python scripts/validate_community.py
+      - name: Compile migration files
+        run: python -m compileall -q app alembic scripts
