@@ -1,4 +1,4 @@
-# TraceLens v1.0.7
+# TraceLens v1.0.0
 
 TraceLens는 여러 웹사이트에 흩어진 **내 게시글·댓글·질문·답변**을 한곳에서 조회하고 검색하는 웹 앱과 Chrome 확장 프로그램입니다.
 
