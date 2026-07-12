@@ -1,5 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ app_name }} · 내가 쓴 기록 모아보기{% endblock %}
+{% block title %}TraceLens | 내 게시글과 댓글 한곳에서 관리{% endblock %}
+
+{% block head_extra %}
+<link rel="canonical" href="https://tracelens.kr/">
+<meta name="description" content="YouTube, Threads, Instagram 등에 흩어진 내 게시글과 댓글을 한곳에서 확인하고 관리하는 개인 활동 기록 서비스입니다.">
+{% endblock %}
+
 {% block content %}
 <section class="landing-hero">
   <div class="landing-copy">

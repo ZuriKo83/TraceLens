@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from urllib.parse import parse_qs, urlparse
 import hashlib
 import json
 from datetime import datetime
@@ -12,18 +14,50 @@ from app.models import Activity, ScanLog, User, utcnow
 from app.schemas import CollectorImport
 from app.supported_sites import EXCLUDED_PLATFORMS, VISIBLE_ACTIVITY_TYPES
 
-
 def _fingerprint(platform: str, item) -> str:
-    normalized = "|".join([
-        platform.strip().lower(),
-        item.activity_type.strip().lower(),
-        (item.source_url or "").strip(),
-        item.title.strip(),
-        item.content.strip(),
-        item.external_id.strip(),
-    ])
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    platform = platform.strip().lower()
+    activity_type = item.activity_type.strip().lower()
 
+    title = re.sub(r"\s+", " ", item.title or "").strip().lower()
+    content = re.sub(r"\s+", " ", item.content or "").strip().lower()
+
+    if platform == "youtube":
+        metadata = item.metadata or {}
+
+        comment_id = str(
+            metadata.get("comment_id")
+            or metadata.get("youtube_comment_id")
+            or ""
+        ).strip()
+
+        if comment_id:
+            normalized = f"youtube|{activity_type}|{comment_id}"
+        else:
+            source = urlparse(item.source_url or "")
+            query = parse_qs(source.query)
+
+            video_id = str(
+                metadata.get("video_id")
+                or metadata.get("youtube_video_id")
+                or query.get("v", [""])[0]
+                or ""
+            ).strip()
+
+            normalized = (
+                f"youtube|{activity_type}|{video_id}|"
+                f"{title}|{content}"
+            )
+    else:
+        normalized = "|".join([
+            platform,
+            activity_type,
+            (item.source_url or "").strip(),
+            title,
+            content,
+            item.external_id.strip(),
+        ])
+
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 def _verified_self_activity(platform: str, item) -> bool:
     metadata = item.metadata or {}
