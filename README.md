@@ -119,16 +119,20 @@ FastAPI가 `user_id`를 정수로 변환하지 못하던 문제를 수정했습�
 
 ## 실행 명령어
 
-- cd ~/Desktop/TraceLens
-- nano .env
+```
+cd ~/Desktop/TraceLens
+nano .env
 
-- sudo systemctl restart tracelens-web tracelens-worker tracelens-maintenance
-- sudo systemctl status tracelens-web tracelens-worker tracelens-maintenance --no-pager
-- sudo journalctl -u tracelens-web -n 50 --no-pager
+sudo systemctl restart tracelens-web tracelens-worker tracelens-maintenance
+sudo systemctl status tracelens-web tracelens-worker tracelens-maintenance --no-pager
+sudo journalctl -u tracelens-web -n 50 --no-pager
+```
 
 
 이 명령은 모든 사용자의 보관함 데이터를 영구 삭제합니다.
 
-``` sudo -u postgres psql -d tracelens -c "
+```
+sudo -u postgres psql -d tracelens -c "
 TRUNCATE TABLE scan_logs, activities RESTART IDENTITY CASCADE;
-" ```
+"
+```
