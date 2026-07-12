@@ -36,11 +36,15 @@ def validate_templates() -> list[str]:
 def validate_required_files() -> list[str]:
     required = [
         APP / "community.py",
+        APP / "community_admin.py",
         APP / "community_models.py",
+        APP / "community_schema.py",
         APP / "templates" / "community" / "list.html",
         APP / "templates" / "community" / "form.html",
         APP / "templates" / "community" / "detail.html",
         APP / "templates" / "community" / "chat.html",
+        APP / "templates" / "community" / "admin.html",
+        APP / "templates" / "community" / "notifications.html",
     ]
     return [f"Missing required file: {path.relative_to(ROOT)}" for path in required if not path.is_file()]
 
