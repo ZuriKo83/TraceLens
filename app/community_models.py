@@ -62,3 +62,13 @@ class CommunityReaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     post: Mapped[CommunityPost] = relationship(back_populates="reactions")
+
+
+class CommunityChatMessage(Base):
+    __tablename__ = "community_chat_messages"
+    __table_args__ = (Index("ix_community_chat_created", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    content: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
