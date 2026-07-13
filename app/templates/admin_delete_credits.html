@@ -37,7 +37,7 @@
 <section class="admin-credit-card" style="margin-top:20px">
   <h2>최근 발급 내역</h2>
   <table class="ledger-table"><thead><tr><th>일시</th><th>사용자</th><th>발급</th><th>발급 후</th><th>메모</th></tr></thead><tbody>
-  {% for entry in recent %}<tr><td>{{ entry.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ user_map.get(entry.user_id).email if user_map.get(entry.user_id) else '탈퇴 사용자' }}</td><td>+{{ entry.amount }}개</td><td>{{ entry.balance_after }}개</td><td class="muted-cell">{{ entry.note or '-' }}</td></tr>{% else %}<tr><td colspan="5">발급 내역이 없습니다.</td></tr>{% endfor %}
+  {% for entry in recent %}<tr><td><time>{{ entry.created_at.strftime('%Y-%m-%d %H:%M') }}</time></td><td>{{ user_map.get(entry.user_id).email if user_map.get(entry.user_id) else '탈퇴 사용자' }}</td><td>+{{ entry.amount }}개</td><td>{{ entry.balance_after }}개</td><td class="muted-cell">{{ entry.note or '-' }}</td></tr>{% else %}<tr><td colspan="5">발급 내역이 없습니다.</td></tr>{% endfor %}
   </tbody></table>
 </section>
 {% endblock %}
