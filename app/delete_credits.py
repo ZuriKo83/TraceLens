@@ -11,7 +11,8 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.config import get_settings
 from app.db import Base, get_db
-from app.models import User, utcnow
+from app.models import Activity, User, utcnow
+from app.supported_sites import ACTIVITY_TYPE_LABELS, PLATFORM_LABELS, VISIBLE_ACTIVITY_TYPES
 
 settings = get_settings()
 templates = Jinja2Templates(directory="app/templates")
@@ -20,7 +21,6 @@ router = APIRouter()
 
 class DeleteCreditWallet(Base):
     __tablename__ = "delete_credit_wallets"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
     balance: Mapped[int] = mapped_column(Integer, default=0)
@@ -29,7 +29,6 @@ class DeleteCreditWallet(Base):
 
 class DeleteCreditLedger(Base):
     __tablename__ = "delete_credit_ledger"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     amount: Mapped[int] = mapped_column(Integer)
@@ -91,6 +90,15 @@ def purchase_page(request: Request, db: Session = Depends(get_db)):
     if isinstance(user, RedirectResponse):
         return user
     wallet = get_wallet(db, user.id)
+    activities = list(db.scalars(
+        select(Activity)
+        .where(
+            Activity.user_id == user.id,
+            Activity.status == "visible",
+            Activity.activity_type.in_(VISIBLE_ACTIVITY_TYPES),
+        )
+        .order_by(Activity.imported_at.desc(), Activity.id.desc())
+    ))
     return templates.TemplateResponse(
         request=request,
         name="delete_credit_purchase.html",
@@ -105,6 +113,9 @@ def purchase_page(request: Request, db: Session = Depends(get_db)):
                 {"price": 3000, "credits": 50},
                 {"price": 5000, "credits": 100},
             ],
+            "activities": activities,
+            "platform_labels": PLATFORM_LABELS,
+            "activity_type_labels": ACTIVITY_TYPE_LABELS,
         },
     )
 
@@ -114,7 +125,6 @@ def admin_credit_page(request: Request, q: str = "", db: Session = Depends(get_d
     admin = require_admin(request, db)
     if isinstance(admin, RedirectResponse):
         return admin
-
     users = []
     term = q.strip()
     if term:
@@ -125,9 +135,8 @@ def admin_credit_page(request: Request, q: str = "", db: Session = Depends(get_d
             .limit(50)
         ))
     recent = list(db.scalars(select(DeleteCreditLedger).order_by(DeleteCreditLedger.created_at.desc()).limit(100)))
-    user_map = {row.id: row for row in db.scalars(select(User).where(User.id.in_({entry.user_id for entry in recent}))) } if recent else {}
+    user_map = {row.id: row for row in db.scalars(select(User).where(User.id.in_({entry.user_id for entry in recent})))} if recent else {}
     balances = {row.user_id: row.balance for row in db.scalars(select(DeleteCreditWallet))}
-
     return templates.TemplateResponse(
         request=request,
         name="admin_delete_credits.html",
@@ -158,14 +167,12 @@ def admin_grant_credits(
     if isinstance(admin, RedirectResponse):
         return admin
     require_csrf(request, csrf)
-
     normalized = email.strip().lower()
     user = db.scalar(select(User).where(User.email == normalized, User.deleted_at.is_(None)))
     if user is None:
         return RedirectResponse(f"/admin/delete-credits?error=user-not-found&q={normalized}", status_code=303)
     if amount <= 0 or amount > 100000:
         return RedirectResponse(f"/admin/delete-credits?error=invalid-amount&q={normalized}", status_code=303)
-
     wallet = get_wallet(db, user.id, create=True)
     wallet.balance += amount
     wallet.updated_at = utcnow()
