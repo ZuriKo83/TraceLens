@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}삭제권 구매 · {{ app_name }}{% endblock %}
+{% block head_extra %}
+<style>
+.credit-hero{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;margin-bottom:22px}.credit-balance{padding:16px 20px;border:1px solid #dfe5f3;border-radius:16px;background:#fff;min-width:190px}.credit-balance span{display:block;color:#667085;font-size:.9rem}.credit-balance strong{display:block;margin-top:4px;font-size:1.8rem}.credit-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.credit-card{display:flex;flex-direction:column;gap:14px;padding:24px;border:1px solid #dfe5f3;border-radius:18px;background:#fff;box-shadow:0 10px 30px rgba(34,45,80,.06)}.credit-card.featured{border-color:#5b6cff;box-shadow:0 12px 34px rgba(63,81,181,.14)}.credit-card small{color:#667085}.credit-card h2{margin:0;font-size:1.6rem}.credit-price{font-size:2rem;font-weight:800}.credit-price span{font-size:1rem;font-weight:600;color:#667085}.credit-card .button{margin-top:auto;text-align:center}.purchase-note{margin-top:22px;padding:18px;border-radius:14px;background:#f7f9fc;color:#475467;line-height:1.7}@media(max-width:800px){.credit-grid{grid-template-columns:1fr}.credit-hero{align-items:stretch;flex-direction:column}.credit-balance{min-width:0}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="credit-hero">
+  <div>
+    <p class="eyebrow">DELETE CREDITS</p>
+    <h1>삭제권 구매</h1>
+    <p class="lead">필요한 수량을 선택한 뒤 결제 페이지에서 결제를 진행하세요. 입금 확인 후 관리자가 삭제권을 발급합니다.</p>
+  </div>
+  <div class="credit-balance"><span>현재 보유 삭제권</span><strong>{{ balance }}개</strong></div>
+</section>
+<section class="credit-grid">
+  {% for package in packages %}
+  <article class="credit-card{% if package.credits == 50 %} featured{% endif %}">
+    <small>{% if package.credits == 50 %}추천 구성{% else %}삭제권 패키지{% endif %}</small>
+    <h2>{{ package.credits }}개</h2>
+    <div class="credit-price">{{ '{:,}'.format(package.price) }}<span>원</span></div>
+    <p>게시글·댓글 삭제 작업 {{ package.credits }}건에 사용할 수 있습니다.</p>
+    <a class="button primary" href="/donate" target="_blank" rel="noopener">구매하기</a>
+  </article>
+  {% endfor %}
+</section>
+<div class="purchase-note">
+  결제 페이지가 열리면 결제를 진행한 뒤 문의 시 TraceLens 가입 이메일을 함께 알려주세요. 현재는 자동 결제 연동 전이므로 관리자가 입금을 확인한 뒤 수동으로 삭제권을 충전합니다.
+</div>
+{% endblock %}
