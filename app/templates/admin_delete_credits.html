@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}삭제권 충전 관리 · {{ app_name }}{% endblock %}
+{% block head_extra %}
+<style>
+.admin-credit-grid{display:grid;grid-template-columns:minmax(300px,420px) minmax(0,1fr);gap:20px}.admin-credit-card{padding:22px;border:1px solid #dfe5f3;border-radius:18px;background:#fff}.admin-credit-card h2{margin-top:0}.grant-form{display:grid;gap:12px}.grant-form label{display:grid;gap:6px;font-weight:700}.grant-form input,.grant-form textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #d0d5dd;border-radius:10px;font:inherit}.quick-amounts{display:flex;gap:8px;flex-wrap:wrap}.quick-amounts button{padding:8px 12px;border:1px solid #d0d5dd;border-radius:999px;background:#fff;cursor:pointer}.admin-message{margin-bottom:16px;padding:12px 14px;border-radius:10px;background:#ecfdf3;color:#067647}.admin-error{background:#fef3f2;color:#b42318}.user-result{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #eef1f6}.ledger-table{width:100%;border-collapse:collapse}.ledger-table th,.ledger-table td{padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:left;font-size:.93rem}.muted-cell{color:#667085}@media(max-width:900px){.admin-credit-grid{grid-template-columns:1fr}.ledger-table{display:block;overflow-x:auto}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="section-head">
+  <div><p class="eyebrow">ADMIN</p><h1>삭제권 충전 관리</h1><p class="lead">입금을 확인한 뒤 가입 이메일을 기준으로 삭제권을 발급합니다.</p></div>
+</section>
+{% if request.query_params.get('granted') %}<div class="admin-message">삭제권 {{ request.query_params.get('granted') }}개를 발급했습니다.</div>{% endif %}
+{% if request.query_params.get('error') == 'user-not-found' %}<div class="admin-message admin-error">해당 이메일의 사용자를 찾지 못했습니다.</div>{% endif %}
+{% if request.query_params.get('error') == 'invalid-amount' %}<div class="admin-message admin-error">발급 수량이 올바르지 않습니다.</div>{% endif %}
+<div class="admin-credit-grid">
+  <section class="admin-credit-card">
+    <h2>삭제권 발급</h2>
+    <form class="grant-form" method="post" action="/admin/delete-credits/grant">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label>가입 이메일<input type="email" name="email" value="{{ q }}" placeholder="user@example.com" required></label>
+      <label>발급 수량<input id="credit-amount" type="number" name="amount" min="1" max="100000" value="10" required></label>
+      <div class="quick-amounts">
+        <button type="button" data-amount="10">10개</button>
+        <button type="button" data-amount="50">50개</button>
+        <button type="button" data-amount="100">100개</button>
+      </div>
+      <label>메모<textarea name="note" rows="4" placeholder="입금자명, 결제 금액, 확인 내용 등"></textarea></label>
+      <button class="button primary" type="submit">삭제권 발급</button>
+    </form>
+  </section>
+  <section class="admin-credit-card">
+    <h2>사용자 검색</h2>
+    <form method="get" action="/admin/delete-credits" class="filters"><input type="search" name="q" value="{{ q }}" placeholder="이메일 검색"><button class="button" type="submit">검색</button></form>
+    {% for user in users %}<div class="user-result"><span><b>{{ user.email }}</b><br><small>ID {{ user.id }}</small></span><strong>{{ balances.get(user.id, 0) }}개</strong></div>{% else %}<p class="muted">이메일을 검색하면 현재 보유 수량을 확인할 수 있습니다.</p>{% endfor %}
+  </section>
+</div>
+<section class="admin-credit-card" style="margin-top:20px">
+  <h2>최근 발급 내역</h2>
+  <table class="ledger-table"><thead><tr><th>일시</th><th>사용자</th><th>발급</th><th>발급 후</th><th>메모</th></tr></thead><tbody>
+  {% for entry in recent %}<tr><td><time>{{ entry.created_at.strftime('%Y-%m-%d %H:%M') }}</time></td><td>{{ user_map.get(entry.user_id).email if user_map.get(entry.user_id) else '탈퇴 사용자' }}</td><td>+{{ entry.amount }}개</td><td>{{ entry.balance_after }}개</td><td class="muted-cell">{{ entry.note or '-' }}</td></tr>{% else %}<tr><td colspan="5">발급 내역이 없습니다.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+{% endblock %}
+{% block scripts %}<script>document.querySelectorAll('[data-amount]').forEach((button)=>button.addEventListener('click',()=>{document.getElementById('credit-amount').value=button.dataset.amount;}));</script>{% endblock %}
