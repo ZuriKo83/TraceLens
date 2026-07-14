@@ -4,6 +4,7 @@
   if (!token) return;
 
   const PORT_NAME = "tracelens-delete-batch-v2";
+  const config = {serverUrl, collectorToken: token};
   const button = document.getElementById("selected-delete-button");
   const statusBox = document.getElementById("delete-status");
   const balanceNode = document.getElementById("delete-credit-balance");
@@ -35,28 +36,32 @@
     if (text) button.textContent = text;
   }
 
-  async function api(path, options = {}) {
-    const response = await fetch(`${serverUrl}${path}`, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-        ...(options.headers || {}),
-      },
+  function extensionRequest(message) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (!response?.ok) {
+          reject(new Error(response?.error || "확장 프로그램 요청에 실패했습니다."));
+          return;
+        }
+        resolve(response);
+      });
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.detail || payload.error || `요청 실패 (${response.status})`);
-    return payload;
   }
 
   async function cancelActive(reason) {
     if (!activeJobId) return;
     try {
-      const response = await api(`/api/deletion-jobs/batch/${encodeURIComponent(activeJobId)}/cancel`, {
-        method: "POST",
-        body: JSON.stringify({reason}),
+      const response = await extensionRequest({
+        type: "CANCEL_DELETE_BATCH_JOB",
+        jobId: activeJobId,
+        reason,
+        config,
       });
-      setBalance(response.balance);
+      setBalance(response.result?.balance);
     } catch {
       // The stale-job timeout remains the final refund safety net.
     }
@@ -122,7 +127,7 @@
     port.postMessage({
       type: "START_DELETE_BATCH",
       job,
-      config: {serverUrl, collectorToken: token},
+      config,
     });
   }
 
@@ -154,10 +159,12 @@
     setStatus(`삭제권 ${chosen.length}개를 임시 예약하고 배치 작업을 생성합니다.`, "running");
 
     try {
-      const job = await api("/api/deletion-jobs/batch", {
-        method: "POST",
-        body: JSON.stringify({activity_ids: chosen.map((check) => Number(check.value))}),
+      const response = await extensionRequest({
+        type: "CREATE_DELETE_BATCH_JOB",
+        activityIds: chosen.map((check) => Number(check.value)),
+        config,
       });
+      const job = response.job;
       activeJobId = job.job_id;
       setBalance(job.balance);
       startPort(job);
