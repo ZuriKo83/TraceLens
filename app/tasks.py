@@ -135,6 +135,10 @@ def _delete_mode(platform: str, item) -> str:
     return "none"
 
 
+def _is_deleted_tombstone(activity: Activity) -> bool:
+    return activity.status == "deleted" or activity.activity_type == "deleted"
+
+
 def process_collector_import(payload_data: dict, user_id: int) -> dict:
     payload = CollectorImport.model_validate(payload_data)
     with Session(engine) as db:
@@ -172,7 +176,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 if row.content_fingerprint:
                     by_fp.setdefault(row.content_fingerprint, row)
 
-        imported = updated = 0
+        imported = updated = suppressed = 0
         now = utcnow()
         account = (payload.account_label or "").strip()[:160] or None
         for item, fp_candidates, ext in prepared:
@@ -186,21 +190,40 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             content = "\n".join(part for part in [item.title.strip(), item.content.strip()] if part).strip()
             delete_mode = _delete_mode(payload.platform, item)
             if existing:
+                deleted_tombstone = _is_deleted_tombstone(existing)
                 source_url = item.source_url
                 if payload.platform == "youtube" and not source_url:
                     source_url = existing.source_url
-                metadata = _merged_metadata(existing, item) if payload.platform == "youtube" else dict(item.metadata or {})
-                existing.activity_type = item.activity_type
+                metadata = _merged_metadata(existing, item) if payload.platform == "youtube" else {
+                    **_load_metadata(existing.metadata_json),
+                    **dict(item.metadata or {}),
+                }
                 existing.content = content
                 existing.source_url = source_url
                 existing.occurred_at = item.occurred_at
-                existing.metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
-                existing.delete_mode = delete_mode
-                existing.status = "visible"
                 existing.collector_email = user.email
                 existing.account_label = item_account
                 existing.content_fingerprint = primary_fp
-                updated += 1
+
+                if deleted_tombstone:
+                    # A successful deletion is retained as an admin-visible tombstone.
+                    # Re-scanning the same external activity must never resurrect it in
+                    # the owner's archive, even when Google returns a stale activity row.
+                    metadata["last_seen_after_delete_at"] = now.isoformat()
+                    metadata["last_seen_after_delete_scan_scope"] = payload.scan_scope
+                    metadata["last_seen_after_delete_external_id"] = ext
+                    existing.activity_type = "deleted"
+                    existing.status = "deleted"
+                    if existing.delete_mode == "none" and delete_mode != "none":
+                        existing.delete_mode = delete_mode
+                    suppressed += 1
+                else:
+                    existing.activity_type = item.activity_type
+                    existing.delete_mode = delete_mode
+                    existing.status = "visible"
+                    updated += 1
+
+                existing.metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
             else:
                 db.add(Activity(
                     user_id=user.id,
@@ -223,6 +246,8 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
         message = payload.message
         if payload.items and not accepted:
             message = "본인이 작성한 게시글·댓글·질문·답변으로 확인되지 않은 기록은 제외했습니다."
+        if suppressed:
+            message = f"{message} 이전에 삭제 처리한 기록 {suppressed}개는 보관함에 다시 표시하지 않았습니다."
         db.add(ScanLog(
             user_id=user.id,
             platform=payload.platform,
@@ -243,6 +268,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             "found": len(accepted),
             "imported": imported,
             "updated": updated,
+            "suppressed": suppressed,
             "ignored": len(payload.items) - len(accepted),
             "account_label": account,
             "user": user.email,
