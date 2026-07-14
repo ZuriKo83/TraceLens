@@ -44,7 +44,8 @@
         "http://127.0.0.1/*"
       ],
       "js": [
-        "content_script.js"
+        "content_script.js",
+        "delete_batch_ui_v2.js"
       ],
       "run_at": "document_idle"
     }
