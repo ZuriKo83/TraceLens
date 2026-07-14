@@ -48,13 +48,15 @@
     }
     const primary = payloads.find((payload) => payload.items?.length) || payloads[0];
     const label = activityType === "live_chat" ? "실시간 스트리밍 채팅 메시지" : "댓글";
+    const linkedCount = items.filter((item) => Boolean(item.source_url)).length;
+    const unlinkedCount = Math.max(0, items.length - linkedCount);
     return {
       platform: "youtube",
       source_url: primary.source_url,
       scan_scope: activityType,
       status: items.length ? "success" : primary.status || "partial",
       message: items.length
-        ? `YouTube ${label} ${items.length}개를 확인했습니다.`
+        ? `YouTube ${label} ${items.length}개를 확인했습니다. 원문 링크 ${linkedCount}개 확인${unlinkedCount ? `, ${unlinkedCount}개 미노출` : ""}.`
         : primary.message || `YouTube ${label}을 찾지 못했습니다.`,
       account_label: accountContext?.accountLabel || null,
       items: items.slice(0, 5000)
@@ -86,54 +88,134 @@
       };
     }
 
+    const decodeHtml = (value) => {
+      const textarea = document.createElement("textarea");
+      textarea.innerHTML = String(value || "");
+      return textarea.value;
+    };
+
+    const unescapeEmbeddedValue = (value) => String(value || "")
+      .replace(/\\u003d/gi, "=")
+      .replace(/\\u0026/gi, "&")
+      .replace(/\\u003f/gi, "?")
+      .replace(/\\u002f/gi, "/")
+      .replace(/\\u0025/gi, "%")
+      .replace(/\\x3d/gi, "=")
+      .replace(/\\x26/gi, "&")
+      .replace(/\\x3f/gi, "?")
+      .replace(/\\x2f/gi, "/")
+      .replace(/\\\//g, "/")
+      .replace(/\\"/g, "\"")
+      .replace(/\\'/g, "'");
+
     const decodeCandidates = (value) => {
+      const queue = [String(value || "")];
       const output = [];
-      let current = String(value || "");
-      for (let i = 0; i < 4 && current; i += 1) {
+      const seen = new Set();
+      while (queue.length && output.length < 48) {
+        const current = queue.shift()?.trim();
+        if (!current || seen.has(current)) continue;
+        seen.add(current);
         output.push(current);
-        try {
-          const decoded = decodeURIComponent(current);
-          if (decoded === current) break;
-          current = decoded;
-        } catch {
-          break;
+
+        const variants = [
+          decodeHtml(current),
+          unescapeEmbeddedValue(current)
+        ];
+        for (const variant of variants) {
+          if (variant && !seen.has(variant)) queue.push(variant);
+          try {
+            const decoded = decodeURIComponent(variant);
+            if (decoded && !seen.has(decoded)) queue.push(decoded);
+          } catch {
+            // Invalid percent-encoding is common inside serialized DOM attributes.
+          }
         }
       }
       return output;
+    };
+
+    const validVideoId = (value) => {
+      const candidate = clean(value).replace(/^["']|["']$/g, "");
+      return /^[A-Za-z0-9_-]{6,20}$/.test(candidate) ? candidate : "";
+    };
+
+    const videoIdFromUrl = (value) => {
+      if (!value) return "";
+      try {
+        const parsed = new URL(value);
+        const queryId = validVideoId(parsed.searchParams.get("v") || "");
+        if (queryId) return queryId;
+        const pathMatch = parsed.pathname.match(/^\/(?:shorts|live|embed|v)\/([^/?#]+)/i);
+        return validVideoId(pathMatch?.[1] || "");
+      } catch {
+        return "";
+      }
     };
 
     const canonicalYouTubeUrl = (rawValue) => {
       if (!rawValue) return null;
       const queue = decodeCandidates(rawValue);
       const visited = new Set();
-      while (queue.length) {
-        const candidate = queue.shift();
+      const nestedKeys = ["url", "q", "continue", "redirect", "target", "u", "dest", "destination", "link", "href"];
+
+      while (queue.length && visited.size < 96) {
+        let candidate = queue.shift();
+        if (!candidate) continue;
+        candidate = candidate.trim().replace(/^["'`]+|["'`,;]+$/g, "");
         if (!candidate || visited.has(candidate)) continue;
         visited.add(candidate);
+
+        const embeddedPath = candidate.match(/(?:^|[\s"'=])((?:\/|https?:\/\/(?:www\.|m\.|music\.)?youtube\.com\/)(?:watch\?[^"'<>\s]*|shorts\/[A-Za-z0-9_-]+|live\/[A-Za-z0-9_-]+|embed\/[A-Za-z0-9_-]+))/i);
+        if (embeddedPath && embeddedPath[1] !== candidate) {
+          queue.unshift(embeddedPath[1]);
+        }
+
         let parsed;
-        try { parsed = new URL(candidate, location.href); } catch { continue; }
-        const host = parsed.hostname.toLowerCase();
+        try {
+          const youtubeRelative = /^\/(?:watch|shorts\/|live\/|embed\/|v\/)/i.test(candidate);
+          parsed = new URL(candidate, youtubeRelative ? "https://www.youtube.com" : location.href);
+        } catch {
+          continue;
+        }
+
+        const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
         if (host === "youtu.be") {
-          const id = parsed.pathname.split("/").filter(Boolean)[0] || "";
-          if (id) return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+          const id = validVideoId(parsed.pathname.split("/").filter(Boolean)[0] || "");
+          if (id) return `https://www.youtube.com/watch?v=${id}`;
         }
-        if (["youtube.com", "www.youtube.com", "m.youtube.com"].includes(host)) {
-          const id = parsed.searchParams.get("v");
-          if (id) return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
-          const shorts = parsed.pathname.match(/^\/shorts\/([^/?#]+)/);
-          if (shorts) return `https://www.youtube.com/shorts/${encodeURIComponent(shorts[1])}`;
-          const live = parsed.pathname.match(/^\/live\/([^/?#]+)/);
-          if (live) return `https://www.youtube.com/watch?v=${encodeURIComponent(live[1])}`;
+
+        const isYoutubeHost = ["youtube.com", "m.youtube.com", "music.youtube.com", "youtube-nocookie.com"].includes(host);
+        if (isYoutubeHost) {
+          const queryId = validVideoId(parsed.searchParams.get("v") || "");
+          if (queryId) return `https://www.youtube.com/watch?v=${queryId}`;
+
+          const pathMatch = parsed.pathname.match(/^\/(shorts|live|embed|v)\/([^/?#]+)/i);
+          const pathId = validVideoId(pathMatch?.[2] || "");
+          if (pathId) {
+            return pathMatch[1].toLowerCase() === "shorts"
+              ? `https://www.youtube.com/shorts/${pathId}`
+              : `https://www.youtube.com/watch?v=${pathId}`;
+          }
         }
-        for (const key of ["url", "q", "continue", "redirect", "target", "u", "dest", "destination"]) {
+
+        for (const key of nestedKeys) {
           const nested = parsed.searchParams.get(key);
           if (nested) queue.push(...decodeCandidates(nested));
         }
+
+        for (const variant of decodeCandidates(candidate)) {
+          if (!visited.has(variant)) queue.push(variant);
+        }
       }
-      const text = decodeCandidates(rawValue).join(" ");
-      const match = text.match(/https?:\/\/(?:www\.|m\.)?youtube\.com\/(?:watch\?[^\s"'<>]*v=|shorts\/|live\/)[A-Za-z0-9_-]+[^\s"'<>]*/i)
-        || text.match(/https?:\/\/youtu\.be\/[A-Za-z0-9_-]+[^\s"'<>]*/i);
-      return match ? canonicalYouTubeUrl(match[0]) : null;
+
+      const normalizedText = decodeCandidates(rawValue).join(" ");
+      const absoluteMatch = normalizedText.match(/https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\/[^\s"'<>\\]+/i);
+      if (absoluteMatch && absoluteMatch[0] !== rawValue) {
+        return canonicalYouTubeUrl(absoluteMatch[0]);
+      }
+      const relativeMatch = normalizedText.match(/\/(?:watch\?[^\s"'<>]*v=[A-Za-z0-9_-]+|shorts\/[A-Za-z0-9_-]+|live\/[A-Za-z0-9_-]+|embed\/[A-Za-z0-9_-]+)/i);
+      return relativeMatch ? canonicalYouTubeUrl(relativeMatch[0]) : null;
     };
 
     const deleteButtons = () => [...document.querySelectorAll("button,[role='button']")].filter((button) => {
@@ -154,20 +236,49 @@
     };
 
     const originalLinkFromRow = (row) => {
-      const values = [];
-      for (const node of row.querySelectorAll("a[href],[data-url],[data-href],[jsdata],[data-ved]")) {
-        for (const attr of ["href", "data-url", "data-href", "jsdata", "data-ved"]) {
-          const value = node.getAttribute?.(attr);
-          if (value) values.push({value, node});
+      const candidates = [];
+      const addCandidate = (value, node, source, priority) => {
+        const raw = String(value || "").trim();
+        if (!raw) return;
+        candidates.push({value: raw, node, source, priority});
+      };
+
+      for (const anchor of row.querySelectorAll("a")) {
+        addCandidate(anchor.href, anchor, "anchor.href", 120);
+        addCandidate(anchor.getAttribute("href"), anchor, "anchor[href]", 115);
+        for (const attr of ["data-url", "data-href", "data-link", "data-target-url", "jsdata", "data-ved"]) {
+          addCandidate(anchor.getAttribute(attr), anchor, `anchor[${attr}]`, 100);
         }
-        if (node.href) values.push({value: node.href, node});
       }
-      values.push({value: row.innerHTML || "", node: null});
-      for (const candidate of values) {
-        const url = canonicalYouTubeUrl(candidate.value);
-        if (url) return {url, node: candidate.node};
+
+      const nodes = [row, ...row.querySelectorAll("*")];
+      for (const node of nodes) {
+        for (const attr of node.getAttributeNames?.() || []) {
+          if (attr === "href" && node.tagName === "A") continue;
+          const value = node.getAttribute(attr);
+          if (!value || !/(?:youtu\.be|youtube\.com|watch(?:%3f|\?)|shorts(?:%2f|\/)|live(?:%2f|\/)|embed(?:%2f|\/)|attribution_link)/i.test(value)) continue;
+          addCandidate(value, node, `${node.tagName.toLowerCase()}[${attr}]`, 70);
+        }
       }
-      return {url: null, node: null};
+
+      addCandidate(row.outerHTML || row.innerHTML, null, "row.html", 20);
+
+      const resolved = candidates
+        .map((candidate) => {
+          const url = canonicalYouTubeUrl(candidate.value);
+          if (!url) return null;
+          const displayNode = candidate.node?.closest?.("a") || candidate.node;
+          const textBonus = clean(displayNode?.innerText || displayNode?.textContent) ? 8 : 0;
+          const videoBonus = videoIdFromUrl(url) ? 12 : 0;
+          return {...candidate, url, node: displayNode, score: candidate.priority + textBonus + videoBonus};
+        })
+        .filter(Boolean)
+        .sort((left, right) => right.score - left.score);
+
+      if (!resolved.length) {
+        return {url: null, node: null, source: null};
+      }
+      return {url: resolved[0].url, node: resolved[0].node, source: resolved[0].source};
     };
 
     const parseRow = (row, button, ordinal) => {
@@ -179,12 +290,7 @@
       const relation = /에\s*남긴\s*댓글|에\s*작성한\s*댓글|에서\s*메시지를\s*전송함|commented on|sent a message/i;
       const candidateLines = rawLines.filter((line) => !control.test(line));
 
-      let content = "";
-      if (activityType === "live_chat") {
-        content = candidateLines.find((line) => !relation.test(line) && line !== linkTitle && !/^YouTube$/i.test(line)) || "";
-      } else {
-        content = candidateLines.find((line) => !relation.test(line) && line !== linkTitle && !/^YouTube$/i.test(line)) || "";
-      }
+      const content = candidateLines.find((line) => !relation.test(line) && line !== linkTitle && !/^YouTube$/i.test(line)) || "";
       if (!content) return null;
 
       let title = linkTitle;
@@ -194,8 +300,7 @@
       }
       if (!title) title = activityType === "live_chat" ? "YouTube 실시간 스트리밍" : "YouTube 동영상";
 
-      let videoId = "";
-      try { videoId = original.url ? new URL(original.url).searchParams.get("v") || "" : ""; } catch {}
+      const videoId = videoIdFromUrl(original.url);
       const rowText = clean(row.innerText || row.textContent);
       const rowId = row.getAttribute("data-id") || row.getAttribute("jsdata") || row.getAttribute("data-ved") || "";
       const semantic = `${expectedPage}|${videoId}|${title}|${content}|${rowId || ordinal}`;
@@ -213,12 +318,14 @@
           page_title: document.title,
           ownership_scope: "self_activity",
           ownership_verified: true,
-          extractor_version: "1.1.0",
+          extractor_version: "1.2.0",
           account_label: accountLabel,
           youtube_activity_kind: activityType,
           my_activity_page: expectedPage,
           original_url: original.url,
           original_link_resolved: Boolean(original.url),
+          original_link_status: original.url ? "resolved" : "not_exposed",
+          original_link_source: original.source,
           video_id: videoId || null,
           deletion_locator: {
             version: 1,
@@ -297,14 +404,16 @@
     for (const scroller of scrollers().slice(0, 4)) scroller.scrollTop = 0;
 
     const label = activityType === "live_chat" ? "실시간 스트리밍 채팅 메시지" : "댓글";
+    const collectedItems = [...collected.values()];
+    const linkedCount = collectedItems.filter((item) => Boolean(item.source_url)).length;
     return {
       platform: "youtube",
       source_url: location.href,
       status: collected.size ? "success" : "partial",
       message: collected.size
-        ? `YouTube ${label} ${collected.size}개를 확인했습니다.`
+        ? `YouTube ${label} ${collected.size}개를 확인했습니다. 원문 링크 ${linkedCount}개 확인.`
         : `YouTube ${label}을 찾지 못했습니다.`,
-      items: [...collected.values()]
+      items: collectedItems
     };
   }
 })();
