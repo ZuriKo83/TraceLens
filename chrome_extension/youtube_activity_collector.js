@@ -162,11 +162,6 @@
       return {kind: null, id: "", key: ""};
     };
 
-    const videoIdFromUrl = (value) => {
-      const identity = sourceIdentityFromUrl(value);
-      return identity.kind === "video" ? identity.id : "";
-    };
-
     const canonicalYouTubeUrl = (rawValue) => {
       if (!rawValue) return null;
       const queue = decodeCandidates(rawValue);
@@ -181,9 +176,7 @@
         visited.add(candidate);
 
         const embeddedPath = candidate.match(/(?:^|[\s"'=])((?:\/|https?:\/\/(?:www\.|m\.|music\.)?youtube\.com\/)(?:watch\?[^"'<>\s]*|shorts\/[A-Za-z0-9_-]+|live\/[A-Za-z0-9_-]+|embed\/[A-Za-z0-9_-]+|post\/[A-Za-z0-9_-]+))/i);
-        if (embeddedPath && embeddedPath[1] !== candidate) {
-          queue.unshift(embeddedPath[1]);
-        }
+        if (embeddedPath && embeddedPath[1] !== candidate) queue.unshift(embeddedPath[1]);
 
         let parsed;
         try {
@@ -221,7 +214,6 @@
           const nested = parsed.searchParams.get(key);
           if (nested) queue.push(...decodeCandidates(nested));
         }
-
         for (const variant of decodeCandidates(candidate)) {
           if (!visited.has(variant)) queue.push(variant);
         }
@@ -229,9 +221,7 @@
 
       const normalizedText = decodeCandidates(rawValue).join(" ");
       const absoluteMatch = normalizedText.match(/https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\/[^\s"'<>\\]+/i);
-      if (absoluteMatch && absoluteMatch[0] !== rawValue) {
-        return canonicalYouTubeUrl(absoluteMatch[0]);
-      }
+      if (absoluteMatch && absoluteMatch[0] !== rawValue) return canonicalYouTubeUrl(absoluteMatch[0]);
       const relativeMatch = normalizedText.match(/\/(?:watch\?[^\s"'<>]*v=[A-Za-z0-9_-]+|shorts\/[A-Za-z0-9_-]+|live\/[A-Za-z0-9_-]+|embed\/[A-Za-z0-9_-]+|post\/[A-Za-z0-9_-]+)/i);
       return relativeMatch ? canonicalYouTubeUrl(relativeMatch[0]) : null;
     };
@@ -257,8 +247,7 @@
       const candidates = [];
       const addCandidate = (value, node, source, priority) => {
         const raw = String(value || "").trim();
-        if (!raw) return;
-        candidates.push({value: raw, node, source, priority});
+        if (raw) candidates.push({value: raw, node, source, priority});
       };
 
       for (const anchor of row.querySelectorAll("a")) {
@@ -278,25 +267,20 @@
           addCandidate(value, node, `${node.tagName.toLowerCase()}[${attr}]`, 70);
         }
       }
-
       addCandidate(row.outerHTML || row.innerHTML, null, "row.html", 20);
 
-      const resolved = candidates
-        .map((candidate) => {
-          const url = canonicalYouTubeUrl(candidate.value);
-          if (!url) return null;
-          const displayNode = candidate.node?.closest?.("a") || candidate.node;
-          const textBonus = clean(displayNode?.innerText || displayNode?.textContent) ? 8 : 0;
-          const identityBonus = sourceIdentityFromUrl(url).key ? 12 : 0;
-          return {...candidate, url, node: displayNode, score: candidate.priority + textBonus + identityBonus};
-        })
-        .filter(Boolean)
-        .sort((left, right) => right.score - left.score);
+      const resolved = candidates.map((candidate) => {
+        const url = canonicalYouTubeUrl(candidate.value);
+        if (!url) return null;
+        const displayNode = candidate.node?.closest?.("a") || candidate.node;
+        const textBonus = clean(displayNode?.innerText || displayNode?.textContent) ? 8 : 0;
+        const identityBonus = sourceIdentityFromUrl(url).key ? 12 : 0;
+        return {...candidate, url, node: displayNode, score: candidate.priority + textBonus + identityBonus};
+      }).filter(Boolean).sort((left, right) => right.score - left.score);
 
-      if (!resolved.length) {
-        return {url: null, node: null, source: null};
-      }
-      return {url: resolved[0].url, node: resolved[0].node, source: resolved[0].source};
+      return resolved.length
+        ? {url: resolved[0].url, node: resolved[0].node, source: resolved[0].source}
+        : {url: null, node: null, source: null};
     };
 
     const parseRow = (row, button, ordinal) => {
@@ -308,7 +292,6 @@
       const control = /^(YouTube|세부정보|Details|삭제|Delete|Remove|오전|오후|AM|PM)$/i;
       const relation = /에\s*남긴\s*댓글|에\s*작성한\s*댓글|에서\s*메시지를\s*전송함|commented on|sent a message/i;
       const candidateLines = rawLines.filter((line) => !control.test(line));
-
       const content = candidateLines.find((line) => !relation.test(line) && line !== linkTitle && !/^YouTube$/i.test(line)) || "";
       if (!content) return null;
 
