@@ -118,10 +118,7 @@
         seen.add(current);
         output.push(current);
 
-        const variants = [
-          decodeHtml(current),
-          unescapeEmbeddedValue(current)
-        ];
+        const variants = [decodeHtml(current), unescapeEmbeddedValue(current)];
         for (const variant of variants) {
           if (variant && !seen.has(variant)) queue.push(variant);
           try {
@@ -140,17 +137,34 @@
       return /^[A-Za-z0-9_-]{6,20}$/.test(candidate) ? candidate : "";
     };
 
-    const videoIdFromUrl = (value) => {
-      if (!value) return "";
+    const validPostId = (value) => {
+      const candidate = clean(value).replace(/^["']|["']$/g, "");
+      return /^[A-Za-z0-9_-]{10,160}$/.test(candidate) ? candidate : "";
+    };
+
+    const sourceIdentityFromUrl = (value) => {
+      if (!value) return {kind: null, id: "", key: ""};
       try {
         const parsed = new URL(value);
+        const postMatch = parsed.pathname.match(/^\/post\/([^/?#]+)/i);
+        const postId = validPostId(postMatch?.[1] || "");
+        if (postId) return {kind: "post", id: postId, key: `post:${postId}`};
+
         const queryId = validVideoId(parsed.searchParams.get("v") || "");
-        if (queryId) return queryId;
+        if (queryId) return {kind: "video", id: queryId, key: queryId};
+
         const pathMatch = parsed.pathname.match(/^\/(?:shorts|live|embed|v)\/([^/?#]+)/i);
-        return validVideoId(pathMatch?.[1] || "");
+        const pathId = validVideoId(pathMatch?.[1] || "");
+        if (pathId) return {kind: "video", id: pathId, key: pathId};
       } catch {
-        return "";
+        // Ignore malformed candidates.
       }
+      return {kind: null, id: "", key: ""};
+    };
+
+    const videoIdFromUrl = (value) => {
+      const identity = sourceIdentityFromUrl(value);
+      return identity.kind === "video" ? identity.id : "";
     };
 
     const canonicalYouTubeUrl = (rawValue) => {
@@ -166,14 +180,14 @@
         if (!candidate || visited.has(candidate)) continue;
         visited.add(candidate);
 
-        const embeddedPath = candidate.match(/(?:^|[\s"'=])((?:\/|https?:\/\/(?:www\.|m\.|music\.)?youtube\.com\/)(?:watch\?[^"'<>\s]*|shorts\/[A-Za-z0-9_-]+|live\/[A-Za-z0-9_-]+|embed\/[A-Za-z0-9_-]+))/i);
+        const embeddedPath = candidate.match(/(?:^|[\s"'=])((?:\/|https?:\/\/(?:www\.|m\.|music\.)?youtube\.com\/)(?:watch\?[^"'<>\s]*|shorts\/[A-Za-z0-9_-]+|live\/[A-Za-z0-9_-]+|embed\/[A-Za-z0-9_-]+|post\/[A-Za-z0-9_-]+))/i);
         if (embeddedPath && embeddedPath[1] !== candidate) {
           queue.unshift(embeddedPath[1]);
         }
 
         let parsed;
         try {
-          const youtubeRelative = /^\/(?:watch|shorts\/|live\/|embed\/|v\/)/i.test(candidate);
+          const youtubeRelative = /^\/(?:watch|shorts\/|live\/|embed\/|v\/|post\/)/i.test(candidate);
           parsed = new URL(candidate, youtubeRelative ? "https://www.youtube.com" : location.href);
         } catch {
           continue;
@@ -187,6 +201,10 @@
 
         const isYoutubeHost = ["youtube.com", "m.youtube.com", "music.youtube.com", "youtube-nocookie.com"].includes(host);
         if (isYoutubeHost) {
+          const postMatch = parsed.pathname.match(/^\/post\/([^/?#]+)/i);
+          const postId = validPostId(postMatch?.[1] || "");
+          if (postId) return `https://www.youtube.com/post/${postId}`;
+
           const queryId = validVideoId(parsed.searchParams.get("v") || "");
           if (queryId) return `https://www.youtube.com/watch?v=${queryId}`;
 
@@ -214,7 +232,7 @@
       if (absoluteMatch && absoluteMatch[0] !== rawValue) {
         return canonicalYouTubeUrl(absoluteMatch[0]);
       }
-      const relativeMatch = normalizedText.match(/\/(?:watch\?[^\s"'<>]*v=[A-Za-z0-9_-]+|shorts\/[A-Za-z0-9_-]+|live\/[A-Za-z0-9_-]+|embed\/[A-Za-z0-9_-]+)/i);
+      const relativeMatch = normalizedText.match(/\/(?:watch\?[^\s"'<>]*v=[A-Za-z0-9_-]+|shorts\/[A-Za-z0-9_-]+|live\/[A-Za-z0-9_-]+|embed\/[A-Za-z0-9_-]+|post\/[A-Za-z0-9_-]+)/i);
       return relativeMatch ? canonicalYouTubeUrl(relativeMatch[0]) : null;
     };
 
@@ -256,7 +274,7 @@
         for (const attr of node.getAttributeNames?.() || []) {
           if (attr === "href" && node.tagName === "A") continue;
           const value = node.getAttribute(attr);
-          if (!value || !/(?:youtu\.be|youtube\.com|watch(?:%3f|\?)|shorts(?:%2f|\/)|live(?:%2f|\/)|embed(?:%2f|\/)|attribution_link)/i.test(value)) continue;
+          if (!value || !/(?:youtu\.be|youtube\.com|watch(?:%3f|\?)|shorts(?:%2f|\/)|live(?:%2f|\/)|embed(?:%2f|\/)|post(?:%2f|\/)|attribution_link)/i.test(value)) continue;
           addCandidate(value, node, `${node.tagName.toLowerCase()}[${attr}]`, 70);
         }
       }
@@ -269,8 +287,8 @@
           if (!url) return null;
           const displayNode = candidate.node?.closest?.("a") || candidate.node;
           const textBonus = clean(displayNode?.innerText || displayNode?.textContent) ? 8 : 0;
-          const videoBonus = videoIdFromUrl(url) ? 12 : 0;
-          return {...candidate, url, node: displayNode, score: candidate.priority + textBonus + videoBonus};
+          const identityBonus = sourceIdentityFromUrl(url).key ? 12 : 0;
+          return {...candidate, url, node: displayNode, score: candidate.priority + textBonus + identityBonus};
         })
         .filter(Boolean)
         .sort((left, right) => right.score - left.score);
@@ -285,6 +303,7 @@
       const rawLines = String(row.innerText || row.textContent || "").split(/\r?\n/).map(clean).filter(Boolean);
       if (!rawLines.length) return null;
       const original = originalLinkFromRow(row);
+      const sourceIdentity = sourceIdentityFromUrl(original.url);
       const linkTitle = clean(original.node?.innerText || original.node?.textContent);
       const control = /^(YouTube|세부정보|Details|삭제|Delete|Remove|오전|오후|AM|PM)$/i;
       const relation = /에\s*남긴\s*댓글|에\s*작성한\s*댓글|에서\s*메시지를\s*전송함|commented on|sent a message/i;
@@ -298,12 +317,16 @@
         const relationLine = candidateLines.find((line) => relation.test(line));
         title = relationLine ? relationLine.replace(relation, "").trim() : "";
       }
-      if (!title) title = activityType === "live_chat" ? "YouTube 실시간 스트리밍" : "YouTube 동영상";
+      if (!title) {
+        if (sourceIdentity.kind === "post") title = "YouTube 게시물";
+        else title = activityType === "live_chat" ? "YouTube 실시간 스트리밍" : "YouTube 동영상";
+      }
 
-      const videoId = videoIdFromUrl(original.url);
+      const videoId = sourceIdentity.kind === "video" ? sourceIdentity.id : "";
+      const postId = sourceIdentity.kind === "post" ? sourceIdentity.id : "";
       const rowText = clean(row.innerText || row.textContent);
       const rowId = row.getAttribute("data-id") || row.getAttribute("jsdata") || row.getAttribute("data-ved") || "";
-      const semantic = `${expectedPage}|${videoId}|${title}|${content}|${rowId || ordinal}`;
+      const semantic = `${expectedPage}|${sourceIdentity.key}|${title}|${content}|${rowId || ordinal}`;
       const externalId = `youtube-${activityType}-${fnv(semantic)}`;
 
       return {
@@ -318,7 +341,7 @@
           page_title: document.title,
           ownership_scope: "self_activity",
           ownership_verified: true,
-          extractor_version: "1.2.0",
+          extractor_version: "1.2.1",
           account_label: accountLabel,
           youtube_activity_kind: activityType,
           my_activity_page: expectedPage,
@@ -326,7 +349,11 @@
           original_link_resolved: Boolean(original.url),
           original_link_status: original.url ? "resolved" : "not_exposed",
           original_link_source: original.source,
+          source_type: sourceIdentity.kind,
+          source_id: sourceIdentity.id || null,
           video_id: videoId || null,
+          post_id: postId || null,
+          youtube_post_id: postId || null,
           deletion_locator: {
             version: 1,
             page: expectedPage,
@@ -334,15 +361,20 @@
             row_jsdata: row.getAttribute("jsdata") || null,
             row_data_ved: row.getAttribute("data-ved") || null,
             row_text_hash: fnv(rowText),
-            semantic_hash: fnv(`${expectedPage}|${videoId}|${title}|${content}`),
+            semantic_hash: fnv(`${expectedPage}|${sourceIdentity.key}|${title}|${content}`),
             button_tag: button.tagName,
             button_role: button.getAttribute("role") || null,
             button_aria_label: button.getAttribute("aria-label") || null,
             button_title: button.getAttribute("title") || null,
             title,
             content,
+            source_type: sourceIdentity.kind,
+            source_id: sourceIdentity.id || null,
+            source_url: original.url,
             video_id: videoId || null,
-            video_url: original.url
+            video_url: videoId ? original.url : null,
+            post_id: postId || null,
+            post_url: postId ? original.url : null
           }
         }
       };
