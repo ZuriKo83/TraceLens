@@ -1,0 +1,69 @@
+diff --git a/app/main.py b/app/main.py
+index a495e15..0000000 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -1179,6 +1179,40 @@ def admin_dashboard(
+     )
+ 
+ 
++@app.post("/admin/data/purge")
++def admin_purge_all_collected_data(
++    request: Request,
++    password: str = Form(...),
++    confirmation: str = Form(...),
++    csrf: str = Form(...),
++    db: Session = Depends(get_db),
++):
++    require_csrf(request, csrf)
++    admin = require_web_admin(request, db)
++    if isinstance(admin, RedirectResponse):
++        return admin
++
++    if confirmation.strip() != "전체삭제":
++        return RedirectResponse("/admin?purge_error=confirmation", status_code=303)
++    if not verify_password(password, admin.password_hash):
++        return RedirectResponse("/admin?purge_error=password", status_code=303)
++
++    activity_count = db.scalar(select(func.count(Activity.id))) or 0
++    scan_count = db.scalar(select(func.count(ScanLog.id))) or 0
++
++    # ScanLog가 Activity보다 외래키 의존 가능성이 있으므로 로그를 먼저 삭제합니다.
++    db.execute(delete(ScanLog))
++    db.execute(delete(Activity))
++    db.commit()
++
++    return RedirectResponse(
++        f"/admin?purge_ok=1&deleted_activities={activity_count}&deleted_scans={scan_count}",
++        status_code=303,
++    )
++
++
+ @app.get("/privacy", response_class=HTMLResponse)
+ def privacy_page(request: Request, db: Session = Depends(get_db)):
+     return render(request, "privacy.html", db=db)
+diff --git a/app/templates/admin_dashboard.html b/app/templates/admin_dashboard.html
+index f53b64d..0000000 100644
+--- a/app/templates/admin_dashboard.html
++++ b/app/templates/admin_dashboard.html
+@@ -13,6 +13,27 @@
+   <div class="stat"><span>조회 실행</span><strong>{{ scan_count }}</strong><small>확장 프로그램 실행</small></div>
+ </section>
++<section class="card danger-zone">
++  <div class="section-head"><div><p class="card-kicker">데이터 초기화</p><h2>전체 수집 데이터 삭제</h2></div></div>
++  <p class="muted">모든 사용자의 수집 활동과 조회 실행 기록을 영구 삭제합니다. 사용자 계정, 이메일, 비밀번호와 관리자 권한은 유지됩니다.</p>
++  {% if request.query_params.get('purge_ok') == '1' %}
++    <div class="alert success">삭제 완료: 수집 활동 {{ request.query_params.get('deleted_activities', '0') }}건, 조회 기록 {{ request.query_params.get('deleted_scans', '0') }}건</div>
++  {% elif request.query_params.get('purge_error') == 'confirmation' %}
++    <div class="alert error">확인란에 전체삭제를 정확히 입력하세요.</div>
++  {% elif request.query_params.get('purge_error') == 'password' %}
++    <div class="alert error">관리자 비밀번호가 올바르지 않습니다.</div>
++  {% endif %}
++  <form method="post" action="/admin/data/purge" class="stack-form" onsubmit="return confirm('모든 사용자의 수집 활동과 조회 기록을 영구 삭제합니다. 계속하시겠습니까?');">
++    <input type="hidden" name="csrf" value="{{ csrf_token }}">
++    <label>관리자 비밀번호<input type="password" name="password" autocomplete="current-password" required></label>
++    <label>확인을 위해 <b>전체삭제</b> 입력<input type="text" name="confirmation" autocomplete="off" required></label>
++    <button class="button danger full" type="submit">전체 수집 데이터 영구 삭제</button>
++  </form>
++</section>
+ <section class="admin-grid">
+   <div class="card admin-users">
