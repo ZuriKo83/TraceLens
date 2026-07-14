@@ -35,6 +35,7 @@
 
   function installShiftSelection() {
     let anchor = null;
+    let pointerState = null;
     const MAX_BATCH = 100;
 
     const visibleChecks = () => [...document.querySelectorAll(".delete-activity-checkbox")]
@@ -51,7 +52,7 @@
       if (!row || element?.closest?.("a,button")) return null;
       const check = row.querySelector(".delete-activity-checkbox");
       if (!(check instanceof HTMLInputElement) || check.disabled) return null;
-      return {row, check, element};
+      return {row, check};
     };
 
     const applyRange = (fromCheck, toCheck, checked) => {
@@ -82,42 +83,60 @@
       return changed;
     };
 
+    document.addEventListener("pointerdown", (event) => {
+      const found = rowAndCheck(event.target);
+      pointerState = found
+        ? {
+            check: found.check,
+            shiftKey: event.shiftKey,
+            wasChecked: found.check.checked,
+          }
+        : null;
+    }, true);
+
     document.addEventListener("click", (event) => {
       const found = rowAndCheck(event.target);
       if (!found) return;
-      const {check, element} = found;
+      const {check} = found;
 
       const actionButton = document.getElementById("selected-delete-button");
       if (actionButton?.textContent?.includes("처리 중")) return;
 
-      const isActualCheckboxClick = element === check;
-      if (!event.shiftKey) {
-        if (isActualCheckboxClick) {
-          queueMicrotask(() => {
-            anchor = check;
-          });
-        }
+      const captured = pointerState?.check === check ? pointerState : null;
+      pointerState = null;
+      const shiftPressed = Boolean(event.shiftKey || captured?.shiftKey);
+
+      if (!shiftPressed) {
+        queueMicrotask(() => {
+          anchor = check;
+        });
         return;
       }
 
       if (!(anchor instanceof HTMLInputElement) || !anchor.isConnected) {
-        anchor = check;
+        queueMicrotask(() => {
+          anchor = check;
+        });
         return;
       }
 
       event.preventDefault();
       event.stopImmediatePropagation();
 
-      const shouldCheck = anchor.checked || !check.checked;
-      applyRange(anchor, check, shouldCheck);
-      anchor = check;
+      // Shift-click applies the clicked endpoint's intended next state to the
+      // whole inclusive range: unchecked -> select range, checked -> deselect range.
+      const wasChecked = captured ? captured.wasChecked : check.checked;
+      const shouldCheck = !wasChecked;
+      const rangeAnchor = anchor;
+      applyRange(rangeAnchor, check, shouldCheck);
+      const endpointState = check.checked;
 
-      // Label activation can emit a second synthetic checkbox click after this handler.
-      // Re-apply the endpoint and range after the current event loop so the final
-      // Shift-clicked item cannot be toggled back off by the browser default action.
+      // A label can emit an additional native checkbox activation after the
+      // captured click. Re-apply once after the event loop and publish a single
+      // change event so the page refreshes all row styles and counters.
       setTimeout(() => {
-        applyRange(anchor, check, shouldCheck);
-        check.checked = shouldCheck;
+        applyRange(rangeAnchor, check, shouldCheck);
+        check.checked = endpointState;
         check.dispatchEvent(new Event("input", {bubbles: true}));
         check.dispatchEvent(new Event("change", {bubbles: true}));
       }, 0);
