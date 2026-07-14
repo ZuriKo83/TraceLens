@@ -44,17 +44,21 @@
         items.push(item);
       }
     }
-    const primary = payloads.find((payload) => payload.items?.length) || payloads[0];
+    const primary = payloads.find((payload) => payload.snapshot_complete)
+      || payloads.find((payload) => payload.items?.length)
+      || payloads[0];
     const label = activityType === "live_chat" ? "실시간 스트리밍 채팅 메시지" : "댓글";
     const linkedCount = items.filter((item) => Boolean(item.source_url)).length;
     const unlinkedCount = Math.max(0, items.length - linkedCount);
+    const snapshotComplete = Boolean(primary.snapshot_complete);
     return {
       platform: "youtube",
       source_url: primary.source_url,
       scan_scope: activityType,
-      status: items.length ? "success" : primary.status || "partial",
+      snapshot_complete: snapshotComplete,
+      status: items.length || snapshotComplete ? "success" : primary.status || "partial",
       message: items.length
-        ? `YouTube ${label} ${items.length}개를 확인했습니다. 원문 링크 ${linkedCount}개 확인${unlinkedCount ? `, ${unlinkedCount}개 미노출` : ""}.`
+        ? `YouTube ${label} ${items.length}개를 확인했습니다. 원문 링크 ${linkedCount}개 확인${unlinkedCount ? `, ${unlinkedCount}개 미노출` : ""}. ${snapshotComplete ? "전체 목록 확인 완료." : "일부 목록만 확인됨."}`
         : primary.message || `YouTube ${label}을 찾지 못했습니다.`,
       account_label: accountContext?.accountLabel || null,
       items: items.slice(0, 5000)
@@ -77,7 +81,7 @@
     const page = new URL(location.href).searchParams.get("page") || "";
     const expectedPage = activityType === "live_chat" ? "youtube_live_chat" : "youtube_comments";
     if (location.hostname !== "myactivity.google.com" || page !== expectedPage) {
-      return {platform: "youtube", source_url: location.href, status: "partial", message: `Google 내 활동의 ${expectedPage} 페이지가 아닙니다.`, items: []};
+      return {platform: "youtube", source_url: location.href, status: "partial", snapshot_complete: false, message: `Google 내 활동의 ${expectedPage} 페이지가 아닙니다.`, items: []};
     }
 
     const decodeHtml = (value) => {
@@ -227,7 +231,7 @@
       return resolved.length ? {url: resolved[0].url, node: resolved[0].node, source: resolved[0].source} : {url: null, node: null, source: null};
     };
 
-    const parseRow = (row, button, ordinal) => {
+    const parseRow = (row, button) => {
       const rawLines = String(row.innerText || row.textContent || "").split(/\r?\n/).map(clean).filter(Boolean);
       if (!rawLines.length) return null;
       const original = originalLinkFromRow(row);
@@ -250,8 +254,10 @@
       const postId = sourceIdentity.kind === "post" ? sourceIdentity.id : "";
       const rowText = clean(row.innerText || row.textContent);
       const rowId = row.getAttribute("data-id") || row.getAttribute("jsdata") || row.getAttribute("data-ved") || "";
-      const semantic = `${expectedPage}|${sourceIdentity.key}|${title}|${content}|${rowId || ordinal}`;
-      const externalId = `youtube-${activityType}-${fnv(semantic)}`;
+      const semanticBase = `${expectedPage}|${sourceIdentity.key}|${title}|${content}`;
+      const recordKey = rowId ? `${semanticBase}|${rowId}` : `${semanticBase}|${fnv(rowText)}`;
+      const recordKeyHash = fnv(recordKey);
+      const externalId = `youtube-${activityType}-${recordKeyHash}`;
 
       return {
         external_id: externalId,
@@ -262,14 +268,15 @@
         occurred_at: null,
         metadata: {
           captured_from: location.href, page_title: document.title, ownership_scope: "self_activity", ownership_verified: true,
-          extractor_version: "1.2.1", account_label: accountLabel, youtube_activity_kind: activityType, my_activity_page: expectedPage,
+          extractor_version: "1.2.2", account_label: accountLabel, youtube_activity_kind: activityType, my_activity_page: expectedPage,
           original_url: original.url, original_link_resolved: Boolean(original.url), original_link_status: original.url ? "resolved" : "not_exposed",
           original_link_source: original.source, source_type: sourceIdentity.kind, source_id: sourceIdentity.id || null,
           video_id: videoId || null, post_id: postId || null, youtube_post_id: postId || null,
           deletion_locator: {
-            version: 1, page: expectedPage, row_data_id: row.getAttribute("data-id") || null,
+            version: 2, page: expectedPage, record_key_hash: recordKeyHash,
+            row_data_id: row.getAttribute("data-id") || null,
             row_jsdata: row.getAttribute("jsdata") || null, row_data_ved: row.getAttribute("data-ved") || null,
-            row_text_hash: fnv(rowText), semantic_hash: fnv(`${expectedPage}|${sourceIdentity.key}|${title}|${content}`),
+            row_text_hash: fnv(rowText), semantic_hash: fnv(semanticBase),
             button_tag: button.tagName, button_role: button.getAttribute("role") || null,
             button_aria_label: button.getAttribute("aria-label") || null, button_title: button.getAttribute("title") || null,
             title, content, source_type: sourceIdentity.kind, source_id: sourceIdentity.id || null, source_url: original.url,
@@ -280,20 +287,19 @@
     };
 
     const collected = new Map();
-    const seenRowNodes = new WeakSet();
+    const nodeKeys = new WeakMap();
+    let recycledRowCount = 0;
     const collectVisible = () => {
-      let ordinal = collected.size;
       for (const button of deleteButtons()) {
         const row = rowForButton(button);
-        if (!row || seenRowNodes.has(row)) continue;
-        seenRowNodes.add(row);
-        const item = parseRow(row, button, ordinal++);
+        if (!row) continue;
+        const item = parseRow(row, button);
         if (!item) continue;
-        let id = item.external_id;
-        let suffix = 1;
-        while (collected.has(id)) id = `${item.external_id}-${suffix++}`;
-        item.external_id = id;
-        collected.set(id, item);
+        const key = item.metadata?.deletion_locator?.record_key_hash || item.external_id;
+        const previousKey = nodeKeys.get(row);
+        if (previousKey && previousKey !== key) recycledRowCount += 1;
+        nodeKeys.set(row, key);
+        if (!collected.has(key)) collected.set(key, item);
       }
     };
     const scrollers = () => {
@@ -308,13 +314,13 @@
 
     let stable = 0;
     let previousSignature = "";
+    let reachedEnd = false;
     for (let step = 0; step < 650 && collected.size < 5000; step += 1) {
       collectVisible();
       const activeScrollers = scrollers().slice(0, 4);
       const signature = `${collected.size}|${document.documentElement.scrollHeight}|${activeScrollers.map((s) => `${s.scrollTop}:${s.scrollHeight}`).join(",")}`;
       stable = signature === previousSignature ? stable + 1 : 0;
       previousSignature = signature;
-      if (stable >= 18) break;
       let moved = false;
       for (const scroller of activeScrollers) {
         const before = scroller.scrollTop;
@@ -322,7 +328,15 @@
         scroller.scrollTop = Math.min(scroller.scrollHeight, before + amount);
         if (scroller.scrollTop !== before) moved = true;
       }
-      if (!moved) window.scrollBy(0, Math.max(700, innerHeight * 0.85));
+      if (!moved) {
+        const beforeWindow = window.scrollY;
+        window.scrollBy(0, Math.max(700, innerHeight * 0.85));
+        if (window.scrollY !== beforeWindow) moved = true;
+      }
+      if (!moved && stable >= 18) {
+        reachedEnd = true;
+        break;
+      }
       await sleep(500);
     }
     collectVisible();
@@ -332,9 +346,16 @@
     const label = activityType === "live_chat" ? "실시간 스트리밍 채팅 메시지" : "댓글";
     const collectedItems = [...collected.values()];
     const linkedCount = collectedItems.filter((item) => Boolean(item.source_url)).length;
+    const snapshotComplete = reachedEnd && collected.size < 5000;
     return {
-      platform: "youtube", source_url: location.href, status: collected.size ? "success" : "partial",
-      message: collected.size ? `YouTube ${label} ${collected.size}개를 확인했습니다. 원문 링크 ${linkedCount}개 확인.` : `YouTube ${label}을 찾지 못했습니다.`,
+      platform: "youtube",
+      source_url: location.href,
+      status: collected.size || snapshotComplete ? "success" : "partial",
+      snapshot_complete: snapshotComplete,
+      message: collected.size
+        ? `YouTube ${label} ${collected.size}개를 확인했습니다. 원문 링크 ${linkedCount}개 확인. ${snapshotComplete ? "전체 목록 확인 완료." : "일부 목록만 확인됨."}`
+        : `YouTube ${label}을 찾지 못했습니다.`,
+      virtualized_rows_seen: recycledRowCount,
       items: collectedItems
     };
   }
