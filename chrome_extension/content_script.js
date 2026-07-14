@@ -35,8 +35,15 @@
 
   function installShiftSelection() {
     let anchor = null;
-    let pointerState = null;
     const MAX_BATCH = 100;
+
+    const visibleChecks = () => [...document.querySelectorAll(".delete-activity-checkbox")]
+      .filter((candidate) => (
+        candidate instanceof HTMLInputElement
+        && !candidate.disabled
+        && candidate.closest(".delete-activity-row")
+        && !candidate.closest(".delete-activity-row").hidden
+      ));
 
     const rowAndCheck = (target) => {
       const element = target instanceof Element ? target : null;
@@ -44,69 +51,22 @@
       if (!row || element?.closest?.("a,button")) return null;
       const check = row.querySelector(".delete-activity-checkbox");
       if (!(check instanceof HTMLInputElement) || check.disabled) return null;
-      return {row, check};
+      return {row, check, element};
     };
 
-    document.addEventListener("pointerdown", (event) => {
-      const found = rowAndCheck(event.target);
-      if (!found) {
-        pointerState = null;
-        return;
-      }
-      pointerState = {
-        check: found.check,
-        shiftKey: event.shiftKey,
-        wasChecked: found.check.checked,
-      };
-    }, true);
+    const applyRange = (fromCheck, toCheck, checked) => {
+      const candidates = visibleChecks();
+      const start = candidates.indexOf(fromCheck);
+      const end = candidates.indexOf(toCheck);
+      if (start < 0 || end < 0) return false;
 
-    document.addEventListener("click", (event) => {
-      const found = rowAndCheck(event.target);
-      if (!found) return;
-      const {check} = found;
-
-      const actionButton = document.getElementById("selected-delete-button");
-      if (actionButton?.textContent?.includes("처리 중")) return;
-
-      const shiftPressed = Boolean(
-        event.shiftKey
-        || (pointerState?.check === check && pointerState.shiftKey)
-      );
-      const wasChecked = pointerState?.check === check
-        ? pointerState.wasChecked
-        : check.checked;
-      pointerState = null;
-
-      if (!shiftPressed || !(anchor instanceof HTMLInputElement) || !anchor.isConnected) {
-        anchor = check;
-        return;
-      }
-
-      const visibleChecks = [...document.querySelectorAll(".delete-activity-checkbox")]
-        .filter((candidate) => (
-          candidate instanceof HTMLInputElement
-          && !candidate.disabled
-          && candidate.closest(".delete-activity-row")
-          && !candidate.closest(".delete-activity-row").hidden
-        ));
-      const start = visibleChecks.indexOf(anchor);
-      const end = visibleChecks.indexOf(check);
-      if (start < 0 || end < 0) {
-        anchor = check;
-        return;
-      }
-
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      const desired = !wasChecked;
       const [from, to] = start <= end ? [start, end] : [end, start];
-      let selectedCount = visibleChecks.filter((candidate) => candidate.checked).length;
+      let selectedCount = candidates.filter((candidate) => candidate.checked).length;
       let changed = false;
 
       for (let index = from; index <= to; index += 1) {
-        const candidate = visibleChecks[index];
-        if (!desired) {
+        const candidate = candidates[index];
+        if (!checked) {
           if (candidate.checked) {
             candidate.checked = false;
             changed = true;
@@ -119,12 +79,48 @@
         selectedCount += 1;
         changed = true;
       }
+      return changed;
+    };
 
+    document.addEventListener("click", (event) => {
+      const found = rowAndCheck(event.target);
+      if (!found) return;
+      const {check, element} = found;
+
+      const actionButton = document.getElementById("selected-delete-button");
+      if (actionButton?.textContent?.includes("처리 중")) return;
+
+      const isActualCheckboxClick = element === check;
+      if (!event.shiftKey) {
+        if (isActualCheckboxClick) {
+          queueMicrotask(() => {
+            anchor = check;
+          });
+        }
+        return;
+      }
+
+      if (!(anchor instanceof HTMLInputElement) || !anchor.isConnected) {
+        anchor = check;
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      const shouldCheck = anchor.checked || !check.checked;
+      applyRange(anchor, check, shouldCheck);
       anchor = check;
-      if (changed) {
+
+      // Label activation can emit a second synthetic checkbox click after this handler.
+      // Re-apply the endpoint and range after the current event loop so the final
+      // Shift-clicked item cannot be toggled back off by the browser default action.
+      setTimeout(() => {
+        applyRange(anchor, check, shouldCheck);
+        check.checked = shouldCheck;
         check.dispatchEvent(new Event("input", {bubbles: true}));
         check.dispatchEvent(new Event("change", {bubbles: true}));
-      }
+      }, 0);
     }, true);
   }
 
