@@ -35,20 +35,49 @@
 
   function installShiftSelection() {
     let anchor = null;
+    let pointerState = null;
     const MAX_BATCH = 100;
 
-    document.addEventListener("click", (event) => {
-      const target = event.target instanceof Element ? event.target : null;
-      const row = target?.closest?.(".delete-activity-row");
-      if (!row || target?.closest?.("a")) return;
-
+    const rowAndCheck = (target) => {
+      const element = target instanceof Element ? target : null;
+      const row = element?.closest?.(".delete-activity-row");
+      if (!row || element?.closest?.("a,button")) return null;
       const check = row.querySelector(".delete-activity-checkbox");
-      if (!(check instanceof HTMLInputElement) || check.disabled) return;
+      if (!(check instanceof HTMLInputElement) || check.disabled) return null;
+      return {row, check};
+    };
+
+    document.addEventListener("pointerdown", (event) => {
+      const found = rowAndCheck(event.target);
+      if (!found) {
+        pointerState = null;
+        return;
+      }
+      pointerState = {
+        check: found.check,
+        shiftKey: event.shiftKey,
+        wasChecked: found.check.checked,
+      };
+    }, true);
+
+    document.addEventListener("click", (event) => {
+      const found = rowAndCheck(event.target);
+      if (!found) return;
+      const {check} = found;
 
       const actionButton = document.getElementById("selected-delete-button");
       if (actionButton?.textContent?.includes("처리 중")) return;
 
-      if (!event.shiftKey || !(anchor instanceof HTMLInputElement) || !anchor.isConnected) {
+      const shiftPressed = Boolean(
+        event.shiftKey
+        || (pointerState?.check === check && pointerState.shiftKey)
+      );
+      const wasChecked = pointerState?.check === check
+        ? pointerState.wasChecked
+        : check.checked;
+      pointerState = null;
+
+      if (!shiftPressed || !(anchor instanceof HTMLInputElement) || !anchor.isConnected) {
         anchor = check;
         return;
       }
@@ -68,26 +97,34 @@
       }
 
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
 
-      const desired = !check.checked;
+      const desired = !wasChecked;
       const [from, to] = start <= end ? [start, end] : [end, start];
       let selectedCount = visibleChecks.filter((candidate) => candidate.checked).length;
+      let changed = false;
 
       for (let index = from; index <= to; index += 1) {
         const candidate = visibleChecks[index];
         if (!desired) {
-          candidate.checked = false;
+          if (candidate.checked) {
+            candidate.checked = false;
+            changed = true;
+          }
           continue;
         }
         if (candidate.checked) continue;
         if (selectedCount >= MAX_BATCH) break;
         candidate.checked = true;
         selectedCount += 1;
+        changed = true;
       }
 
       anchor = check;
-      check.dispatchEvent(new Event("change", {bubbles: true}));
+      if (changed) {
+        check.dispatchEvent(new Event("input", {bubbles: true}));
+        check.dispatchEvent(new Event("change", {bubbles: true}));
+      }
     }, true);
   }
 
