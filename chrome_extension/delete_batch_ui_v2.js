@@ -20,6 +20,7 @@
 
   function setStatus(message, kind = "running") {
     statusBox.textContent = message;
+    statusBox.style.whiteSpace = "pre-wrap";
     statusBox.className = `delete-status show ${kind}`.trim();
   }
 
@@ -67,31 +68,74 @@
     }
   }
 
+  function rowLabel(activityId) {
+    const row = document.querySelector(`.delete-activity-row[data-activity-id="${CSS.escape(String(activityId))}"]`);
+    const title = row?.querySelector("h3")?.textContent?.trim();
+    const content = row?.querySelector("p")?.textContent?.trim();
+    return {
+      row,
+      label: title || content || `기록 ${activityId}`,
+    };
+  }
+
+  function refreshVisibleCounters() {
+    const selectedNode = document.getElementById("selected-count");
+    const visibleNode = document.getElementById("visible-count");
+    if (selectedNode) selectedNode.textContent = String(selectedChecks().length);
+    if (visibleNode) {
+      const visibleRows = [...document.querySelectorAll(".delete-activity-row")]
+        .filter((row) => row.isConnected && !row.hidden);
+      visibleNode.textContent = String(visibleRows.length);
+    }
+  }
+
   function finish(result) {
     const server = result?.server || null;
+    const failedDetails = [];
+
     if (server) {
       setBalance(server.balance);
       for (const item of server.items || []) {
-        if (item.status !== "success") continue;
-        document.querySelector(`.delete-activity-row[data-activity-id="${CSS.escape(String(item.activity_id))}"]`)?.remove();
+        const {row, label} = rowLabel(item.activity_id);
+        if (item.status === "success") {
+          row?.remove();
+          continue;
+        }
+        failedDetails.push({
+          label,
+          reason: item.reason || "삭제 대상 확인 또는 삭제 검증에 실패했습니다.",
+        });
       }
     }
 
     const success = Number(server?.successful_count ?? result?.successfulCount ?? 0);
     const failed = Number(server?.failed_count ?? result?.failedCount ?? 0);
     if (server) {
-      setStatus(`배치 삭제가 끝났습니다. 성공 ${success}건, 실패 ${failed}건.`, failed ? (success ? "running" : "error") : "success");
+      const lines = [`배치 삭제가 끝났습니다. 성공 ${success}건, 실패 ${failed}건.`];
+      if (failedDetails.length) {
+        lines.push("", "실패 사유:");
+        for (const detail of failedDetails.slice(0, 10)) {
+          lines.push(`- ${detail.label}: ${detail.reason}`);
+        }
+        if (failedDetails.length > 10) {
+          lines.push(`- 외 ${failedDetails.length - 10}건`);
+        }
+        lines.push("", "실패한 항목은 선택된 상태로 남아 있습니다.");
+      }
+      setStatus(lines.join("\n"), failed ? (success ? "running" : "error") : "success");
     } else {
       setStatus(result?.error || "배치 삭제 결과를 확인하지 못했습니다.", "error");
     }
 
     running = false;
     activeJobId = null;
-    button.disabled = false;
-    button.textContent = "선택한 기록 삭제";
     try { port?.disconnect(); } catch {}
     port = null;
-    setTimeout(() => location.reload(), 2200);
+
+    refreshVisibleCounters();
+    const remaining = selectedChecks().length;
+    button.disabled = remaining < 1;
+    button.textContent = remaining > 0 ? `실패 ${remaining}건 다시 삭제` : "선택한 기록 삭제";
   }
 
   function startPort(job) {
