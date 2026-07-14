@@ -221,12 +221,17 @@ def complete_batch_deletion_job(
 
     now = utcnow()
     failed_items: list[DeletionJobItem] = []
+    already_absent_items: list[DeletionJobItem] = []
     successful_count = 0
     for item in items:
         result = result_map[item.id]
         item.diagnostics_json = json.dumps(result.diagnostics, ensure_ascii=False, default=str)[:12000]
         reason = (result.reason or "").strip()[:2000]
         activity = activity_map.get(item.activity_id)
+        verification_only = (
+            result.status == "success"
+            and result.diagnostics.get("click_evidence") == "verification_only_not_found"
+        )
 
         if result.status == "success" and activity is not None:
             try:
@@ -236,7 +241,11 @@ def complete_batch_deletion_job(
             except (TypeError, ValueError):
                 metadata = {}
             metadata["deleted_at"] = now.isoformat()
-            metadata["deleted_via"] = "google_my_activity_batch"
+            metadata["deleted_via"] = (
+                "google_my_activity_already_absent"
+                if verification_only
+                else "google_my_activity_batch"
+            )
             metadata["deleted_original_activity_type"] = item.original_activity_type
             activity.metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
             activity.delete_mode = "google_my_activity"
@@ -244,11 +253,15 @@ def complete_batch_deletion_job(
             activity.activity_type = "deleted"
 
             item.status = "success"
-            item.credit_reserved = False
-            item.charged = True
+            item.charged = not verification_only
             item.error_message = ""
             item.completed_at = now
             successful_count += 1
+
+            if verification_only:
+                already_absent_items.append(item)
+            else:
+                item.credit_reserved = False
             continue
 
         if result.status == "success" and activity is None:
@@ -259,6 +272,14 @@ def complete_batch_deletion_job(
         failed_items.append(item)
 
     failed_count = len(failed_items)
+    if already_absent_items:
+        _refund_reserved(
+            db,
+            user,
+            job,
+            already_absent_items,
+            "이미 Google 내 활동에서 사라진 항목 예약 해제",
+        )
     if failed_items:
         _refund_reserved(db, user, job, failed_items, "배치 삭제 실패 항목 환불")
 
