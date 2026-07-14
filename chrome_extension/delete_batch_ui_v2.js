@@ -19,6 +19,10 @@
   let automaticRetryUsed = false;
   let overallTotal = 0;
   let overallSuccess = 0;
+  let retryQueue = [];
+  let retryIndex = 0;
+  let permanentFailures = [];
+  let retryFailures = [];
 
   const selectedChecks = () => [...document.querySelectorAll(".delete-activity-checkbox")]
     .filter((check) => check instanceof HTMLInputElement && check.checked && !check.disabled && check.isConnected);
@@ -104,7 +108,7 @@
     const content = row?.querySelector("p")?.textContent?.trim();
     return {
       row,
-      label: title || content || `기록 ${activityId}`,
+      label: [title, content].filter(Boolean).join(" / ") || `기록 ${activityId}`,
     };
   }
 
@@ -119,41 +123,83 @@
     }
   }
 
-  async function startAutomaticRetry(activityIds) {
-    setRunning(true, `검증 실패 ${activityIds.length}건 자동 재시도`);
+  function disconnectCurrentPort() {
+    stopHeartbeat();
+    try { port?.disconnect(); } catch {}
+    port = null;
+    activeJobId = null;
+  }
+
+  function renderFinalResult() {
+    running = false;
+    const finalFailed = Math.max(0, overallTotal - overallSuccess);
+    const failures = [...permanentFailures, ...retryFailures];
+    const lines = [
+      automaticRetryUsed
+        ? `배치 삭제와 저속 개별 재시도가 끝났습니다. 전체 성공 ${overallSuccess}건, 실패 ${finalFailed}건.`
+        : `배치 삭제가 끝났습니다. 성공 ${overallSuccess}건, 실패 ${finalFailed}건.`
+    ];
+
+    if (finalFailed > 0 && failures.length) {
+      lines.push("", "실패 사유:");
+      for (const detail of failures.slice(0, 10)) {
+        lines.push(`- ${detail.label}: ${detail.reason}`);
+      }
+      if (failures.length > 10) lines.push(`- 외 ${failures.length - 10}건`);
+      lines.push("", "실패한 항목은 선택된 상태로 남아 있습니다.");
+    }
+
+    setStatus(lines.join("\n"), finalFailed ? (overallSuccess ? "running" : "error") : "success");
+    refreshVisibleCounters();
+    const remaining = selectedChecks().length;
+    button.disabled = remaining < 1;
+    button.textContent = remaining > 0 ? `실패 ${remaining}건 다시 삭제` : "선택한 기록 삭제";
+  }
+
+  async function runNextSequentialRetry() {
+    if (retryIndex >= retryQueue.length) {
+      renderFinalResult();
+      return;
+    }
+
+    const activityId = retryQueue[retryIndex];
+    const position = retryIndex + 1;
+    setRunning(true, `개별 재시도 ${position}/${retryQueue.length}`);
     setStatus(
-      `Google이 빠른 연속 삭제 중 일부 클릭을 반영하지 않았습니다.\n${activityIds.length}건을 잠시 기다린 뒤 한 번 자동 재시도합니다.`,
+      `빠른 배치에서 반영되지 않은 기록을 저속으로 하나씩 다시 처리합니다.\n${position}/${retryQueue.length} 준비 중 · 다음 기록과 2.5초 간격`,
       "running"
     );
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    await new Promise((resolve) => setTimeout(resolve, retryIndex === 0 ? 3000 : 2500));
 
     try {
       const response = await extensionRequest({
         type: "CREATE_DELETE_BATCH_JOB",
-        activityIds,
+        activityIds: [activityId],
         config,
       });
       const job = response.job;
       activeJobId = job.job_id;
       setBalance(job.balance);
-      startPort(job);
+      startPort(job, {retry: true, activityId, position});
     } catch (error) {
-      running = false;
-      activeJobId = null;
-      button.disabled = false;
-      button.textContent = `실패 ${selectedChecks().length}건 다시 삭제`;
-      setStatus(`자동 재시도 작업 생성 실패: ${error.message || String(error)}`, "error");
+      const {label} = rowLabel(activityId);
+      retryFailures.push({
+        label,
+        reason: `개별 재시도 작업 생성 실패: ${error.message || String(error)}`,
+      });
+      retryIndex += 1;
+      void runNextSequentialRetry();
     }
   }
 
-  function finish(result) {
-    stopHeartbeat();
+  function processResult(result, context) {
     const server = result?.server || null;
-    const failedDetails = [];
     const outcomeByItem = new Map(
       (result?.outcomes || []).map((outcome) => [Number(outcome.item_id), outcome])
     );
-    const retryActivityIds = [];
+    const verificationRetryIds = [];
+    const attemptFailures = [];
 
     if (server) {
       setBalance(server.balance);
@@ -164,59 +210,54 @@
           row?.remove();
           continue;
         }
+
         const outcome = outcomeByItem.get(Number(item.item_id));
         const stage = String(outcome?.diagnostics?.stage || "");
-        if (!automaticRetryUsed && stage === "verification_present") {
-          retryActivityIds.push(Number(item.activity_id));
-        }
-        failedDetails.push({
+        const detail = {
           label,
           reason: item.reason || "삭제 대상 확인 또는 삭제 검증에 실패했습니다.",
-        });
+        };
+        attemptFailures.push(detail);
+
+        if (!context.retry && stage === "verification_present") {
+          verificationRetryIds.push(Number(item.activity_id));
+        } else if (!context.retry) {
+          permanentFailures.push(detail);
+        }
       }
+    } else {
+      attemptFailures.push({
+        label: context.retry ? rowLabel(context.activityId).label : "배치 작업",
+        reason: result?.error || "배치 삭제 결과를 확인하지 못했습니다.",
+      });
     }
 
-    running = false;
-    activeJobId = null;
-    try { port?.disconnect(); } catch {}
-    port = null;
+    disconnectCurrentPort();
     refreshVisibleCounters();
 
-    if (server && retryActivityIds.length && !automaticRetryUsed) {
-      automaticRetryUsed = true;
-      void startAutomaticRetry(retryActivityIds);
+    if (context.retry) {
+      if (!server || Number(server.failed_count || 0) > 0) {
+        retryFailures.push(...attemptFailures);
+      }
+      retryIndex += 1;
+      void runNextSequentialRetry();
       return;
     }
 
-    const attemptFailed = Number(server?.failed_count ?? result?.failedCount ?? 0);
-    const finalFailed = Math.max(0, overallTotal - overallSuccess);
-    if (server) {
-      const lines = [
-        automaticRetryUsed
-          ? `배치 삭제와 자동 재시도가 끝났습니다. 전체 성공 ${overallSuccess}건, 실패 ${finalFailed}건.`
-          : `배치 삭제가 끝났습니다. 성공 ${overallSuccess}건, 실패 ${finalFailed}건.`
-      ];
-      if (attemptFailed > 0 && failedDetails.length) {
-        lines.push("", "실패 사유:");
-        for (const detail of failedDetails.slice(0, 10)) {
-          lines.push(`- ${detail.label}: ${detail.reason}`);
-        }
-        if (failedDetails.length > 10) {
-          lines.push(`- 외 ${failedDetails.length - 10}건`);
-        }
-        lines.push("", "실패한 항목은 선택된 상태로 남아 있습니다.");
-      }
-      setStatus(lines.join("\n"), finalFailed ? (overallSuccess ? "running" : "error") : "success");
-    } else {
-      setStatus(result?.error || "배치 삭제 결과를 확인하지 못했습니다.", "error");
+    if (server && verificationRetryIds.length) {
+      automaticRetryUsed = true;
+      retryQueue = [...new Set(verificationRetryIds)];
+      retryIndex = 0;
+      retryFailures = [];
+      void runNextSequentialRetry();
+      return;
     }
 
-    const remaining = selectedChecks().length;
-    button.disabled = remaining < 1;
-    button.textContent = remaining > 0 ? `실패 ${remaining}건 다시 삭제` : "선택한 기록 삭제";
+    permanentFailures.push(...attemptFailures.filter((detail) => !permanentFailures.includes(detail)));
+    renderFinalResult();
   }
 
-  function startPort(job) {
+  function startPort(job, context = {retry: false}) {
     port = chrome.runtime.connect({name: PORT_NAME});
     let completed = false;
 
@@ -226,17 +267,28 @@
         return;
       }
       if (message?.type === "DELETE_BATCH_ACCEPTED") {
-        setStatus(`선택한 ${job.items.length}건을 Google 내 활동 페이지별로 한 번씩 검색합니다.`, "running");
+        const prefix = context.retry
+          ? `개별 재시도 ${context.position}/${retryQueue.length}`
+          : `선택한 ${job.items.length}건`;
+        setStatus(`${prefix} · Google 내 활동에서 삭제 대상을 검색합니다.`, "running");
         return;
       }
       if (message?.type === "DELETE_BATCH_PROGRESS") {
-        setRunning(true, `삭제 처리 중 ${message.processed}/${message.total}`);
-        setStatus(message.message || `${message.processed}/${message.total} 처리 중`, "running");
+        if (context.retry) {
+          setRunning(true, `개별 재시도 ${context.position}/${retryQueue.length}`);
+          setStatus(
+            `저속 개별 재시도 ${context.position}/${retryQueue.length}\n${message.message || "삭제·검증 중"}`,
+            "running"
+          );
+        } else {
+          setRunning(true, `삭제 처리 중 ${message.processed}/${message.total}`);
+          setStatus(message.message || `${message.processed}/${message.total} 처리 중`, "running");
+        }
         return;
       }
       if (message?.type !== "DELETE_BATCH_RESULT") return;
       completed = true;
-      finish(message.result || {ok: false, error: "삭제 응답이 없습니다."});
+      processResult(message.result || {ok: false, error: "삭제 응답이 없습니다."}, context);
     });
 
     port.onDisconnect.addListener(async () => {
@@ -246,8 +298,16 @@
       const reason = chrome.runtime.lastError?.message
         || `확장 프로그램의 배치 삭제 연결이 중간에 종료되었습니다.${elapsed !== null ? ` 마지막 응답 ${elapsed}초 전.` : ""}`;
       await cancelActive(reason);
+      disconnectCurrentPort();
+
+      if (context.retry) {
+        retryFailures.push({label: rowLabel(context.activityId).label, reason});
+        retryIndex += 1;
+        void runNextSequentialRetry();
+        return;
+      }
+
       running = false;
-      activeJobId = null;
       button.disabled = false;
       button.textContent = "선택한 기록 삭제";
       setStatus(reason, "error");
@@ -288,6 +348,10 @@
     automaticRetryUsed = false;
     overallTotal = chosen.length;
     overallSuccess = 0;
+    retryQueue = [];
+    retryIndex = 0;
+    permanentFailures = [];
+    retryFailures = [];
     setRunning(true, `삭제 준비 중 0/${chosen.length}`);
     setStatus(`삭제권 ${chosen.length}개를 임시 예약하고 배치 작업을 생성합니다.`, "running");
 
@@ -300,7 +364,7 @@
       const job = response.job;
       activeJobId = job.job_id;
       setBalance(job.balance);
-      startPort(job);
+      startPort(job, {retry: false});
     } catch (error) {
       stopHeartbeat();
       running = false;
