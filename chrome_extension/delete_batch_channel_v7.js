@@ -56,6 +56,7 @@
         resolve(current);
         return;
       }
+
       const timeout = setTimeout(() => {
         chrome.tabs.onUpdated.removeListener(listener);
         reject(new Error("Google 내 활동 페이지 로딩 시간이 초과되었습니다."));
@@ -134,24 +135,23 @@
     return payload;
   }
 
-  async function clickPageTargets(tabId, pageItems, page, onApplied) {
+  async function clickPageTargets(tabId, pageItems, page) {
     const injected = await chrome.scripting.executeScript({
       target: {tabId},
-      func: clickBatchReliablyV7,
+      func: clickBatchFastV8,
       args: [pageItems, page],
     });
     const result = injected?.[0]?.result;
     if (!result?.ok || !Array.isArray(result.applied_item_ids)) {
       throw new Error(result?.error || "Google 내 활동 삭제 클릭 결과를 받지 못했습니다.");
     }
-    for (let index = 0; index < result.applied_item_ids.length; index += 1) onApplied();
     return result;
   }
 
   async function reloadAndCollect(tabId, page) {
     await chrome.tabs.reload(tabId);
     await waitForTabComplete(tabId);
-    await sleep(1200);
+    await sleep(900);
     const scope = page === "youtube_live_chat" ? "live_chat" : "comment";
     return runExtractor(tabId, "youtube", scope, "self_activity", null);
   }
@@ -161,6 +161,7 @@
     if (!job?.job_id || !items.length || items.length > 100) {
       throw new Error("삭제 배치 작업 정보가 올바르지 않습니다.");
     }
+
     const config = {
       serverUrl: normalizeServer(explicitConfig?.serverUrl),
       collectorToken: String(explicitConfig?.collectorToken || ""),
@@ -188,31 +189,22 @@
           processed: appliedCount,
           total: items.length,
           page,
-          message: `${page === "youtube_live_chat" ? "실시간 채팅" : "댓글"} 삭제 탭을 활성화해 실제 삭제를 처리합니다.`,
+          message: `${page === "youtube_live_chat" ? "실시간 채팅" : "댓글"} 삭제 클릭 중에만 Google 내 활동 탭이 잠시 표시됩니다.`,
         });
 
-        // Google My Activity ignored or throttled scripted deletion while the
-        // tab was inactive. Keep this worker tab active while clicking, then
-        // return the user to the original TraceLens tab after verification.
         tab = await chrome.tabs.create({url: pageUrl(page), active: true});
         await waitForTabComplete(tab.id);
-        await sleep(1400);
+        await sleep(850);
 
-        const clickState = await clickPageTargets(tab.id, pageItems, page, () => {
-          appliedCount += 1;
-          try {
-            port.postMessage({
-              type: "DELETE_BATCH_PROGRESS",
-              jobId: job.job_id,
-              processed: Math.min(appliedCount, items.length),
-              total: items.length,
-              page,
-              message: `${Math.min(appliedCount, items.length)}/${items.length}건 삭제 동작 확인 · 전체 재수집으로 최종 검증 예정`,
-            });
-          } catch {
-            // The UI disconnect handler cancels and refunds the unfinished job.
-          }
-        });
+        const clickState = await clickPageTargets(tab.id, pageItems, page);
+        appliedCount += clickState.applied_item_ids.length;
+
+        // The active tab is only required while dispatching real user-like
+        // clicks. Verification can safely continue in the background.
+        if (originalTab?.id) {
+          await chrome.tabs.update(originalTab.id, {active: true}).catch(() => undefined);
+          await sleep(150);
+        }
 
         port.postMessage({
           type: "DELETE_BATCH_PROGRESS",
@@ -220,7 +212,7 @@
           processed: Math.min(appliedCount, items.length),
           total: items.length,
           page,
-          message: "페이지를 새로고침하고 전체 기록을 다시 수집해 실제 삭제 여부를 확인합니다.",
+          message: `${clickState.applied_item_ids.length}건 삭제 동작 완료 · TraceLens로 복귀했으며 백그라운드에서 최종 검증 중입니다.`,
         });
 
         const collected = await reloadAndCollect(tab.id, page);
@@ -242,6 +234,7 @@
             });
             continue;
           }
+
           if (!complete) {
             outcomes.push({
               item_id: itemId,
@@ -251,6 +244,7 @@
             });
             continue;
           }
+
           const stillPresent = currentDescriptors.some((current) => sameRecord(target, current));
           outcomes.push(stillPresent ? {
             item_id: itemId,
@@ -261,9 +255,10 @@
             item_id: itemId,
             ok: true,
             diagnostics: {
-              stage: "verified_absent_after_active_click_reload_collection",
+              stage: "verified_absent_after_fast_active_click",
               expected_page: page,
               snapshot_complete: true,
+              click_evidence: clickState.evidence_by_item?.[String(itemId)] || null,
             },
           });
         }
@@ -279,8 +274,8 @@
           });
         }
       } finally {
-        if (tab?.id) await chrome.tabs.remove(tab.id).catch(() => undefined);
         if (originalTab?.id) await chrome.tabs.update(originalTab.id, {active: true}).catch(() => undefined);
+        if (tab?.id) await chrome.tabs.remove(tab.id).catch(() => undefined);
       }
     }
 
@@ -302,7 +297,7 @@
     };
   }
 
-  async function clickBatchReliablyV7(items, expectedPage) {
+  async function clickBatchFastV8(items, expectedPage) {
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const cleanText = (value) => String(value || "").replace(/\s+/g, " ").trim();
     const visible = (node) => {
@@ -377,6 +372,7 @@
     });
     const applied = [];
     const failures = [];
+    const evidenceByItem = {};
 
     const deleteButtons = () => [...document.querySelectorAll("button,[role='button']")].filter((button) => {
       if (!visible(button)) return false;
@@ -394,7 +390,7 @@
       }
       return null;
     };
-    const descriptor = (row, button) => {
+    const descriptor = (row, button = null) => {
       const text = cleanText(row.innerText || row.textContent);
       return {
         row,
@@ -440,21 +436,25 @@
       for (const node of scrollers()) {
         const before = node.scrollTop || 0;
         const bottom = Math.max(0, node.scrollHeight - node.clientHeight);
-        node.scrollTop = Math.min(bottom, before + Math.max(480, Math.floor((node.clientHeight || innerHeight) * 0.82)));
+        node.scrollTop = Math.min(bottom, before + Math.max(620, Math.floor((node.clientHeight || innerHeight) * 0.92)));
         node.dispatchEvent(new Event("scroll", {bubbles: true}));
         if ((node.scrollTop || 0) !== before) moved = true;
       }
       return moved;
     };
-    const signature = () => scrollers().map((node) => `${Math.round(node.scrollTop || 0)}:${Math.round(node.scrollHeight || 0)}`).join("|");
+    const signature = () => scrollers()
+      .map((node) => `${Math.round(node.scrollTop || 0)}:${Math.round(node.scrollHeight || 0)}`)
+      .join("|");
+    const endReached = () => /더 이상 표시할 콘텐츠가 없습니다|no more content/i.test(cleanText(document.body?.innerText || ""));
     const loadMoreButton = () => [...document.querySelectorAll("button,[role='button']")].find((button) => {
       if (!visible(button)) return false;
       const text = cleanText(`${button.innerText || button.textContent || ""} ${button.getAttribute("aria-label") || ""}`);
       return /^(더 보기|더보기|더 불러오기|추가로 불러오기|load more|show more)$/i.test(text);
     }) || null;
-    const endReached = () => /더 이상 표시할 콘텐츠가 없습니다|no more content/i.test(cleanText(document.body?.innerText || ""));
     const toastText = () => cleanText([...document.querySelectorAll("[role='status'],[role='alert'],tp-yt-paper-toast")]
-      .filter(visible).map((node) => node.innerText || node.textContent).join(" "));
+      .filter(visible)
+      .map((node) => node.innerText || node.textContent)
+      .join(" "));
     const clickLikeUser = (node) => {
       node.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerType: "mouse", isPrimary: true}));
       node.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, cancelable: true, button: 0}));
@@ -468,16 +468,16 @@
         if (!visible(node)) return false;
         const style = getComputedStyle(node);
         const text = cleanText(node.innerText || node.textContent);
-        const buttons = node.querySelectorAll("button,[role='button']").length;
+        const buttonCount = node.querySelectorAll("button,[role='button']").length;
         return (style.position === "fixed" || style.position === "absolute")
-          && buttons >= 1 && buttons <= 8
+          && buttonCount >= 1 && buttonCount <= 8
           && text.length > 0 && text.length < 1200
           && /삭제|delete|remove/i.test(text);
       });
-      return [...new Set([...explicit, ...overlays])].filter(visible).sort((a, b) => {
-        const ar = a.getBoundingClientRect();
-        const br = b.getBoundingClientRect();
-        return ar.width * ar.height - br.width * br.height;
+      return [...new Set([...explicit, ...overlays])].filter(visible).sort((left, right) => {
+        const leftRect = left.getBoundingClientRect();
+        const rightRect = right.getBoundingClientRect();
+        return leftRect.width * leftRect.height - rightRect.width * rightRect.height;
       });
     };
     const confirmDialog = () => {
@@ -490,8 +490,10 @@
             button,
             label: cleanText(`${button.innerText || button.textContent || ""} ${button.getAttribute("aria-label") || ""} ${button.getAttribute("title") || ""}`),
           }));
-        const explicit = actions.find(({label}) => /삭제|delete|remove|확인|confirm|yes|예/i.test(label)
-          && !/취소|cancel|아니오|no|닫기|close/i.test(label));
+        const explicit = actions.find(({label}) => (
+          /삭제|delete|remove|확인|confirm|yes|예/i.test(label)
+          && !/취소|cancel|아니오|no|닫기|close/i.test(label)
+        ));
         if (explicit) return {button: explicit.button, labels: actions.map((entry) => entry.label)};
         const nonCancel = actions.filter(({label}) => !/취소|cancel|아니오|no|닫기|close/i.test(label));
         if (actions.length >= 2 && nonCancel.length === 1) {
@@ -503,9 +505,10 @@
     };
 
     resetTop();
-    await wait(700);
-    let previous = "";
+    await wait(350);
+    let previousSignature = "";
     let stable = 0;
+
     for (let step = 0; step < 2400 && targets.some((target) => target.status === "pending"); step += 1) {
       const pending = targets.filter((target) => target.status === "pending");
       let handled = false;
@@ -513,9 +516,11 @@
       for (const desc of rows()) {
         const candidates = pending.filter((target) => matches(target, desc));
         if (!candidates.length) continue;
+
         let chosen = null;
-        if (candidates.length === 1) chosen = candidates[0];
-        else {
+        if (candidates.length === 1) {
+          chosen = candidates[0];
+        } else {
           const exact = candidates.filter((target) => stableMatch(target, desc));
           if (exact.length === 1) chosen = exact[0];
           else candidates.forEach((target) => { target.ambiguity += 1; });
@@ -524,14 +529,15 @@
 
         chosen.status = "processing";
         desc.row.scrollIntoView({block: "center"});
-        await wait(350);
+        await wait(120);
         clickLikeUser(desc.button);
 
         let confirmClicked = false;
         let appliedEvidence = "";
         let dialogLabels = [];
-        for (let attempt = 0; attempt < 20; attempt += 1) {
-          await wait(300);
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+          await wait(attempt < 4 ? 110 : 160);
+
           if (!document.contains(desc.row)) {
             appliedEvidence = "row_removed";
             break;
@@ -540,6 +546,11 @@
             appliedEvidence = "toast";
             break;
           }
+          if (!matches(chosen, descriptor(desc.row))) {
+            appliedEvidence = "row_recycled";
+            break;
+          }
+
           const confirm = confirmDialog();
           if (confirm) {
             dialogLabels = confirm.labels;
@@ -557,6 +568,7 @@
         if (appliedEvidence) {
           chosen.status = "applied";
           applied.push(chosen.itemId);
+          evidenceByItem[String(chosen.itemId)] = appliedEvidence;
         } else {
           chosen.status = "failed";
           failures.push({
@@ -574,27 +586,29 @@
         }
 
         handled = true;
-        previous = "";
+        previousSignature = "";
         stable = 0;
-        await wait(800);
+        await wait(180);
         break;
       }
 
       if (handled) continue;
+
       const more = loadMoreButton();
       if (more && endReached()) {
         clickLikeUser(more);
-        previous = "";
+        previousSignature = "";
         stable = 0;
-        await wait(1000);
+        await wait(600);
         continue;
       }
+
       const moved = moveDown();
       const currentSignature = signature();
-      stable = currentSignature === previous ? stable + 1 : 0;
-      previous = currentSignature;
-      if ((!moved && stable >= 14) || (endReached() && !more)) break;
-      await wait(moved ? 230 : 500);
+      stable = currentSignature === previousSignature ? stable + 1 : 0;
+      previousSignature = currentSignature;
+      if ((!moved && stable >= 12) || (endReached() && !more)) break;
+      await wait(moved ? 100 : 260);
     }
 
     for (const target of targets) {
@@ -613,6 +627,11 @@
     }
 
     resetTop();
-    return {ok: true, applied_item_ids: applied, failures};
+    return {
+      ok: true,
+      applied_item_ids: applied,
+      failures,
+      evidence_by_item: evidenceByItem,
+    };
   }
 })();
