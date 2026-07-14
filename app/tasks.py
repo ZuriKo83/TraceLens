@@ -147,6 +147,22 @@ def _is_deleted_tombstone(activity: Activity) -> bool:
     return activity.status == "deleted" or activity.activity_type == "deleted"
 
 
+def _is_inferred_source_removal(activity: Activity) -> bool:
+    metadata = _load_metadata(activity.metadata_json)
+    return metadata.get("source_removal_reason") == "missing_from_complete_snapshot"
+
+
+def _clear_missing_markers(metadata: dict) -> None:
+    for key in (
+        "source_missing_complete_scan_count",
+        "source_missing_first_detected_at",
+        "source_missing_last_detected_at",
+        "snapshot_anomaly_at",
+        "snapshot_anomaly_missing_count",
+    ):
+        metadata.pop(key, None)
+
+
 def _reconcile_complete_youtube_snapshot(
     db: Session,
     payload: CollectorImport,
@@ -155,40 +171,74 @@ def _reconcile_complete_youtube_snapshot(
     current_external_ids: set[str],
     current_fingerprints: set[str],
     now,
-) -> int:
+) -> tuple[int, int, int, bool]:
     if payload.platform != "youtube" or payload.status != "success" or not payload.snapshot_complete:
-        return 0
+        return 0, 0, 0, False
     if payload.scan_scope not in {"comment", "live_chat"}:
-        return 0
+        return 0, 0, 0, False
 
-    removed = 0
-    rows = list(db.scalars(select(Activity).where(
+    normalized_account = account or ""
+    scope_rows = []
+    for activity in db.scalars(select(Activity).where(
         Activity.user_id == user_id,
         Activity.platform == "youtube",
-    )))
-    normalized_account = account or ""
-    for activity in rows:
+    )):
         if _is_deleted_tombstone(activity):
             continue
         if (activity.account_label or "") != normalized_account:
             continue
         if _activity_scan_scope(activity) != payload.scan_scope:
             continue
-        if activity.external_id in current_external_ids:
-            continue
-        if activity.content_fingerprint and activity.content_fingerprint in current_fingerprints:
-            continue
+        scope_rows.append(activity)
 
+    missing_rows = []
+    for activity in scope_rows:
+        present = activity.external_id in current_external_ids or (
+            bool(activity.content_fingerprint)
+            and activity.content_fingerprint in current_fingerprints
+        )
         metadata = _load_metadata(activity.metadata_json)
-        metadata["source_removal_detected_at"] = now.isoformat()
-        metadata["source_removal_reason"] = "missing_from_complete_snapshot"
-        metadata["source_removal_scan_scope"] = payload.scan_scope
-        metadata["source_removal_previous_activity_type"] = activity.activity_type
+        if present:
+            before = dict(metadata)
+            _clear_missing_markers(metadata)
+            if metadata != before:
+                activity.metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
+            continue
+        missing_rows.append(activity)
+
+    missing_count = len(missing_rows)
+    total_before = len(scope_rows)
+    anomaly = missing_count > 20 and missing_count > max(1, int(total_before * 0.25))
+    if anomaly:
+        for activity in missing_rows:
+            metadata = _load_metadata(activity.metadata_json)
+            metadata["snapshot_anomaly_at"] = now.isoformat()
+            metadata["snapshot_anomaly_missing_count"] = missing_count
+            activity.metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
+        return 0, 0, missing_count, True
+
+    removed = pending = 0
+    immediate = missing_count <= 5
+    for activity in missing_rows:
+        metadata = _load_metadata(activity.metadata_json)
+        streak = int(metadata.get("source_missing_complete_scan_count") or 0) + 1
+        metadata["source_missing_complete_scan_count"] = streak
+        metadata.setdefault("source_missing_first_detected_at", now.isoformat())
+        metadata["source_missing_last_detected_at"] = now.isoformat()
+
+        if immediate or streak >= 2:
+            metadata["source_removal_detected_at"] = now.isoformat()
+            metadata["source_removal_reason"] = "missing_from_complete_snapshot"
+            metadata["source_removal_scan_scope"] = payload.scan_scope
+            metadata["source_removal_previous_activity_type"] = activity.activity_type
+            activity.activity_type = "deleted"
+            activity.status = "deleted"
+            removed += 1
+        else:
+            pending += 1
         activity.metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
-        activity.activity_type = "deleted"
-        activity.status = "deleted"
-        removed += 1
-    return removed
+
+    return removed, pending, 0, False
 
 
 def process_collector_import(payload_data: dict, user_id: int) -> dict:
@@ -218,19 +268,20 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
         current_fingerprints = {fp for _, candidates, _ in prepared for fp in candidates}
         by_ext, by_fp = {}, {}
         if prepared:
-            fps = list(current_fingerprints)
-            exts = list(current_external_ids)
             rows = list(db.scalars(select(Activity).where(
                 Activity.user_id == user.id,
                 Activity.platform == payload.platform,
-                or_(Activity.external_id.in_(exts), Activity.content_fingerprint.in_(fps)),
+                or_(
+                    Activity.external_id.in_(list(current_external_ids)),
+                    Activity.content_fingerprint.in_(list(current_fingerprints)),
+                ),
             ).order_by(Activity.id.desc())))
             for row in rows:
                 by_ext.setdefault(row.external_id, row)
                 if row.content_fingerprint:
                     by_fp.setdefault(row.content_fingerprint, row)
 
-        imported = updated = suppressed = 0
+        imported = updated = suppressed = restored = 0
         now = utcnow()
         account = (payload.account_label or "").strip()[:160] or None
         for item, fp_candidates, ext in prepared:
@@ -245,6 +296,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             delete_mode = _delete_mode(payload.platform, item)
             if existing:
                 deleted_tombstone = _is_deleted_tombstone(existing)
+                inferred_source_removal = deleted_tombstone and _is_inferred_source_removal(existing)
                 source_url = item.source_url
                 if payload.platform == "youtube" and not source_url:
                     source_url = existing.source_url
@@ -259,7 +311,16 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 existing.account_label = item_account
                 existing.content_fingerprint = primary_fp
 
-                if deleted_tombstone:
+                if inferred_source_removal:
+                    previous_type = str(metadata.get("source_removal_previous_activity_type") or item.activity_type or "comment")
+                    for key in list(metadata):
+                        if key.startswith("source_removal_") or key.startswith("source_missing_") or key.startswith("snapshot_anomaly_"):
+                            metadata.pop(key, None)
+                    existing.activity_type = previous_type if previous_type in VISIBLE_ACTIVITY_TYPES else item.activity_type
+                    existing.delete_mode = delete_mode
+                    existing.status = "visible"
+                    restored += 1
+                elif deleted_tombstone:
                     metadata["last_seen_after_delete_at"] = now.isoformat()
                     metadata["last_seen_after_delete_scan_scope"] = payload.scan_scope
                     metadata["last_seen_after_delete_external_id"] = ext
@@ -269,6 +330,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                         existing.delete_mode = delete_mode
                     suppressed += 1
                 else:
+                    _clear_missing_markers(metadata)
                     existing.activity_type = item.activity_type
                     existing.delete_mode = delete_mode
                     existing.status = "visible"
@@ -294,7 +356,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 ))
                 imported += 1
 
-        externally_removed = _reconcile_complete_youtube_snapshot(
+        externally_removed, pending_missing, anomaly_missing, snapshot_anomaly = _reconcile_complete_youtube_snapshot(
             db,
             payload,
             user.id,
@@ -309,8 +371,15 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             message = "본인이 작성한 게시글·댓글·질문·답변으로 확인되지 않은 기록은 제외했습니다."
         if suppressed:
             message = f"{message} 이전에 삭제 처리한 기록 {suppressed}개는 보관함에 다시 표시하지 않았습니다."
+        if restored:
+            message = f"{message} 이전 조회 오류로 숨겨졌던 기록 {restored}개를 다시 복구했습니다."
         if externally_removed:
             message = f"{message} 원본에서 사라진 기록 {externally_removed}개는 관리자 기록만 남기고 보관함에서 숨겼습니다."
+        if pending_missing:
+            message = f"{message} 사라진 것으로 보이는 기록 {pending_missing}개는 다음 전체 조회에서 한 번 더 확인합니다."
+        if snapshot_anomaly:
+            message = f"{message} 이전 기록 대비 {anomaly_missing}개가 한꺼번에 누락되어 안전상 삭제 상태 반영을 보류했습니다."
+
         db.add(ScanLog(
             user_id=user.id,
             platform=payload.platform,
@@ -332,7 +401,10 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             "imported": imported,
             "updated": updated,
             "suppressed": suppressed,
+            "restored": restored,
             "externally_removed": externally_removed,
+            "pending_missing": pending_missing,
+            "snapshot_anomaly": snapshot_anomaly,
             "snapshot_complete": payload.snapshot_complete,
             "ignored": len(payload.items) - len(accepted),
             "account_label": account,
