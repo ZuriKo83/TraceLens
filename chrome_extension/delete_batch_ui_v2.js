@@ -14,6 +14,8 @@
   let running = false;
   let activeJobId = null;
   let port = null;
+  let heartbeat = null;
+  let lastPongAt = 0;
 
   const selectedChecks = () => [...document.querySelectorAll(".delete-activity-checkbox")]
     .filter((check) => check instanceof HTMLInputElement && check.checked && !check.disabled && check.isConnected);
@@ -35,6 +37,31 @@
     running = value;
     button.disabled = value;
     if (text) button.textContent = text;
+  }
+
+  function stopHeartbeat() {
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = null;
+  }
+
+  function startHeartbeat(jobId) {
+    stopHeartbeat();
+    lastPongAt = Date.now();
+
+    const ping = () => {
+      try {
+        port?.postMessage({
+          type: "DELETE_BATCH_PING",
+          jobId,
+          at: Date.now(),
+        });
+      } catch {
+        // onDisconnect handles cancellation and refund.
+      }
+    };
+
+    ping();
+    heartbeat = setInterval(ping, 10000);
   }
 
   function extensionRequest(message) {
@@ -90,6 +117,7 @@
   }
 
   function finish(result) {
+    stopHeartbeat();
     const server = result?.server || null;
     const failedDetails = [];
 
@@ -143,6 +171,10 @@
     let completed = false;
 
     port.onMessage.addListener((message) => {
+      if (message?.type === "DELETE_BATCH_PONG") {
+        lastPongAt = Date.now();
+        return;
+      }
       if (message?.type === "DELETE_BATCH_ACCEPTED") {
         setStatus(`선택한 ${job.items.length}건을 Google 내 활동 페이지별로 한 번씩 검색합니다.`, "running");
         return;
@@ -158,8 +190,11 @@
     });
 
     port.onDisconnect.addListener(async () => {
+      stopHeartbeat();
       if (completed || !running) return;
-      const reason = chrome.runtime.lastError?.message || "확장 프로그램의 배치 삭제 연결이 중간에 종료되었습니다.";
+      const elapsed = lastPongAt ? Math.round((Date.now() - lastPongAt) / 1000) : null;
+      const reason = chrome.runtime.lastError?.message
+        || `확장 프로그램의 배치 삭제 연결이 중간에 종료되었습니다.${elapsed !== null ? ` 마지막 응답 ${elapsed}초 전.` : ""}`;
       await cancelActive(reason);
       running = false;
       activeJobId = null;
@@ -168,6 +203,7 @@
       setStatus(reason, "error");
     });
 
+    startHeartbeat(job.job_id);
     port.postMessage({
       type: "START_DELETE_BATCH",
       job,
@@ -213,6 +249,7 @@
       setBalance(job.balance);
       startPort(job);
     } catch (error) {
+      stopHeartbeat();
       running = false;
       activeJobId = null;
       button.disabled = false;
