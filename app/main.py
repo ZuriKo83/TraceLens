@@ -1180,6 +1180,37 @@ def admin_dashboard(
     )
 
 
+@app.post("/admin/data/purge")
+def admin_purge_all_collected_data(
+    request: Request,
+    password: str = Form(...),
+    confirmation: str = Form(...),
+    csrf: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    require_csrf(request, csrf)
+    admin = require_web_admin(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
+
+    if confirmation.strip() != "전체삭제":
+        return RedirectResponse("/admin?purge_error=confirmation", status_code=303)
+    if not verify_password(password, admin.password_hash):
+        return RedirectResponse("/admin?purge_error=password", status_code=303)
+
+    activity_count = db.scalar(select(func.count(Activity.id))) or 0
+    scan_count = db.scalar(select(func.count(ScanLog.id))) or 0
+
+    db.execute(delete(ScanLog))
+    db.execute(delete(Activity))
+    db.commit()
+
+    return RedirectResponse(
+        f"/admin?purge_ok=1&deleted_activities={activity_count}&deleted_scans={scan_count}",
+        status_code=303,
+    )
+
+
 @app.get("/privacy", response_class=HTMLResponse)
 def privacy_page(request: Request, db: Session = Depends(get_db)):
     return render(request, "privacy.html", db=db)
