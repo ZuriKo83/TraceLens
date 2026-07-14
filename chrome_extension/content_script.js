@@ -11,10 +11,84 @@
   let scanPort = null;
   let scanRunning = false;
   let heartbeat = null;
+  let deleteBatchEndTimer = null;
 
   function stopHeartbeat() {
     if (heartbeat) clearInterval(heartbeat);
     heartbeat = null;
+  }
+
+  function cancelDeleteBatchEnd() {
+    if (deleteBatchEndTimer) clearTimeout(deleteBatchEndTimer);
+    deleteBatchEndTimer = null;
+  }
+
+  function scheduleDeleteBatchEnd() {
+    cancelDeleteBatchEnd();
+    deleteBatchEndTimer = setTimeout(() => {
+      chrome.runtime.sendMessage({type: "DELETE_BATCH_END"}, () => {
+        void chrome.runtime.lastError;
+      });
+      deleteBatchEndTimer = null;
+    }, 3000);
+  }
+
+  function installShiftSelection() {
+    let anchor = null;
+    const MAX_BATCH = 100;
+
+    document.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const row = target?.closest?.(".delete-activity-row");
+      if (!row || target?.closest?.("a")) return;
+
+      const check = row.querySelector(".delete-activity-checkbox");
+      if (!(check instanceof HTMLInputElement) || check.disabled) return;
+
+      const actionButton = document.getElementById("selected-delete-button");
+      if (actionButton?.textContent?.includes("처리 중")) return;
+
+      if (!event.shiftKey || !(anchor instanceof HTMLInputElement) || !anchor.isConnected) {
+        anchor = check;
+        return;
+      }
+
+      const visibleChecks = [...document.querySelectorAll(".delete-activity-checkbox")]
+        .filter((candidate) => (
+          candidate instanceof HTMLInputElement
+          && !candidate.disabled
+          && candidate.closest(".delete-activity-row")
+          && !candidate.closest(".delete-activity-row").hidden
+        ));
+      const start = visibleChecks.indexOf(anchor);
+      const end = visibleChecks.indexOf(check);
+      if (start < 0 || end < 0) {
+        anchor = check;
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const desired = !check.checked;
+      const [from, to] = start <= end ? [start, end] : [end, start];
+      let selectedCount = visibleChecks.filter((candidate) => candidate.checked).length;
+
+      for (let index = from; index <= to; index += 1) {
+        const candidate = visibleChecks[index];
+        if (!desired) {
+          candidate.checked = false;
+          continue;
+        }
+        if (candidate.checked) continue;
+        if (selectedCount >= MAX_BATCH) break;
+        candidate.checked = true;
+        selectedCount += 1;
+      }
+
+      anchor = check;
+      check.dispatchEvent(new Event("change", {bubbles: true}));
+    }, true);
   }
 
   function ensureScanPort() {
@@ -48,6 +122,8 @@
     return scanPort;
   }
 
+  installShiftSelection();
+
   chrome.runtime.sendMessage({type: "WEB_CONNECT", config}, (response) => {
     if (chrome.runtime.lastError || !response?.ok) {
       publish({type: "CONNECTION", connected: false, error: chrome.runtime.lastError?.message || response?.error || "연결 실패"});
@@ -66,18 +142,22 @@
     }
 
     if (detail.type === "DELETE_ACTIVITY") {
+      cancelDeleteBatchEnd();
       const job = detail.job || null;
       if (!job?.job_id || !Array.isArray(job.items) || job.items.length !== 1) {
         publish({type: "DELETE_RESULT", ok: false, error: "삭제 작업 정보가 올바르지 않습니다."});
+        scheduleDeleteBatchEnd();
         return;
       }
       publish({type: "DELETE_STARTED", jobId: job.job_id, activityId: job.items[0]?.activity_id});
       chrome.runtime.sendMessage({type: "DELETE_YOUTUBE_ACTIVITY", job, config}, (response) => {
         if (chrome.runtime.lastError) {
           publish({type: "DELETE_RESULT", ok: false, jobId: job.job_id, error: chrome.runtime.lastError.message});
+          scheduleDeleteBatchEnd();
           return;
         }
         publish({type: "DELETE_RESULT", jobId: job.job_id, ...(response || {ok: false, error: "삭제 응답이 없습니다."})});
+        scheduleDeleteBatchEnd();
       });
       return;
     }
