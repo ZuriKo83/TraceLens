@@ -20,41 +20,24 @@ def _normalized_text(value: str | None) -> str:
 
 def _youtube_source_identity(source_url: str | None, metadata: dict | None = None) -> tuple[str, str]:
     metadata = metadata or {}
-
-    post_id = str(
-        metadata.get("post_id")
-        or metadata.get("youtube_post_id")
-        or ""
-    ).strip()
+    post_id = str(metadata.get("post_id") or metadata.get("youtube_post_id") or "").strip()
     if post_id:
         return "post", post_id
-
-    video_id = str(
-        metadata.get("video_id")
-        or metadata.get("youtube_video_id")
-        or ""
-    ).strip()
+    video_id = str(metadata.get("video_id") or metadata.get("youtube_video_id") or "").strip()
     if video_id:
         return "video", video_id
-
     try:
         source = urlparse(source_url or "")
     except ValueError:
         return "", ""
-
     post_match = re.match(r"^/post/([^/?#]+)", source.path or "", re.I)
     if post_match:
         return "post", post_match.group(1)
-
     query_id = parse_qs(source.query).get("v", [""])[0]
     if query_id:
         return "video", query_id
-
     video_match = re.match(r"^/(?:shorts|live|embed|v)/([^/?#]+)", source.path or "", re.I)
-    if video_match:
-        return "video", video_match.group(1)
-
-    return "", ""
+    return ("video", video_match.group(1)) if video_match else ("", "")
 
 
 def _youtube_source_key(source_url: str | None, metadata: dict | None = None) -> str:
@@ -69,33 +52,16 @@ def _fingerprint(platform: str, item, *, omit_youtube_source: bool = False) -> s
     activity_type = item.activity_type.strip().lower()
     title = _normalized_text(item.title)
     content = _normalized_text(item.content)
-
     if platform == "youtube":
         metadata = item.metadata or {}
-        comment_id = str(
-            metadata.get("comment_id")
-            or metadata.get("youtube_comment_id")
-            or ""
-        ).strip()
-
+        comment_id = str(metadata.get("comment_id") or metadata.get("youtube_comment_id") or "").strip()
         if comment_id:
             normalized = f"youtube|{activity_type}|{comment_id}"
         else:
             source_key = "" if omit_youtube_source else _youtube_source_key(item.source_url, metadata)
-            normalized = (
-                f"youtube|{activity_type}|{source_key}|"
-                f"{title}|{content}"
-            )
+            normalized = f"youtube|{activity_type}|{source_key}|{title}|{content}"
     else:
-        normalized = "|".join([
-            platform,
-            activity_type,
-            (item.source_url or "").strip(),
-            title,
-            content,
-            item.external_id.strip(),
-        ])
-
+        normalized = "|".join([platform, activity_type, (item.source_url or "").strip(), title, content, item.external_id.strip()])
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
@@ -125,10 +91,8 @@ def _merged_metadata(existing: Activity, item) -> dict:
     previous = _load_metadata(existing.metadata_json)
     incoming = dict(item.metadata or {})
     merged = {**previous, **incoming}
-
     if item.source_url:
         return merged
-
     if existing.source_url:
         source_kind, source_id = _youtube_source_identity(existing.source_url, previous)
         merged["original_url"] = existing.source_url
@@ -136,13 +100,11 @@ def _merged_metadata(existing: Activity, item) -> dict:
         merged["original_link_status"] = "preserved"
         merged["source_type"] = source_kind or merged.get("source_type")
         merged["source_id"] = source_id or merged.get("source_id")
-
         if source_kind == "video" and source_id:
             merged["video_id"] = source_id
         if source_kind == "post" and source_id:
             merged["post_id"] = source_id
             merged["youtube_post_id"] = source_id
-
         locator = merged.get("deletion_locator")
         if isinstance(locator, dict):
             locator = dict(locator)
@@ -156,7 +118,6 @@ def _merged_metadata(existing: Activity, item) -> dict:
                 locator["post_id"] = source_id
                 locator["post_url"] = existing.source_url
             merged["deletion_locator"] = locator
-
     return merged
 
 
@@ -178,7 +139,6 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             item for item in payload.items
             if item.activity_type in VISIBLE_ACTIVITY_TYPES and _verified_self_activity(payload.platform, item)
         ]
-
         accepted = []
         seen_fp, seen_ext = set(), set()
         for item in raw:
@@ -190,11 +150,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             seen_ext.add(ext)
             accepted.append(item)
 
-        prepared = [
-            (item, _fingerprint_candidates(payload.platform, item), item.external_id[:500])
-            for item in accepted
-        ]
-
+        prepared = [(item, _fingerprint_candidates(payload.platform, item), item.external_id[:500]) for item in accepted]
         by_ext, by_fp = {}, {}
         if prepared:
             fps = list({fp for _, candidates, _ in prepared for fp in candidates})
@@ -212,30 +168,20 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
         imported = updated = 0
         now = utcnow()
         account = (payload.account_label or "").strip()[:160] or None
-
         for item, fp_candidates, ext in prepared:
             item_account = str((item.metadata or {}).get("account_label") or account or "").strip()[:160] or None
             primary_fp = fp_candidates[0]
             existing = by_ext.get(ext) or by_fp.get(primary_fp)
-
             if existing is None and len(fp_candidates) > 1:
                 fallback = by_fp.get(fp_candidates[1])
                 if fallback is not None and not _activity_youtube_source_key(fallback):
                     existing = fallback
-
             content = "\n".join(part for part in [item.title.strip(), item.content.strip()] if part).strip()
-
             if existing:
                 source_url = item.source_url
                 if payload.platform == "youtube" and not source_url:
                     source_url = existing.source_url
-
-                metadata = (
-                    _merged_metadata(existing, item)
-                    if payload.platform == "youtube"
-                    else dict(item.metadata or {})
-                )
-
+                metadata = _merged_metadata(existing, item) if payload.platform == "youtube" else dict(item.metadata or {})
                 existing.activity_type = item.activity_type
                 existing.content = content
                 existing.source_url = source_url
@@ -247,7 +193,6 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 existing.content_fingerprint = primary_fp
                 updated += 1
             else:
-                metadata_json = json.dumps(item.metadata, ensure_ascii=False, default=str)
                 db.add(Activity(
                     user_id=user.id,
                     platform=payload.platform,
@@ -258,7 +203,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                     occurred_at=item.occurred_at,
                     delete_mode="none",
                     status="visible",
-                    metadata_json=metadata_json,
+                    metadata_json=json.dumps(item.metadata, ensure_ascii=False, default=str),
                     collector_email=user.email,
                     account_label=item_account,
                     content_fingerprint=primary_fp,
@@ -269,7 +214,6 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
         message = payload.message
         if payload.items and not accepted:
             message = "본인이 작성한 게시글·댓글·질문·답변으로 확인되지 않은 기록은 제외했습니다."
-
         db.add(ScanLog(
             user_id=user.id,
             platform=payload.platform,
