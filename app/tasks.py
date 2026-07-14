@@ -128,6 +128,13 @@ def _verified_self_activity(platform: str, item) -> bool:
     return True
 
 
+def _delete_mode(platform: str, item) -> str:
+    metadata = item.metadata or {}
+    if platform == "youtube" and item.activity_type == "comment" and isinstance(metadata.get("deletion_locator"), dict):
+        return "google_my_activity"
+    return "none"
+
+
 def process_collector_import(payload_data: dict, user_id: int) -> dict:
     payload = CollectorImport.model_validate(payload_data)
     with Session(engine) as db:
@@ -177,6 +184,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 if fallback is not None and not _activity_youtube_source_key(fallback):
                     existing = fallback
             content = "\n".join(part for part in [item.title.strip(), item.content.strip()] if part).strip()
+            delete_mode = _delete_mode(payload.platform, item)
             if existing:
                 source_url = item.source_url
                 if payload.platform == "youtube" and not source_url:
@@ -187,6 +195,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 existing.source_url = source_url
                 existing.occurred_at = item.occurred_at
                 existing.metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
+                existing.delete_mode = delete_mode
                 existing.status = "visible"
                 existing.collector_email = user.email
                 existing.account_label = item_account
@@ -201,7 +210,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                     content=content,
                     source_url=item.source_url,
                     occurred_at=item.occurred_at,
-                    delete_mode="none",
+                    delete_mode=delete_mode,
                     status="visible",
                     metadata_json=json.dumps(item.metadata, ensure_ascii=False, default=str),
                     collector_email=user.email,
