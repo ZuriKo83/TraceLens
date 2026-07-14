@@ -188,7 +188,7 @@ class RedisSessionMiddleware:
 
         if path.startswith("/community"):
             target_app = community_app
-        elif path in ACCOUNT_TOOL_PATHS:
+        elif path in ACCOUNT_TOOL_PATHS or path.startswith("/api/deletion-jobs"):
             target_app = account_tools_app
         else:
             target_app = self.app
