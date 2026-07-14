@@ -23,8 +23,25 @@
       publish({type: "CONNECTION", connected: true, userEmail});
       return;
     }
-    if (detail.type !== "START_SCAN") return;
 
+    if (detail.type === "DELETE_ACTIVITY") {
+      const job = detail.job || null;
+      if (!job?.job_id || !Array.isArray(job.items) || job.items.length !== 1) {
+        publish({type: "DELETE_RESULT", ok: false, error: "삭제 작업 정보가 올바르지 않습니다."});
+        return;
+      }
+      publish({type: "DELETE_STARTED", jobId: job.job_id, activityId: job.items[0]?.activity_id});
+      chrome.runtime.sendMessage({type: "DELETE_YOUTUBE_ACTIVITY", job, config}, (response) => {
+        if (chrome.runtime.lastError) {
+          publish({type: "DELETE_RESULT", ok: false, jobId: job.job_id, error: chrome.runtime.lastError.message});
+          return;
+        }
+        publish({type: "DELETE_RESULT", jobId: job.job_id, ...(response || {ok: false, error: "삭제 응답이 없습니다."})});
+      });
+      return;
+    }
+
+    if (detail.type !== "START_SCAN") return;
     const sites = Array.isArray(detail.sites) ? detail.sites : [];
     if (!sites.length) {
       publish({type: "SCAN_RESULT", ok: false, error: "조회할 사이트를 하나 이상 선택하세요."});
