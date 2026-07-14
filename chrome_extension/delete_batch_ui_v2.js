@@ -3,7 +3,7 @@
   const serverUrl = (document.querySelector('meta[name="tracelens-server-url"]')?.content?.trim() || location.origin).replace(/\/+$/, "");
   if (!token) return;
 
-  const PORT_NAME = "tracelens-delete-batch-v5";
+  const PORT_NAME = "tracelens-delete-batch-v3";
   const config = {serverUrl, collectorToken: token};
   const button = document.getElementById("selected-delete-button");
   const statusBox = document.getElementById("delete-status");
