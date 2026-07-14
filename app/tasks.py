@@ -87,6 +87,14 @@ def _activity_youtube_source_key(activity: Activity) -> str:
     return _youtube_source_key(activity.source_url, _load_metadata(activity.metadata_json))
 
 
+def _activity_scan_scope(activity: Activity) -> str:
+    metadata = _load_metadata(activity.metadata_json)
+    kind = str(metadata.get("youtube_activity_kind") or "").strip().lower()
+    if kind in {"comment", "live_chat"}:
+        return kind
+    return "live_chat" if activity.content.startswith("[실시간 채팅]") else "comment"
+
+
 def _merged_metadata(existing: Activity, item) -> dict:
     previous = _load_metadata(existing.metadata_json)
     incoming = dict(item.metadata or {})
@@ -139,6 +147,50 @@ def _is_deleted_tombstone(activity: Activity) -> bool:
     return activity.status == "deleted" or activity.activity_type == "deleted"
 
 
+def _reconcile_complete_youtube_snapshot(
+    db: Session,
+    payload: CollectorImport,
+    user_id: int,
+    account: str | None,
+    current_external_ids: set[str],
+    current_fingerprints: set[str],
+    now,
+) -> int:
+    if payload.platform != "youtube" or payload.status != "success" or not payload.snapshot_complete:
+        return 0
+    if payload.scan_scope not in {"comment", "live_chat"}:
+        return 0
+
+    removed = 0
+    rows = list(db.scalars(select(Activity).where(
+        Activity.user_id == user_id,
+        Activity.platform == "youtube",
+    )))
+    normalized_account = account or ""
+    for activity in rows:
+        if _is_deleted_tombstone(activity):
+            continue
+        if (activity.account_label or "") != normalized_account:
+            continue
+        if _activity_scan_scope(activity) != payload.scan_scope:
+            continue
+        if activity.external_id in current_external_ids:
+            continue
+        if activity.content_fingerprint and activity.content_fingerprint in current_fingerprints:
+            continue
+
+        metadata = _load_metadata(activity.metadata_json)
+        metadata["source_removal_detected_at"] = now.isoformat()
+        metadata["source_removal_reason"] = "missing_from_complete_snapshot"
+        metadata["source_removal_scan_scope"] = payload.scan_scope
+        metadata["source_removal_previous_activity_type"] = activity.activity_type
+        activity.metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
+        activity.activity_type = "deleted"
+        activity.status = "deleted"
+        removed += 1
+    return removed
+
+
 def process_collector_import(payload_data: dict, user_id: int) -> dict:
     payload = CollectorImport.model_validate(payload_data)
     with Session(engine) as db:
@@ -162,10 +214,12 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             accepted.append(item)
 
         prepared = [(item, _fingerprint_candidates(payload.platform, item), item.external_id[:500]) for item in accepted]
+        current_external_ids = {ext for _, _, ext in prepared}
+        current_fingerprints = {fp for _, candidates, _ in prepared for fp in candidates}
         by_ext, by_fp = {}, {}
         if prepared:
-            fps = list({fp for _, candidates, _ in prepared for fp in candidates})
-            exts = list({ext for _, _, ext in prepared})
+            fps = list(current_fingerprints)
+            exts = list(current_external_ids)
             rows = list(db.scalars(select(Activity).where(
                 Activity.user_id == user.id,
                 Activity.platform == payload.platform,
@@ -206,9 +260,6 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 existing.content_fingerprint = primary_fp
 
                 if deleted_tombstone:
-                    # A successful deletion is retained as an admin-visible tombstone.
-                    # Re-scanning the same external activity must never resurrect it in
-                    # the owner's archive, even when Google returns a stale activity row.
                     metadata["last_seen_after_delete_at"] = now.isoformat()
                     metadata["last_seen_after_delete_scan_scope"] = payload.scan_scope
                     metadata["last_seen_after_delete_external_id"] = ext
@@ -243,11 +294,23 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 ))
                 imported += 1
 
+        externally_removed = _reconcile_complete_youtube_snapshot(
+            db,
+            payload,
+            user.id,
+            account,
+            current_external_ids,
+            current_fingerprints,
+            now,
+        )
+
         message = payload.message
         if payload.items and not accepted:
             message = "본인이 작성한 게시글·댓글·질문·답변으로 확인되지 않은 기록은 제외했습니다."
         if suppressed:
             message = f"{message} 이전에 삭제 처리한 기록 {suppressed}개는 보관함에 다시 표시하지 않았습니다."
+        if externally_removed:
+            message = f"{message} 원본에서 사라진 기록 {externally_removed}개는 관리자 기록만 남기고 보관함에서 숨겼습니다."
         db.add(ScanLog(
             user_id=user.id,
             platform=payload.platform,
@@ -269,6 +332,8 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             "imported": imported,
             "updated": updated,
             "suppressed": suppressed,
+            "externally_removed": externally_removed,
+            "snapshot_complete": payload.snapshot_complete,
             "ignored": len(payload.items) - len(accepted),
             "account_label": account,
             "user": user.email,
