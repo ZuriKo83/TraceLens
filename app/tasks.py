@@ -18,30 +18,53 @@ def _normalized_text(value: str | None) -> str:
     return re.sub(r"\s+", " ", value or "").strip().lower()
 
 
-def _youtube_video_id(source_url: str | None, metadata: dict | None = None) -> str:
+def _youtube_source_identity(source_url: str | None, metadata: dict | None = None) -> tuple[str, str]:
     metadata = metadata or {}
-    explicit = str(
+
+    post_id = str(
+        metadata.get("post_id")
+        or metadata.get("youtube_post_id")
+        or ""
+    ).strip()
+    if post_id:
+        return "post", post_id
+
+    video_id = str(
         metadata.get("video_id")
         or metadata.get("youtube_video_id")
         or ""
     ).strip()
-    if explicit:
-        return explicit
+    if video_id:
+        return "video", video_id
 
     try:
         source = urlparse(source_url or "")
     except ValueError:
-        return ""
+        return "", ""
+
+    post_match = re.match(r"^/post/([^/?#]+)", source.path or "", re.I)
+    if post_match:
+        return "post", post_match.group(1)
 
     query_id = parse_qs(source.query).get("v", [""])[0]
     if query_id:
-        return query_id
+        return "video", query_id
 
-    match = re.match(r"^/(?:shorts|live|embed|v)/([^/?#]+)", source.path or "", re.I)
-    return match.group(1) if match else ""
+    video_match = re.match(r"^/(?:shorts|live|embed|v)/([^/?#]+)", source.path or "", re.I)
+    if video_match:
+        return "video", video_match.group(1)
+
+    return "", ""
 
 
-def _fingerprint(platform: str, item, *, omit_youtube_video: bool = False) -> str:
+def _youtube_source_key(source_url: str | None, metadata: dict | None = None) -> str:
+    kind, source_id = _youtube_source_identity(source_url, metadata)
+    if not source_id:
+        return ""
+    return f"post:{source_id}" if kind == "post" else source_id
+
+
+def _fingerprint(platform: str, item, *, omit_youtube_source: bool = False) -> str:
     platform = platform.strip().lower()
     activity_type = item.activity_type.strip().lower()
     title = _normalized_text(item.title)
@@ -58,9 +81,9 @@ def _fingerprint(platform: str, item, *, omit_youtube_video: bool = False) -> st
         if comment_id:
             normalized = f"youtube|{activity_type}|{comment_id}"
         else:
-            video_id = "" if omit_youtube_video else _youtube_video_id(item.source_url, metadata)
+            source_key = "" if omit_youtube_source else _youtube_source_key(item.source_url, metadata)
             normalized = (
-                f"youtube|{activity_type}|{video_id}|"
+                f"youtube|{activity_type}|{source_key}|"
                 f"{title}|{content}"
             )
     else:
@@ -80,7 +103,7 @@ def _fingerprint_candidates(platform: str, item) -> list[str]:
     primary = _fingerprint(platform, item)
     candidates = [primary]
     if platform.strip().lower() == "youtube":
-        fallback = _fingerprint(platform, item, omit_youtube_video=True)
+        fallback = _fingerprint(platform, item, omit_youtube_source=True)
         if fallback != primary:
             candidates.append(fallback)
     return candidates
@@ -94,8 +117,8 @@ def _load_metadata(raw: str | None) -> dict:
         return {}
 
 
-def _activity_youtube_video_id(activity: Activity) -> str:
-    return _youtube_video_id(activity.source_url, _load_metadata(activity.metadata_json))
+def _activity_youtube_source_key(activity: Activity) -> str:
+    return _youtube_source_key(activity.source_url, _load_metadata(activity.metadata_json))
 
 
 def _merged_metadata(existing: Activity, item) -> dict:
@@ -107,19 +130,31 @@ def _merged_metadata(existing: Activity, item) -> dict:
         return merged
 
     if existing.source_url:
-        video_id = _youtube_video_id(existing.source_url, previous)
+        source_kind, source_id = _youtube_source_identity(existing.source_url, previous)
         merged["original_url"] = existing.source_url
         merged["original_link_resolved"] = True
         merged["original_link_status"] = "preserved"
-        if video_id:
-            merged["video_id"] = video_id
+        merged["source_type"] = source_kind or merged.get("source_type")
+        merged["source_id"] = source_id or merged.get("source_id")
+
+        if source_kind == "video" and source_id:
+            merged["video_id"] = source_id
+        if source_kind == "post" and source_id:
+            merged["post_id"] = source_id
+            merged["youtube_post_id"] = source_id
 
         locator = merged.get("deletion_locator")
         if isinstance(locator, dict):
             locator = dict(locator)
-            locator["video_url"] = existing.source_url
-            if video_id:
-                locator["video_id"] = video_id
+            locator["source_type"] = source_kind or locator.get("source_type")
+            locator["source_id"] = source_id or locator.get("source_id")
+            locator["source_url"] = existing.source_url
+            if source_kind == "video" and source_id:
+                locator["video_id"] = source_id
+                locator["video_url"] = existing.source_url
+            if source_kind == "post" and source_id:
+                locator["post_id"] = source_id
+                locator["post_url"] = existing.source_url
             merged["deletion_locator"] = locator
 
     return merged
@@ -185,7 +220,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
 
             if existing is None and len(fp_candidates) > 1:
                 fallback = by_fp.get(fp_candidates[1])
-                if fallback is not None and not _activity_youtube_video_id(fallback):
+                if fallback is not None and not _activity_youtube_source_key(fallback):
                     existing = fallback
 
             content = "\n".join(part for part in [item.title.strip(), item.content.strip()] if part).strip()
