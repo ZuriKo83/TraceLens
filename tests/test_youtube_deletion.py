@@ -164,8 +164,9 @@ def test_purchase_page_refreshes_and_reconciles_with_server_list() -> None:
     assert '"extension_token": extension_token' in credits
 
 
-def test_youtube_collector_handles_virtualized_rows_and_live_chat_scope() -> None:
+def test_youtube_collector_handles_virtualized_rows_and_empty_complete_scope() -> None:
     collector = read(EXTENSION / "youtube_activity_collector.js")
+    dashboard = read(ROOT / "app" / "templates" / "user_dashboard.html")
 
     assert "collectYouTubeActivityPageV2" in collector
     assert 'activityType: "live_chat"' in collector
@@ -177,8 +178,14 @@ def test_youtube_collector_handles_virtualized_rows_and_live_chat_scope() -> Non
     assert "viewport * 0.62" in collector
     assert "step < 1200" in collector
     assert "snapshot_complete: complete" in collector
-    assert 'status: items.length ? (complete ? "success" : "partial")' in collector
+    assert 'status: complete ? "success" : "partial"' in collector
+    assert "기록이 없습니다. 끝까지 확인했습니다." in collector
     assert 'extractor_version: "1.3.0"' in collector
+
+    assert "entry.scope == 'live_chat'" in dashboard
+    assert "entry.status == 'success' and entry.found_count == 0" in dashboard
+    assert "실시간 채팅" in dashboard
+    assert "기록 없음" in dashboard
 
 
 def test_complete_snapshot_prunes_only_matching_youtube_scope() -> None:
