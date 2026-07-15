@@ -64,6 +64,7 @@ def test_youtube_reuses_active_task_tab_for_sync_and_closes_it() -> None:
     assert "scanSites" not in adapter
     assert "state.closed = true" in engine
     assert "chrome.tabs.remove(tabId)" in engine
+    assert engine.index("const sync = await syncArchive(adapter, config, tab.id)") < engine.index("await closeTaskTab()")
 
 
 def test_youtube_deletion_uses_cached_bottom_up_batches() -> None:
