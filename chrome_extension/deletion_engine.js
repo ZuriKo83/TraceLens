@@ -93,9 +93,10 @@
       }],
       `${adapter.label || adapter.platform} 삭제 페이지에서 결과를 받지 못했습니다.`,
     );
+    const immediateAttempts = (payload.failed || []).filter((entry) => /X 삭제 버튼을 눌렀지만/.test(String(entry?.reason || ""))).length;
     publish(webTabId, adapter, {
       stage: "deleting",
-      message: `${payload.scannedUnique || payload.scanned || 0}개 행 탐색, ${payload.clickedIds?.length || 0}개 삭제 요청 완료`,
+      message: `${payload.scannedUnique || payload.scanned || 0}개 행 탐색, ${(payload.clickedIds?.length || 0) + immediateAttempts}개 삭제 요청 완료`,
       progress: payload.progress || null,
     });
     return payload;
@@ -197,6 +198,10 @@
       const found = new Set(verification.foundIds || []);
       const firstFailures = new Map((firstPass.failed || []).map((entry) => [entry.id, entry.reason]));
       const retryFailures = new Map((retryPass.failed || []).map((entry) => [entry.id, entry.reason]));
+      const clickAttempted = new Set(clicked);
+      for (const entry of [...(firstPass.failed || []), ...(retryPass.failed || [])]) {
+        if (/X 삭제 버튼을 눌렀지만/.test(String(entry?.reason || ""))) clickAttempted.add(entry.id);
+      }
       const unmatched = new Set([...(firstPass.unmatchedIds || []), ...(retryPass.unmatchedIds || [])]);
       const deletedIds = [];
       const alreadyMissingIds = [];
@@ -207,7 +212,7 @@
           failures.push({id: target.id, reason: "새로고침 후에도 대상 댓글이 남아 있습니다."});
         } else if (!verification.complete) {
           failures.push({id: target.id, reason: "전체 기록 확인이 끝나지 않아 삭제 여부를 확정할 수 없습니다."});
-        } else if (clicked.has(target.id)) {
+        } else if (clickAttempted.has(target.id)) {
           deletedIds.push(target.id);
         } else if (firstFailures.has(target.id) || retryFailures.has(target.id)) {
           failures.push({id: target.id, reason: retryFailures.get(target.id) || firstFailures.get(target.id)});
