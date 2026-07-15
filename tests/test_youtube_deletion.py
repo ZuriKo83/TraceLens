@@ -14,7 +14,7 @@ def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.2.3"
+    assert manifest["version"] == "1.2.4"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_activity_verify_page.js" in worker
@@ -40,7 +40,6 @@ def test_engine_uses_separate_task_window_and_hides_verification() -> None:
     assert "await returnToWebTab()" in engine
     assert "reloadAndWait(taskTabId, state, adapter, false)" in engine
     assert "verificationPass(taskTabId" in engine
-    assert "syncArchive(adapter, config, taskTabId, verification)" in engine
     assert "closeTaskWindow" in engine
     assert "뒤쪽 작업 창" in engine
 
@@ -63,6 +62,7 @@ def test_youtube_comment_and_live_chat_adapters_use_same_page_functions() -> Non
     assert "batchSize: 20" in adapter
     assert "verificationDelayMs: 1800" in adapter
     assert "retry: false" in adapter
+    assert "deferArchiveSync: true" in adapter
 
 
 def test_adapter_does_not_treat_google_activity_token_as_comment_id() -> None:
@@ -113,7 +113,7 @@ def test_shared_youtube_verifier_separates_comment_id_and_activity_token() -> No
     assert "row_text_hash" in verifier
 
 
-def test_engine_uses_reload_verification_after_immediate_dom_delay() -> None:
+def test_engine_reports_pending_instead_of_immediate_youtube_success() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
 
     assert "firstPass.attemptedIds" in engine
@@ -121,11 +121,14 @@ def test_engine_uses_reload_verification_after_immediate_dom_delay() -> None:
     assert "attempted.has(target.id)" in engine
     assert "verificationDelayMs" in engine
     assert "await sleep(verificationDelayMs)" in engine
-    assert "삭제 버튼 클릭 기록이 없어 삭제 여부를 확정할 수 없습니다." in engine
-    assert "unmatched.has(target.id) && firstPass.discoveryComplete === true" in engine
+    assert "const pendingIds = []" in engine
+    assert "pendingIds.push(target.id)" in engine
+    assert "deleted: 0" in engine
+    assert "syncDeferred" in engine
+    assert "YouTube 실제 댓글 반영이 확인되기 전까지 TraceLens 보관함을 유지합니다." in engine
 
 
-def test_purchase_page_refreshes_and_reconciles_with_server_list() -> None:
+def test_purchase_page_refreshes_without_server_row_success_inference() -> None:
     content = read(EXTENSION / "content_script.js")
     base = read(ROOT / "app" / "templates" / "base.html")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
@@ -138,13 +141,12 @@ def test_purchase_page_refreshes_and_reconciles_with_server_list() -> None:
     assert "dataset.youtubeKind" in content
     assert "TRACELENS_DELETE_REQUEST" in content
     assert "/app?mode=delete" not in content
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v2"' in content
-    assert "requestedActivityIds" in content
-    assert "reconcileWithServerList" in content
-    assert "serverRemoved" in content
-    assert "삭제되었거나 이미 Google 내 활동에 없습니다." in content
-    assert "성공·부분 실패와 관계없이 서버가 렌더링한 최신 삭제 목록" in content
-    assert "setTimeout(() => location.reload()" in content
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v3"' in content
+    assert "reconcileWithServerList" not in content
+    assert "serverRemoved" not in content
+    assert "삭제 요청 ${pending}개가 접수됐습니다." in content
+    assert "반영 전까지 TraceLens 목록을 유지합니다." in content
+    assert "setTimeout(() => location.reload(), 1800)" in content
     assert "마지막 삭제 결과" in content
 
     assert '<a href="/delete-credits/purchase">삭제</a>' in base
@@ -188,14 +190,17 @@ def test_youtube_collector_handles_virtualized_rows_and_empty_complete_scope() -
     assert "기록 없음" in dashboard
 
 
-def test_complete_snapshot_prunes_only_matching_youtube_scope() -> None:
+def test_complete_snapshot_requires_two_misses_before_youtube_prune() -> None:
     schemas = read(ROOT / "app" / "schemas.py")
     tasks = read(ROOT / "app" / "tasks.py")
 
     assert "snapshot_complete: bool = False" in schemas
-    assert "_prune_complete_youtube_snapshot" in tasks
+    assert "_reconcile_complete_youtube_snapshot" in tasks
     assert 'payload.scan_scope not in {"comment", "live_chat"}' in tasks
-    assert "_youtube_activity_kind(activity) != payload.scan_scope" in tasks
+    assert 'Activity.status.in_(["visible", "missing_once"])' in tasks
+    assert 'if activity.status == "missing_once"' in tasks
+    assert 'activity.status = "missing_once"' in tasks
+    assert "두 번 연속 완전 조회" in tasks
     assert "db.delete(activity)" in tasks
 
 
