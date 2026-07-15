@@ -29,23 +29,34 @@
     return postId ? `post:${postId}` : (url.searchParams.get("v") || "");
   }
 
-  function normalizeTargets(rawTargets) {
-    const output = [];
-    const seen = new Set();
-    for (const raw of Array.isArray(rawTargets) ? rawTargets : []) {
-      const locator = raw?.locator && typeof raw.locator === "object" ? raw.locator : {};
-      const title = clean(locator.title || raw?.title);
-      const content = clean(raw?.content || locator.content);
-      const rawSourceUrl = raw?.sourceUrl || raw?.source_url || locator.source_url || "";
-      const commentId = clean(raw?.commentId || raw?.comment_id || locator.comment_id || locator.activity_token || parseUrl(rawSourceUrl)?.searchParams.get("lc"));
-      const sourceUrl = canonicalYouTubeUrl(rawSourceUrl);
-      if (!title && !content && !sourceUrl && !commentId) continue;
-      const id = clean(raw?.id) || `target-${output.length + 1}`;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      output.push({id, title, content, commentId, sourceUrl, sourceKey: sourceIdentity(sourceUrl), locator});
-    }
-    return output;
+  function makeNormalizeTargets(activityKind) {
+    return function normalizeTargets(rawTargets) {
+      const output = [];
+      const seen = new Set();
+      for (const raw of Array.isArray(rawTargets) ? rawTargets : []) {
+        const locator = raw?.locator && typeof raw.locator === "object" ? raw.locator : {};
+        const title = clean(locator.title || raw?.title);
+        const content = clean(raw?.content || locator.content);
+        const rawSourceUrl = raw?.sourceUrl || raw?.source_url || locator.source_url || "";
+        const commentId = clean(raw?.commentId || raw?.comment_id || locator.comment_id || locator.activity_token || parseUrl(rawSourceUrl)?.searchParams.get("lc"));
+        const sourceUrl = canonicalYouTubeUrl(rawSourceUrl);
+        if (!title && !content && !sourceUrl && !commentId) continue;
+        const id = clean(raw?.id) || `target-${output.length + 1}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        output.push({
+          id,
+          activityKind,
+          title,
+          content,
+          commentId,
+          sourceUrl,
+          sourceKey: sourceIdentity(sourceUrl),
+          locator,
+        });
+      }
+      return output;
+    };
   }
 
   function taskUrlMatches(value, expectedPage) {
@@ -78,41 +89,40 @@
     };
   }
 
-  TraceLensDeletionEngine.registerAdapter("youtube", {
-    label: "YouTube 댓글",
-    itemLabel: "YouTube 댓글",
+  function registerYouTubeAdapter({key, kind, label, page, taskUrl}) {
+    TraceLensDeletionEngine.registerAdapter(key, {
+      label: `YouTube ${label}`,
+      itemLabel: `YouTube ${label}`,
+      taskUrl,
+      maxTargets: 100,
+      batchSize: 20,
+      batchPauseMs: 500,
+      verificationDelayMs: 1800,
+      retry: false,
+      normalizeTargets: makeNormalizeTargets(kind),
+      isTaskUrl(value) { return taskUrlMatches(value, page); },
+      deletePageFunction: traceLensDeleteYouTubeTargetsInPage,
+      verifyPageFunction: traceLensVerifyYouTubeActivityTargetsInPage,
+      syncFromVerification: makeSyncFromVerification(label),
+      openingMessage: `Google 내 활동의 YouTube ${label} 페이지를 앞에 여는 중입니다.`,
+      discoveryMessage(count) { return `${count}개 ${label}을 동일한 공통 삭제 로직으로 찾아 아래쪽부터 처리합니다.`; },
+      syncError: `${label} 처리는 확인했지만 TraceLens 보관함 동기화에 실패했습니다.`,
+    });
+  }
+
+  registerYouTubeAdapter({
+    key: "youtube",
+    kind: "comment",
+    label: "댓글",
+    page: "youtube_comments",
     taskUrl: COMMENT_TASK_URL,
-    maxTargets: 100,
-    batchSize: 20,
-    batchPauseMs: 500,
-    verificationDelayMs: 1800,
-    retry: false,
-    normalizeTargets,
-    isTaskUrl(value) { return taskUrlMatches(value, "youtube_comments"); },
-    deletePageFunction: traceLensDeleteYouTubeTargetsInPage,
-    verifyPageFunction: traceLensVerifyYouTubeTargetsInPage,
-    syncFromVerification: makeSyncFromVerification("댓글"),
-    openingMessage: "Google 내 활동의 YouTube 댓글 페이지를 앞에 여는 중입니다.",
-    discoveryMessage(count) { return `${count}개 댓글을 실제 댓글 ID와 본문으로 찾아 아래쪽부터 처리합니다.`; },
-    syncError: "댓글 처리는 확인했지만 TraceLens 보관함 동기화에 실패했습니다.",
   });
 
-  TraceLensDeletionEngine.registerAdapter("youtube_live_chat", {
-    label: "YouTube 실시간 채팅",
-    itemLabel: "YouTube 실시간 채팅",
+  registerYouTubeAdapter({
+    key: "youtube_live_chat",
+    kind: "live_chat",
+    label: "실시간 채팅",
+    page: "youtube_live_chat",
     taskUrl: LIVE_CHAT_TASK_URL,
-    maxTargets: 100,
-    batchSize: 20,
-    batchPauseMs: 500,
-    verificationDelayMs: 1800,
-    retry: false,
-    normalizeTargets,
-    isTaskUrl(value) { return taskUrlMatches(value, "youtube_live_chat"); },
-    deletePageFunction: traceLensDeleteYouTubeLiveChatTargetsInPage,
-    verifyPageFunction: traceLensVerifyYouTubeLiveChatTargetsInPage,
-    syncFromVerification: makeSyncFromVerification("실시간 채팅"),
-    openingMessage: "Google 내 활동의 YouTube 실시간 채팅 페이지를 앞에 여는 중입니다.",
-    discoveryMessage(count) { return `${count}개 실시간 채팅을 저장된 위치 정보와 본문으로 찾아 아래쪽부터 처리합니다.`; },
-    syncError: "실시간 채팅 처리는 확인했지만 TraceLens 보관함 동기화에 실패했습니다.",
   });
 })();
