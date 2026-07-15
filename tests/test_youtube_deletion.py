@@ -62,22 +62,37 @@ def test_youtube_deletion_uses_cached_bottom_up_batches() -> None:
     assert "batchPauseMs" in deleter
 
 
-def test_delete_controls_only_install_in_dedicated_delete_mode() -> None:
+def test_existing_purchase_page_keeps_credits_and_runs_deletion() -> None:
     content = read(EXTENSION / "content_script.js")
     base = read(ROOT / "app" / "templates" / "base.html")
+    purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
+    credits = read(ROOT / "app" / "delete_credits.py")
 
-    assert 'query.get("mode") === "delete"' in content
-    assert "if (deletionMode) installDeletionCenter()" in content
-    assert "/app?mode=delete&platform=youtube&activity_type=comment" in content
-    assert "tracelens-platform-grid" in content
-    assert "Instagram" in content
-    assert "Threads" in content
-    assert "Facebook" in content
-    assert "MAX_YOUTUBE_DELETE_SELECTION = 100" in content
+    assert 'location.pathname === "/delete-credits/purchase"' in content
+    assert "installPurchaseDeletionBridge" in content
     assert 'type: "DELETE_PLATFORM_ITEMS"' in content
     assert 'platform: "youtube"' in content
-    assert "/app?mode=delete&platform=youtube&activity_type=comment" in base
-    assert "/delete-credits/purchase" not in base
+    assert "TRACELENS_DELETE_REQUEST" in content
+    assert "/app?mode=delete" not in content
+    assert "installDeletionCenter" not in content
+
+    assert '<a href="/delete-credits/purchase">삭제</a>' in base
+    assert "/app?mode=delete" not in base
+
+    assert "삭제권 구매" in purchase
+    assert "현재 보유 삭제권" in purchase
+    assert "플랫폼별 삭제 실행" in purchase
+    assert "YouTube" in purchase
+    assert "Instagram" in purchase
+    assert "Threads" in purchase
+    assert "Facebook" in purchase
+    assert 'data-supported="{{ 1 if supported else 0 }}"' in purchase
+    assert "TRACELENS_DELETE_REQUEST" in purchase
+    assert 'meta name="tracelens-extension-token"' in purchase
+
+    assert '@router.get("/delete-credits/purchase"' in credits
+    assert "issue_collector_token" in credits
+    assert '"extension_token": extension_token' in credits
 
 
 def test_youtube_collector_handles_virtualized_rows_and_marks_only_complete_snapshots() -> None:
