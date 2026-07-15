@@ -9,7 +9,7 @@ def read(name: str) -> str:
 
 def test_manifest_has_required_hosts_and_current_version() -> None:
     manifest = json.loads(read("manifest.json"))
-    assert manifest["version"] == "1.2.2"
+    assert manifest["version"] == "1.2.3"
     assert "https://www.threads.com/*" in manifest["host_permissions"]
     assert "https://www.instagram.com/*" in manifest["host_permissions"]
     assert "https://github.com/*" not in manifest["host_permissions"]
