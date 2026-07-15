@@ -1,5 +1,7 @@
 (() => {
   const MAX_YOUTUBE_DELETE_SELECTION = 100;
+  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v1";
+  const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
   const serverUrl = document.querySelector('meta[name="tracelens-server-url"]')?.content?.trim() || location.origin;
   const userEmail = document.querySelector('meta[name="tracelens-user-email"]')?.content?.trim() || "";
@@ -56,6 +58,53 @@
     return false;
   });
 
+  function readStoredDeletionStatus() {
+    try {
+      const raw = sessionStorage.getItem(DELETE_RESULT_STORAGE_KEY);
+      if (!raw) return null;
+      const stored = JSON.parse(raw);
+      if (!stored?.message || !Number.isFinite(Number(stored.savedAt))) {
+        sessionStorage.removeItem(DELETE_RESULT_STORAGE_KEY);
+        return null;
+      }
+      if (Date.now() - Number(stored.savedAt) > DELETE_RESULT_MAX_AGE_MS) {
+        sessionStorage.removeItem(DELETE_RESULT_STORAGE_KEY);
+        return null;
+      }
+      return stored;
+    } catch {
+      return null;
+    }
+  }
+
+  function storeDeletionStatus(message, kind, result) {
+    try {
+      sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY, JSON.stringify({
+        message,
+        kind,
+        result: result || null,
+        savedAt: Date.now(),
+      }));
+    } catch {
+      // 저장 실패 시 현재 화면에는 계속 표시합니다.
+    }
+  }
+
+  function clearStoredDeletionStatus() {
+    try {
+      sessionStorage.removeItem(DELETE_RESULT_STORAGE_KEY);
+    } catch {
+      // 무시
+    }
+  }
+
+  function restoreStoredDeletionStatus() {
+    const stored = readStoredDeletionStatus();
+    if (!stored) return false;
+    updateDeletionStatus(`마지막 삭제 결과 · ${stored.message}`, stored.kind || "");
+    return true;
+  }
+
   function installPurchaseDeletionBridge() {
     if (document.documentElement.dataset.tracelensDeleteBridge === "ready") return;
     document.documentElement.dataset.tracelensDeleteBridge = "ready";
@@ -65,7 +114,9 @@
       row.dataset.tracelensYoutubeTargetId = `youtube-activity-${row.dataset.activityId || index + 1}`;
     });
 
-    updateDeletionStatus("확장 프로그램 연결됨 · YouTube 댓글을 최대 100개까지 선택할 수 있습니다.", "success");
+    if (!restoreStoredDeletionStatus()) {
+      updateDeletionStatus("확장 프로그램 연결됨 · YouTube 댓글을 최대 100개까지 선택할 수 있습니다.", "success");
+    }
     window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_READY"));
 
     window.addEventListener("TRACELENS_DELETE_REQUEST", (event) => {
@@ -110,6 +161,7 @@
     const confirmed = confirm(`선택한 YouTube 댓글 ${rows.length}개를 실제로 삭제합니다.\n\n삭제 후 되돌릴 수 없습니다. 계속하시겠습니까?`);
     if (!confirmed) return;
 
+    clearStoredDeletionStatus();
     setDeletionControlsDisabled(true);
     updateDeletionStatus("전체 기록에서 대상을 찾은 뒤 아래쪽부터 삭제합니다. 작업 탭을 닫거나 이동하지 마세요.");
 
@@ -147,6 +199,11 @@
     status.classList.toggle("success", kind === "success");
   }
 
+  function showFinalDeletionStatus(message, kind, result) {
+    storeDeletionStatus(message, kind, result);
+    updateDeletionStatus(message, kind);
+  }
+
   function finishDeletion(result) {
     const hasDeletionResult = result && ("deleted" in result || "alreadyMissing" in result || "failed" in result);
     const deletionFailed = Number(result?.failed || 0) > 0 || (!hasDeletionResult && !result?.ok);
@@ -156,7 +213,7 @@
     if (deletionFailed) {
       const summary = `삭제 확인 ${result?.deleted || 0}개, 이미 없음 ${result?.alreadyMissing || 0}개, 실패 ${result?.failed || 0}개`;
       const reason = firstFailure || result?.error || "삭제 대상이나 Google 삭제 버튼을 확인하지 못했습니다.";
-      updateDeletionStatus(`${summary} · ${reason}`, "error");
+      showFinalDeletionStatus(`${summary} · ${reason}`, "error", result);
       setDeletionControlsDisabled(false);
       window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: result || {ok: false}}));
       return;
@@ -164,9 +221,9 @@
 
     const summary = `삭제 확인 ${result.deleted || 0}개, 이미 없음 ${result.alreadyMissing || 0}개`;
     if (syncWarning) {
-      updateDeletionStatus(`${summary} · 댓글 삭제는 완료됐지만 보관함 동기화는 실패했습니다. 내 활동에서 YouTube 조회를 다시 실행하세요.`, "error");
+      showFinalDeletionStatus(`${summary} · 댓글 삭제는 완료됐지만 보관함 동기화는 실패했습니다. 내 활동에서 YouTube 조회를 다시 실행하세요.`, "error", result);
     } else {
-      updateDeletionStatus(`${summary} · 삭제와 보관함 동기화가 완료됐습니다.`, "success");
+      showFinalDeletionStatus(`${summary} · 삭제와 보관함 동기화가 완료됐습니다.`, "success", result);
     }
     window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: result}));
     setTimeout(() => location.reload(), syncWarning ? 4500 : 2200);
