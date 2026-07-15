@@ -94,6 +94,37 @@ globalThis.traceLensDeleteYouTubeLiveChatTargetsInPage = async function(targets,
   const pending = targets.filter((target) => found.has(target.id)).sort((a, b) => found.get(b.id).top - found.get(a.id).top);
   const attemptedIds = [], clickedIds = [], failed = [];
   const unmatchedIds = targets.filter((target) => !found.has(target.id)).map((target) => target.id);
+
+  const waitRemoved = async (item, timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (!item.row.isConnected) return true;
+      if (item.token && !items().some((current) => current.token === item.token)) return true;
+      await sleep(90);
+    }
+    return false;
+  };
+
+  const clickConfirmIfPresent = async () => {
+    const deadline = Date.now() + 1200;
+    while (Date.now() < deadline) {
+      const dialogs = [...document.querySelectorAll("[role='dialog'],dialog,[aria-modal='true']")].filter(visible);
+      for (const dialog of dialogs) {
+        const confirm = [...dialog.querySelectorAll("button,[role='button']")].filter(visible).find((button) => {
+          const label = clean(`${button.getAttribute("aria-label") || ""} ${button.innerText || button.textContent || ""}`);
+          return /^(활동\s*삭제|삭제하기|삭제|확인|delete\s*activity|delete|remove|confirm|ok)$/i.test(label);
+        });
+        if (confirm) {
+          confirm.focus?.({preventScroll: true});
+          confirm.click();
+          return true;
+        }
+      }
+      await sleep(90);
+    }
+    return false;
+  };
+
   for (const target of pending) {
     await move(found.get(target.id).top);
     let current = best(target, items().filter((item) => item.content));
@@ -101,10 +132,16 @@ globalThis.traceLensDeleteYouTubeLiveChatTargetsInPage = async function(targets,
     current.row.scrollIntoView({block:"center"}); await sleep(100);
     current = best(target, items().filter((item) => item.content)) || current;
     try {
-      current.button.click(); attemptedIds.push(target.id);
-      await sleep(500);
-      if (!current.row.isConnected) clickedIds.push(target.id);
-      else failed.push({id: target.id, reason: "X 삭제 버튼을 눌렀지만 실시간 채팅 항목이 즉시 사라지지 않았습니다."});
+      current.button.focus?.({preventScroll: true});
+      current.button.click();
+      attemptedIds.push(target.id);
+      let removed = await waitRemoved(current, 900);
+      if (!removed) {
+        const confirmed = await clickConfirmIfPresent();
+        if (confirmed) removed = await waitRemoved(current, 1800);
+      }
+      if (removed) clickedIds.push(target.id);
+      else failed.push({id: target.id, reason: "X 삭제 버튼을 눌렀지만 확인 후에도 실시간 채팅 항목이 즉시 사라지지 않았습니다."});
     } catch (error) { failed.push({id: target.id, reason: error.message || String(error)}); }
     if (attemptedIds.length % batchSize === 0) await sleep(batchPauseMs); else await sleep(120);
   }
