@@ -14,7 +14,7 @@ def test_reusable_deletion_engine_and_youtube_adapter_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.1.6"
+    assert manifest["version"] == "1.1.7"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_verify_page.js" in worker
@@ -25,21 +25,21 @@ def test_reusable_deletion_engine_and_youtube_adapter_are_loaded() -> None:
     assert "https://myactivity.google.com/*" in manifest["host_permissions"]
 
 
-def test_generic_engine_keeps_one_task_tab_until_verification_finishes() -> None:
+def test_engine_uses_separate_task_window_and_hides_verification() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
 
     assert "registerAdapter(platform, adapter)" in engine
     assert 'message?.type !== "DELETE_PLATFORM_ITEMS"' in engine
     assert "runningPlatforms" in engine
+    assert 'chrome.windows.create({url, focused: true, type: "popup"})' in engine
     assert "const taskTabId = tab.id" in engine
     assert "deletionPass(taskTabId" in engine
-    assert "reloadAndWait(taskTabId" in engine
+    assert "await returnToWebTab()" in engine
+    assert "reloadAndWait(taskTabId, state, adapter, false)" in engine
     assert "verificationPass(taskTabId" in engine
     assert "syncArchive(adapter, config, taskTabId, verification)" in engine
-    assert "let completed = false" in engine
-    assert "if (completed) await closeTaskTab()" in engine
-    assert "작업 탭은 확인을 위해 열어 둡니다" in engine
-    assert "await returnToWebTab()" in engine
+    assert "closeTaskWindow" in engine
+    assert "뒤쪽 작업 창" in engine
 
 
 def test_youtube_adapter_uses_single_verification_snapshot() -> None:
@@ -50,6 +50,7 @@ def test_youtube_adapter_uses_single_verification_snapshot() -> None:
     assert "maxTargets: 100" in adapter
     assert "batchSize: 20" in adapter
     assert "batchPauseMs: 500" in adapter
+    assert "verificationDelayMs: 1800" in adapter
     assert "retry: false" in adapter
     assert "syncFromVerification" in adapter
     assert "postExtraction(config, extraction)" in adapter
@@ -57,7 +58,7 @@ def test_youtube_adapter_uses_single_verification_snapshot() -> None:
     assert "adapter.syncFromVerification(verification, config, tabId)" in engine
 
 
-def test_youtube_deletion_restores_discovered_position_before_clicking() -> None:
+def test_youtube_deletion_restores_position_and_tracks_click_attempts() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
 
     assert 'c-wiz[jsname="Ttx95"][data-token]' in deleter
@@ -69,6 +70,8 @@ def test_youtube_deletion_restores_discovered_position_before_clicking() -> None
     assert "restoreAndFind" in deleter
     assert "await setScroll(saved.scrollTop" in deleter
     assert "wrapperByToken" in deleter
+    assert "const attemptedIds = []" in deleter
+    assert "attemptedIds.push(target.id)" in deleter
     assert "batchClicks >= batchSize" in deleter
     assert "clickConfirmIfPresent" in deleter
     assert "await waitRemoved(refreshed, 900)" in deleter
@@ -77,17 +80,16 @@ def test_youtube_deletion_restores_discovered_position_before_clicking() -> None
 def test_engine_uses_reload_verification_after_immediate_dom_delay() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
 
-    assert "const clickAttempted = new Set(clicked)" in engine
-    assert "X 삭제 버튼을 눌렀지만" in engine
-    assert "clickAttempted.add(entry.id)" in engine
-    assert "clickAttempted.has(target.id)" in engine
-    assert "const firstFailures = new Map" in engine
-    assert "firstFailures.has(target.id)" in engine
+    assert "firstPass.attemptedIds" in engine
+    assert "const attempted = new Set" in engine
+    assert "attempted.has(target.id)" in engine
+    assert "verificationDelayMs" in engine
+    assert "await sleep(verificationDelayMs)" in engine
     assert "삭제 버튼 클릭 기록이 없어 삭제 여부를 확정할 수 없습니다." in engine
     assert "unmatched.has(target.id) && firstPass.discoveryComplete === true" in engine
 
 
-def test_youtube_verification_collects_snapshot_in_same_pass() -> None:
+def test_youtube_verification_uses_exact_comment_id_and_collects_snapshot() -> None:
     verifier = read(EXTENSION / "youtube_verify_page.js")
 
     assert 'c-wiz[jsname="Ttx95"][data-token]' in verifier
@@ -96,7 +98,9 @@ def test_youtube_verification_collects_snapshot_in_same_pass() -> None:
     assert "foundIds" in verifier
     assert "snapshot_complete: complete" in verifier
     assert "extraction" in verifier
-    assert 'extractor_version: "1.4.0"' in verifier
+    assert 'extractor_version: "1.4.1"' in verifier
+    assert "if (targetCommentId) return Boolean(item.commentId && targetCommentId === item.commentId)" in verifier
+    assert "sameSpecificTitle" in verifier
     assert "bottomStable >= 5" in verifier
 
 
