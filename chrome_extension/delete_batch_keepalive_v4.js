@@ -10,7 +10,6 @@
 
     const sendPong = async () => {
       try {
-        // Calling an extension API resets the MV3 service-worker idle timer.
         await chrome.runtime.getPlatformInfo();
       } catch {
         // Still try to answer through the open port.
@@ -57,5 +56,16 @@
     port.onDisconnect.addListener(() => {
       stopPulse();
     });
+  });
+
+  // The TraceLens page may be in a background tab while the user watches
+  // YouTube, so its timers can be throttled. The small rendered My Activity
+  // worker sends this independent pulse every four seconds instead.
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type !== "DELETE_WORKER_PULSE") return false;
+    chrome.runtime.getPlatformInfo()
+      .then(() => sendResponse({ok: true, at: Date.now()}))
+      .catch(() => sendResponse({ok: true, at: Date.now()}));
+    return true;
   });
 })();
