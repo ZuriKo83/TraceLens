@@ -91,12 +91,14 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
   const score = (target, item) => {
     const locator = target.locator || {};
     const targetCommentId = clean(target.commentId || locator.comment_id || locator.activity_token);
+    if (targetCommentId) {
+      return targetCommentId === item.commentId
+        ? {value: 500, strong: true}
+        : {value: 0, strong: false};
+    }
+
     let value = 0;
     let strong = false;
-    if (targetCommentId && item.commentId && targetCommentId === item.commentId) {
-      value += 500;
-      strong = true;
-    }
     if (locator.semantic_hash && locator.semantic_hash === item.semanticHash) {
       value += 160;
       strong = true;
@@ -190,6 +192,7 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     .filter((target) => discovered.has(target.id))
     .sort((left, right) => (discovered.get(right.id)?.scrollTop || 0) - (discovered.get(left.id)?.scrollTop || 0));
   const clickedIds = [];
+  const attemptedIds = [];
   const failed = [];
   const unmatchedIds = targets.filter((target) => !discovered.has(target.id)).map((target) => target.id);
   let batchClicks = 0;
@@ -266,20 +269,21 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     try {
       button.focus?.({preventScroll: true});
       button.click();
+      attemptedIds.push(target.id);
       let removed = await waitRemoved(refreshed, 900);
       if (!removed) {
         const confirmed = await clickConfirmIfPresent();
         if (confirmed) removed = await waitRemoved(refreshed, 1800);
       }
       if (removed) clickedIds.push(target.id);
-      else failed.push({id: target.id, reason: "X 삭제 버튼을 눌렀지만 댓글 카드가 사라지지 않았습니다."});
+      else failed.push({id: target.id, reason: "X 삭제 버튼을 눌렀지만 댓글 카드가 즉시 사라지지 않았습니다."});
     } catch (error) {
       failed.push({id: target.id, reason: error.message || String(error)});
     }
 
     batchClicks += 1;
     if (batchClicks >= batchSize) {
-      banner.textContent = `${clickedIds.length}개 삭제 완료 · 잠시 안정화를 기다립니다.`;
+      banner.textContent = `${attemptedIds.length}개 삭제 요청 완료 · 잠시 반영을 기다립니다.`;
       await sleep(batchPauseMs);
       batchClicks = 0;
     } else {
@@ -287,17 +291,23 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     }
   }
 
-  banner.textContent = clickedIds.length
-    ? `${clickedIds.length}개 삭제 요청 완료 · 새로고침 후 한 번만 확인합니다.`
-    : "삭제된 댓글이 없습니다. 실패 원인을 TraceLens로 전달합니다.";
+  banner.textContent = attemptedIds.length
+    ? `${attemptedIds.length}개 삭제 요청 완료 · 새로고침 후 한 번만 확인합니다.`
+    : "삭제 요청된 댓글이 없습니다. 실패 원인을 TraceLens로 전달합니다.";
 
   return {
     clickedIds,
+    attemptedIds,
     failed,
     unmatchedIds,
     scannedUnique: scanned.size,
     discoveryComplete: unmatchedIds.length === 0,
     batchSize,
-    progress: {clicked: clickedIds.length, unmatched: unmatchedIds.length, failed: failed.length},
+    progress: {
+      clicked: clickedIds.length,
+      attempted: attemptedIds.length,
+      unmatched: unmatchedIds.length,
+      failed: failed.length,
+    },
   };
 };
