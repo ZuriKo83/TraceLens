@@ -44,6 +44,17 @@
     }).catch(() => undefined);
   }
 
+  async function focusTab(tabId) {
+    if (!tabId) return null;
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) return null;
+    await chrome.tabs.update(tabId, {active: true}).catch(() => undefined);
+    if (Number.isInteger(tab.windowId)) {
+      await chrome.windows.update(tab.windowId, {focused: true}).catch(() => undefined);
+    }
+    return tab;
+  }
+
   async function assertTaskTab(tabId, state, adapter) {
     if (state.closed) throw new Error("삭제 작업 탭이 닫혔습니다.");
     if (state.navigated) throw new Error("삭제 작업 탭의 주소가 변경되어 작업을 중단했습니다.");
@@ -54,9 +65,11 @@
   }
 
   async function reloadAndWait(tabId, state, adapter) {
+    await focusTab(tabId);
     await chrome.tabs.reload(tabId);
     await waitForTabComplete(tabId, adapter.loadTimeoutMs || 45000);
     await waitForPageSettled(tabId, adapter.settleTimeoutMs || 15000);
+    await focusTab(tabId);
     await assertTaskTab(tabId, state, adapter);
   }
 
@@ -69,12 +82,13 @@
   }
 
   async function deletionPass(tabId, targets, adapter, webTabId) {
+    await focusTab(tabId);
     const payload = await executePageFunction(
       tabId,
       adapter.deletePageFunction,
       [targets, {
         batchSize: adapter.batchSize || 20,
-        batchPauseMs: adapter.batchPauseMs || 800,
+        batchPauseMs: adapter.batchPauseMs || 500,
       }],
       `${adapter.label || adapter.platform} 삭제 페이지에서 결과를 받지 못했습니다.`,
     );
@@ -87,6 +101,7 @@
   }
 
   async function verificationPass(tabId, targets, adapter, webTabId) {
+    await focusTab(tabId);
     const payload = await executePageFunction(
       tabId,
       adapter.verifyPageFunction,
@@ -95,17 +110,20 @@
     );
     publish(webTabId, adapter, {
       stage: "verifying",
-      message: `전체 기록 재검증 완료: 남아 있는 대상 ${payload.foundIds?.length || 0}개`,
+      message: `한 번의 전체 확인 완료: 남아 있는 대상 ${payload.foundIds?.length || 0}개`,
       progress: payload.progress || null,
     });
     return payload;
   }
 
-  async function syncArchive(adapter, config, tabId) {
+  async function syncArchive(adapter, config, tabId, verification) {
+    if (typeof adapter.syncFromVerification === "function") {
+      return adapter.syncFromVerification(verification, config, tabId);
+    }
     if (typeof adapter.syncCurrentTab === "function") {
       return adapter.syncCurrentTab(tabId, config);
     }
-    if (typeof adapter.syncArchive === "function") return adapter.syncArchive(config, tabId);
+    if (typeof adapter.syncArchive === "function") return adapter.syncArchive(config, tabId, verification);
     const sites = Array.isArray(adapter.syncSites) && adapter.syncSites.length ? adapter.syncSites : [adapter.platform];
     const result = await scanSites(sites, config);
     const lines = result?.lines || [];
@@ -137,11 +155,18 @@
       await chrome.tabs.remove(tabId).catch(() => undefined);
     };
 
+    const returnToWebTab = async () => {
+      if (!webTabId) return;
+      await focusTab(webTabId);
+    };
+
     try {
       publish(webTabId, adapter, {stage: "opening", message: adapter.openingMessage || `${adapter.label} 삭제 페이지를 여는 중입니다.`});
       tab = await chrome.tabs.create({url: adapter.taskUrl, active: true});
+      await focusTab(tab.id);
       await waitForTabComplete(tab.id, adapter.loadTimeoutMs || 45000);
       await waitForPageSettled(tab.id, adapter.settleTimeoutMs || 15000);
+      await focusTab(tab.id);
       await assertTaskTab(tab.id, state, adapter);
 
       publish(webTabId, adapter, {
@@ -151,7 +176,7 @@
       });
       const firstPass = await deletionPass(tab.id, targets, adapter, webTabId);
 
-      publish(webTabId, adapter, {stage: "verifying", message: "새로고침 후 전체 기록을 다시 확인합니다."});
+      publish(webTabId, adapter, {stage: "verifying", message: "새로고침 후 전체 기록을 한 번만 확인합니다."});
       await reloadAndWait(tab.id, state, adapter);
       let verification = await verificationPass(tab.id, targets, adapter, webTabId);
 
@@ -170,17 +195,17 @@
       const alreadyMissingIds = [];
       const failures = [];
       for (const target of targets) {
-        if (found.has(target.id)) failures.push({id: target.id, reason: "새로고침 후에도 대상이 남아 있습니다."});
+        if (found.has(target.id)) failures.push({id: target.id, reason: "새로고침 후에도 대상 댓글이 남아 있습니다."});
         else if (!verification.complete) failures.push({id: target.id, reason: "전체 기록 확인이 끝나지 않아 삭제 여부를 확정할 수 없습니다."});
         else if (clicked.has(target.id)) deletedIds.push(target.id);
         else alreadyMissingIds.push(target.id);
       }
 
       await assertTaskTab(tab.id, state, adapter);
-      publish(webTabId, adapter, {stage: "syncing", message: "현재 작업 탭에서 최신 기록을 수집해 TraceLens 보관함과 동기화합니다."});
-      const sync = await syncArchive(adapter, config, tab.id);
+      publish(webTabId, adapter, {stage: "syncing", message: "방금 확인한 결과로 TraceLens 보관함을 바로 동기화합니다."});
+      const sync = await syncArchive(adapter, config, tab.id, verification);
       const result = {
-        ok: failures.length === 0 && sync.synced,
+        ok: failures.length === 0,
         platform: adapter.platform,
         requested: targets.length,
         deleted: deletedIds.length,
@@ -192,14 +217,16 @@
         verificationComplete: Boolean(verification.complete),
         synced: sync.synced,
         lines: sync.lines,
-        error: sync.synced ? null : (adapter.syncError || "삭제 후 TraceLens 보관함 동기화에 실패했습니다. 해당 사이트 조회를 다시 실행하세요."),
+        warning: sync.synced ? null : (adapter.syncError || "삭제 후 보관함 동기화에 실패했습니다."),
+        error: failures.length ? failures[0]?.reason : null,
       };
 
-      publish(webTabId, adapter, {stage: "closing", message: "확인과 동기화가 끝나 작업 탭을 닫습니다."});
+      publish(webTabId, adapter, {stage: "closing", message: "확인이 끝나 작업 탭을 닫고 TraceLens로 돌아갑니다."});
       await closeTaskTab();
+      await returnToWebTab();
       publish(webTabId, adapter, {
         stage: "done",
-        message: result.ok ? "삭제와 재검증이 완료되었습니다." : "일부 항목을 삭제하지 못했습니다.",
+        message: result.ok ? "삭제 확인이 완료되었습니다." : "일부 댓글이 남아 있습니다.",
         result,
       });
       return result;
@@ -207,6 +234,7 @@
       chrome.tabs.onRemoved.removeListener(onRemoved);
       chrome.tabs.onUpdated.removeListener(onUpdated);
       await closeTaskTab();
+      await returnToWebTab();
     }
   }
 })();
