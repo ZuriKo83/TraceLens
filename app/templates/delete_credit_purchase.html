@@ -1,18 +1,24 @@
 {% extends "base.html" %}
 {% block title %}삭제 · {{ app_name }}{% endblock %}
 {% block head_extra %}
+<meta name="tracelens-extension-token" content="{{ extension_token }}">
+<meta name="tracelens-server-url" content="{{ extension_server }}">
+<meta name="tracelens-user-email" content="{{ extension_user_email }}">
 <style>
-.credit-hero{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;margin-bottom:22px}.credit-balance{padding:16px 20px;border:1px solid #dfe5f3;border-radius:16px;background:#fff;min-width:190px}.credit-balance span{display:block;color:#667085;font-size:.9rem}.credit-balance strong{display:block;margin-top:4px;font-size:1.8rem}.credit-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.credit-card{display:flex;flex-direction:column;gap:14px;padding:24px;border:1px solid #dfe5f3;border-radius:18px;background:#fff;box-shadow:0 10px 30px rgba(34,45,80,.06)}.credit-card.featured{border-color:#5b6cff;box-shadow:0 12px 34px rgba(63,81,181,.14)}.credit-card small{color:#667085}.credit-card h2{margin:0;font-size:1.6rem}.credit-price{font-size:2rem;font-weight:800}.credit-price span{font-size:1rem;font-weight:600;color:#667085}.credit-card .button{margin-top:auto;text-align:center}.purchase-note{margin-top:22px;padding:18px;border-radius:14px;background:#f7f9fc;color:#475467;line-height:1.7}
-.archive-section{margin-top:42px}.archive-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;margin-bottom:16px}.archive-head h2{margin:4px 0 0}.archive-summary{color:#667085;font-size:.95rem}.selection-help{margin-top:4px;color:#667085;font-size:.82rem}.delete-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) 180px 180px auto;gap:10px;margin-bottom:14px;padding:14px;border:1px solid #e2e7f0;border-radius:16px;background:#fff}.delete-toolbar input,.delete-toolbar select{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #d0d5dd;border-radius:10px;background:#fff;font:inherit}.selection-bar{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:12px;padding:14px 16px;border:1px solid #dbe3ff;border-radius:14px;background:#f7f9ff}.selection-actions{display:flex;gap:8px;flex-wrap:wrap}.activity-delete-list{display:grid;gap:10px}.delete-activity-row{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;padding:18px;border:1px solid #e2e7f0;border-radius:16px;background:#fff;cursor:pointer;transition:.15s ease}.delete-activity-row:hover{border-color:#aebcff}.delete-activity-row.selected{border-color:#5b6cff;background:#f6f7ff;box-shadow:0 0 0 1px #5b6cff inset}.delete-activity-row[hidden]{display:none}.delete-activity-row input{width:18px;height:18px;margin-top:4px;accent-color:#3155ff}.delete-item-top{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:7px}.delete-item-badges{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.delete-badge{display:inline-flex;padding:4px 8px;border-radius:999px;background:#eef2ff;color:#3448c5;font-size:.78rem;font-weight:700}.delete-type{color:#667085;font-size:.84rem}.delete-date{color:#667085;font-size:.82rem;white-space:nowrap}.delete-activity-row h3{margin:0;font-size:1rem;line-height:1.45}.delete-activity-row p{margin:7px 0 0;color:#475467;line-height:1.55;white-space:pre-wrap}.delete-source{display:inline-block;margin-top:10px;font-size:.88rem;font-weight:700;color:#3155ff}.empty-archive{padding:38px;text-align:center;border:1px dashed #cfd6e4;border-radius:16px;color:#667085}.selected-delete-button{min-width:180px}.selected-delete-button[disabled]{opacity:.45;cursor:not-allowed}
+.delete-page-nav{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}.delete-page-nav a{padding:10px 15px;border:1px solid #d7deec;border-radius:999px;background:#fff;text-decoration:none;font-weight:700}.credit-hero{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;margin-bottom:22px}.credit-balance{padding:16px 20px;border:1px solid #dfe5f3;border-radius:16px;background:#fff;min-width:190px}.credit-balance span{display:block;color:#667085;font-size:.9rem}.credit-balance strong{display:block;margin-top:4px;font-size:1.8rem}.credit-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.credit-card{display:flex;flex-direction:column;gap:14px;padding:24px;border:1px solid #dfe5f3;border-radius:18px;background:#fff;box-shadow:0 10px 30px rgba(34,45,80,.06)}.credit-card.featured{border-color:#5b6cff;box-shadow:0 12px 34px rgba(63,81,181,.14)}.credit-card small{color:#667085}.credit-card h2{margin:0;font-size:1.6rem}.credit-price{font-size:2rem;font-weight:800}.credit-price span{font-size:1rem;font-weight:600;color:#667085}.credit-card .button{margin-top:auto;text-align:center}.purchase-note{margin-top:22px;padding:18px;border-radius:14px;background:#f7f9fc;color:#475467;line-height:1.7}.archive-section{margin-top:42px;scroll-margin-top:20px}.archive-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;margin-bottom:16px}.archive-head h2{margin:4px 0 0}.archive-summary{color:#667085;font-size:.95rem}.delete-platform-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}.delete-platform-card{display:grid;gap:8px;padding:14px;border:1px solid #e2e7f0;border-radius:14px;background:#fff}.delete-platform-card.active{border-color:#5b6cff;background:#f7f8ff}.delete-platform-card div{display:flex;justify-content:space-between;gap:8px}.delete-platform-card span{font-size:.78rem;color:#667085}.delete-platform-card b+span{font-weight:700}.delete-platform-card button{padding:8px 10px;text-align:left;border:1px solid #d7deec;border-radius:9px;background:#fff}.delete-platform-card button:disabled{opacity:.55}.delete-operation-status{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:#f5f7fb;color:#475467}.delete-operation-status.success{background:#edf9f1;color:#176b37}.delete-operation-status.error{background:#fff0f0;color:#9c2525}.selection-help{margin-top:4px;color:#667085;font-size:.82rem}.delete-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) 180px 180px auto;gap:10px;margin-bottom:14px;padding:14px;border:1px solid #e2e7f0;border-radius:16px;background:#fff}.delete-toolbar input,.delete-toolbar select{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid #d0d5dd;border-radius:10px;background:#fff;font:inherit}.selection-bar{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:12px;padding:14px 16px;border:1px solid #dbe3ff;border-radius:14px;background:#f7f9ff}.selection-actions{display:flex;gap:8px;flex-wrap:wrap}.activity-delete-list{display:grid;gap:10px}.delete-activity-row{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;padding:18px;border:1px solid #e2e7f0;border-radius:16px;background:#fff;cursor:pointer;transition:.15s ease}.delete-activity-row:hover{border-color:#aebcff}.delete-activity-row.selected{border-color:#5b6cff;background:#f6f7ff;box-shadow:0 0 0 1px #5b6cff inset}.delete-activity-row.unsupported{cursor:not-allowed;opacity:.65}.delete-activity-row[hidden]{display:none}.delete-activity-row input{width:18px;height:18px;margin-top:4px;accent-color:#3155ff}.delete-item-top{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:7px}.delete-item-badges{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.delete-badge{display:inline-flex;padding:4px 8px;border-radius:999px;background:#eef2ff;color:#3448c5;font-size:.78rem;font-weight:700}.delete-type{color:#667085;font-size:.84rem}.delete-ready{padding:3px 7px;border-radius:999px;background:#edf9f1;color:#176b37;font-size:.74rem;font-weight:700}.delete-wait{padding:3px 7px;border-radius:999px;background:#f2f4f7;color:#667085;font-size:.74rem;font-weight:700}.delete-date{color:#667085;font-size:.82rem;white-space:nowrap}.delete-activity-row h3{margin:0;font-size:1rem;line-height:1.45}.delete-activity-row p{margin:7px 0 0;color:#475467;line-height:1.55;white-space:pre-wrap}.delete-source{display:inline-block;margin-top:10px;font-size:.88rem;font-weight:700;color:#3155ff}.empty-archive{padding:38px;text-align:center;border:1px dashed #cfd6e4;border-radius:16px;color:#667085}.selected-delete-button{min-width:180px}.selected-delete-button[disabled]{opacity:.45;cursor:not-allowed}
 @media(max-width:900px){.credit-grid{grid-template-columns:1fr}.credit-hero{align-items:stretch;flex-direction:column}.credit-balance{min-width:0}.delete-toolbar{grid-template-columns:1fr 1fr}.archive-head,.selection-bar{align-items:stretch;flex-direction:column}.selection-actions{justify-content:flex-start}}@media(max-width:560px){.delete-toolbar{grid-template-columns:1fr}.delete-item-top{align-items:flex-start;flex-direction:column}}
 </style>
 {% endblock %}
 {% block content %}
-<section class="credit-hero">
+<nav class="delete-page-nav" aria-label="삭제 페이지 구역">
+  <a href="#delete-credit-purchase">삭제권 구매</a>
+  <a href="#delete-execute">삭제 실행</a>
+</nav>
+<section class="credit-hero" id="delete-credit-purchase">
   <div>
-    <p class="eyebrow">DELETE</p>
-    <h1>삭제</h1>
-    <p class="lead">삭제권을 구매하고, 아래 내 보관함에서 삭제할 게시글·댓글을 선택하세요.</p>
+    <p class="eyebrow">DELETE CREDITS</p>
+    <h1>삭제권 구매</h1>
+    <p class="lead">필요한 수량을 선택한 뒤 결제 페이지에서 결제를 진행하세요.</p>
   </div>
   <div class="credit-balance"><span>현재 보유 삭제권</span><strong>{{ balance }}개</strong></div>
 </section>
@@ -29,11 +35,22 @@
 </section>
 <div class="purchase-note">결제 페이지가 열리면 결제를 진행한 뒤 문의 시 TraceLens 가입 이메일을 함께 알려주세요. 현재는 자동 결제 연동 전이므로 관리자가 입금을 확인한 뒤 수동으로 삭제권을 충전합니다.</div>
 
-<section class="archive-section">
+<section class="archive-section" id="delete-execute">
   <div class="archive-head">
-    <div><p class="eyebrow">MY ARCHIVE</p><h2>내 보관함 · 작성한 게시글·댓글</h2></div>
+    <div><p class="eyebrow">DELETE ACTIVITY</p><h2>플랫폼별 삭제 실행</h2><p class="muted">삭제권 구매 영역과 실제 삭제 실행 영역을 분리했습니다.</p></div>
     <span class="archive-summary">전체 {{ activities|length }}개 기록</span>
   </div>
+
+  <div class="delete-platform-grid" aria-label="삭제 지원 플랫폼">
+    <section class="delete-platform-card active"><div><b>YouTube</b><span>사용 가능</span></div><button type="button" disabled>댓글 · 최대 100개</button><button type="button" disabled>실시간 채팅 · 준비 중</button></section>
+    <section class="delete-platform-card"><div><b>Instagram</b><span>준비 중</span></div><button type="button" disabled>댓글</button></section>
+    <section class="delete-platform-card"><div><b>Threads</b><span>준비 중</span></div><button type="button" disabled>게시글</button><button type="button" disabled>답글</button></section>
+    <section class="delete-platform-card"><div><b>Facebook</b><span>준비 중</span></div><button type="button" disabled>게시글</button><button type="button" disabled>댓글</button></section>
+    <section class="delete-platform-card"><div><b>X</b><span>준비 중</span></div><button type="button" disabled>게시글·답글</button></section>
+    <section class="delete-platform-card"><div><b>네이버</b><span>준비 중</span></div><button type="button" disabled>블로그 게시글</button><button type="button" disabled>지식iN 질문·답변</button></section>
+  </div>
+
+  <p class="delete-operation-status" id="delete-operation-status">확장 프로그램 연결 확인 중입니다.</p>
 
   {% if activities %}
   <div class="delete-toolbar">
@@ -51,25 +68,27 @@
 
   <div class="selection-bar">
     <div>
-      <strong>삭제할 기록 선택</strong>
+      <strong>YouTube 댓글 선택</strong>
       <div class="archive-summary"><span id="visible-count">{{ activities|length }}</span>개 표시 · <span id="selected-count">0</span>개 선택 · 삭제권 {{ balance }}개</div>
-      <div class="selection-help">첫 항목을 선택한 뒤 Shift를 누른 채 다른 항목을 선택하면 구간 전체가 선택됩니다.</div>
+      <div class="selection-help">현재는 YouTube 댓글만 실제 삭제할 수 있으며 한 번에 최대 100개까지 처리합니다.</div>
     </div>
     <div class="selection-actions">
-      <button class="button secondary" id="select-visible" type="button">현재 목록 전체 선택</button>
+      <button class="button secondary" id="select-visible" type="button">현재 YouTube 댓글 선택</button>
       <button class="button secondary" id="clear-selected" type="button">선택 해제</button>
-      <button class="button primary selected-delete-button" id="selected-delete-button" type="button" disabled>선택한 기록 0개</button>
+      <button class="button primary selected-delete-button" id="selected-delete-button" type="button" disabled>선택 댓글 삭제</button>
     </div>
   </div>
 
   <div class="activity-delete-list" id="activity-delete-list">
     {% for activity in activities %}
     {% set parts = activity.content.split('\n', 1) %}
-    <label class="delete-activity-row" data-platform="{{ activity.platform }}" data-type="{{ activity.activity_type }}" data-search="{{ (activity.content ~ ' ' ~ (activity.source_url or ''))|lower|e }}">
-      <input class="delete-activity-checkbox" type="checkbox" value="{{ activity.id }}">
+    {% set metadata_text = activity.metadata_json or '' %}
+    {% set supported = activity.platform == 'youtube' and activity.activity_type == 'comment' and '"youtube_activity_kind": "live_chat"' not in metadata_text and not activity.content.lstrip().startswith('[실시간 채팅]') %}
+    <label class="delete-activity-row{% if not supported %} unsupported{% endif %}" data-platform="{{ activity.platform }}" data-type="{{ activity.activity_type }}" data-search="{{ (activity.content ~ ' ' ~ (activity.source_url or ''))|lower|e }}" data-supported="{{ 1 if supported else 0 }}" data-activity-id="{{ activity.id }}" data-metadata="{{ metadata_text|e }}">
+      <input class="delete-activity-checkbox" type="checkbox" value="{{ activity.id }}"{% if not supported %} disabled{% endif %}>
       <div>
         <div class="delete-item-top">
-          <div class="delete-item-badges"><span class="delete-badge">{{ platform_labels.get(activity.platform, activity.platform) }}</span><span class="delete-type">{{ activity_type_labels.get(activity.activity_type, activity.activity_type) }}</span></div>
+          <div class="delete-item-badges"><span class="delete-badge">{{ platform_labels.get(activity.platform, activity.platform) }}</span><span class="delete-type">{{ activity_type_labels.get(activity.activity_type, activity.activity_type) }}</span>{% if supported %}<span class="delete-ready">삭제 가능</span>{% else %}<span class="delete-wait">준비 중</span>{% endif %}</div>
           <time class="delete-date" data-utc="{% if activity.occurred_at %}{{ activity.occurred_at.isoformat() }}{% else %}{{ activity.imported_at.isoformat() }}{% endif %}">{% if activity.occurred_at %}{{ activity.occurred_at.strftime('%Y-%m-%d %H:%M') }}{% else %}{{ activity.imported_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}</time>
         </div>
         <h3>{{ parts[0] if parts else '내용 없음' }}</h3>
@@ -88,6 +107,7 @@
 {% if activities %}
 <script>
 (() => {
+  const MAX_SELECTION = 100;
   const rows = [...document.querySelectorAll('.delete-activity-row')];
   const checks = [...document.querySelectorAll('.delete-activity-checkbox')];
   const search = document.getElementById('delete-search');
@@ -98,17 +118,21 @@
   const actionButton = document.getElementById('selected-delete-button');
   const balance = {{ balance|int }};
   let lastChecked = null;
+  let extensionReady = document.documentElement.dataset.tracelensDeleteBridge === 'ready';
 
   const visibleRows = () => rows.filter((row) => !row.hidden);
-  const selected = () => checks.filter((check) => check.checked);
+  const selectableVisibleRows = () => visibleRows().filter((row) => row.dataset.supported === '1');
+  const selected = () => checks.filter((check) => check.checked && !check.disabled);
 
   function refreshSelection() {
     rows.forEach((row) => row.classList.toggle('selected', row.querySelector('input').checked));
     const count = selected().length;
     selectedCount.textContent = count;
-    actionButton.textContent = `선택한 기록 ${count}개`;
-    actionButton.disabled = count === 0;
-    actionButton.title = count > balance ? `삭제권이 ${count - balance}개 부족합니다.` : '';
+    actionButton.textContent = count ? `선택 댓글 ${count}개 삭제` : '선택 댓글 삭제';
+    actionButton.disabled = !extensionReady || count === 0 || count > MAX_SELECTION || count > balance || actionButton.dataset.running === '1';
+    if (count > balance) actionButton.title = `삭제권이 ${count - balance}개 부족합니다.`;
+    else if (count > MAX_SELECTION) actionButton.title = `한 번에 최대 ${MAX_SELECTION}개까지 선택할 수 있습니다.`;
+    else actionButton.title = '';
   }
 
   function applyFilters() {
@@ -125,16 +149,17 @@
 
   checks.forEach((check) => {
     check.addEventListener('click', (event) => {
+      if (check.disabled) return;
       if (event.shiftKey && lastChecked && lastChecked !== check) {
-        const visibleChecks = visibleRows().map((row) => row.querySelector('.delete-activity-checkbox'));
+        const visibleChecks = selectableVisibleRows().map((row) => row.querySelector('.delete-activity-checkbox'));
         const start = visibleChecks.indexOf(lastChecked);
         const end = visibleChecks.indexOf(check);
         if (start !== -1 && end !== -1) {
           const [from, to] = start < end ? [start, end] : [end, start];
-          const shouldCheck = check.checked;
-          visibleChecks.slice(from, to + 1).forEach((item) => { item.checked = shouldCheck; });
+          visibleChecks.slice(from, to + 1).forEach((item) => { item.checked = check.checked; });
         }
       }
+      if (selected().length > MAX_SELECTION) check.checked = false;
       lastChecked = check;
       refreshSelection();
     });
@@ -144,14 +169,28 @@
   search.addEventListener('input', applyFilters);
   platform.addEventListener('change', applyFilters);
   type.addEventListener('change', applyFilters);
-  document.getElementById('select-visible').addEventListener('click', () => { visibleRows().forEach((row) => row.querySelector('input').checked = true); lastChecked = null; refreshSelection(); });
+  document.getElementById('select-visible').addEventListener('click', () => {
+    const limit = Math.min(MAX_SELECTION, balance);
+    checks.forEach((check) => { if (!check.disabled) check.checked = false; });
+    selectableVisibleRows().slice(0, limit).forEach((row) => { row.querySelector('input').checked = true; });
+    lastChecked = null;
+    refreshSelection();
+  });
   document.getElementById('clear-selected').addEventListener('click', () => { checks.forEach((check) => check.checked = false); lastChecked = null; refreshSelection(); });
   document.getElementById('reset-delete-filters').addEventListener('click', () => { search.value = ''; platform.value = ''; type.value = ''; applyFilters(); });
   actionButton.addEventListener('click', () => {
     const count = selected().length;
+    if (!extensionReady) { alert('확장 프로그램 연결을 확인하세요.'); return; }
     if (count > balance) { alert(`삭제권이 ${count - balance}개 부족합니다.`); return; }
-    alert(`${count}개 기록이 선택되었습니다. 실제 삭제 실행 기능은 다음 단계에서 연결합니다.`);
+    if (count > MAX_SELECTION) { alert(`한 번에 최대 ${MAX_SELECTION}개까지 선택할 수 있습니다.`); return; }
+    actionButton.dataset.running = '1';
+    refreshSelection();
+    window.dispatchEvent(new CustomEvent('TRACELENS_DELETE_REQUEST', {detail: {platform: 'youtube', activityType: 'comment'}}));
   });
+
+  window.addEventListener('TRACELENS_DELETE_READY', () => { extensionReady = true; refreshSelection(); });
+  window.addEventListener('TRACELENS_DELETE_FINISHED', () => { delete actionButton.dataset.running; refreshSelection(); });
+  refreshSelection();
 })();
 </script>
 {% endif %}
