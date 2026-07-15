@@ -10,17 +10,18 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_reusable_deletion_engine_and_youtube_adapters_are_loaded() -> None:
+def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.2.1"
+    assert manifest["version"] == "1.2.2"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
-    assert "youtube_verify_page.js" in worker
-    assert "youtube_live_chat_delete_page.js" in worker
-    assert "youtube_live_chat_verify_page.js" in worker
+    assert "youtube_activity_verify_page.js" in worker
     assert "youtube_deletion_adapter.js" in worker
+    assert "youtube_verify_page.js" not in worker
+    assert "youtube_live_chat_delete_page.js" not in worker
+    assert "youtube_live_chat_verify_page.js" not in worker
     assert "youtube_delete_worker.js" not in worker
     assert "youtube_activity_deleter.js" not in worker
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
@@ -44,59 +45,59 @@ def test_engine_uses_separate_task_window_and_hides_verification() -> None:
     assert "뒤쪽 작업 창" in engine
 
 
-def test_youtube_comment_and_live_chat_adapters_share_orchestration() -> None:
+def test_youtube_comment_and_live_chat_adapters_use_same_page_functions() -> None:
     adapter = read(EXTENSION / "youtube_deletion_adapter.js")
-    engine = read(EXTENSION / "deletion_engine.js")
 
-    assert 'registerAdapter("youtube"' in adapter
-    assert 'registerAdapter("youtube_live_chat"' in adapter
-    assert 'page=youtube_comments' in adapter
-    assert 'page=youtube_live_chat' in adapter
-    assert "traceLensDeleteYouTubeLiveChatTargetsInPage" in adapter
-    assert "traceLensVerifyYouTubeLiveChatTargetsInPage" in adapter
+    assert 'key: "youtube"' in adapter
+    assert 'key: "youtube_live_chat"' in adapter
+    assert 'kind: "comment"' in adapter
+    assert 'kind: "live_chat"' in adapter
+    assert 'page: "youtube_comments"' in adapter
+    assert 'page: "youtube_live_chat"' in adapter
+    assert "deletePageFunction: traceLensDeleteYouTubeTargetsInPage" in adapter
+    assert "verifyPageFunction: traceLensVerifyYouTubeActivityTargetsInPage" in adapter
+    assert "traceLensDeleteYouTubeLiveChatTargetsInPage" not in adapter
+    assert "traceLensVerifyYouTubeLiveChatTargetsInPage" not in adapter
+    assert "activityKind" in adapter
     assert "maxTargets: 100" in adapter
     assert "batchSize: 20" in adapter
-    assert "batchPauseMs: 500" in adapter
     assert "verificationDelayMs: 1800" in adapter
     assert "retry: false" in adapter
-    assert "postExtraction(config, extraction)" in adapter
-    assert 'typeof adapter.syncFromVerification === "function"' in engine
 
 
-def test_youtube_comment_deletion_restores_position_and_tracks_click_attempts() -> None:
+def test_shared_youtube_deletion_selects_page_from_activity_kind() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
 
+    assert 'targets?.[0]?.activityKind === "live_chat"' in deleter
+    assert 'expectedPage = activityKind === "live_chat" ? "youtube_live_chat" : "youtube_comments"' in deleter
+    assert 'itemLabel = activityKind === "live_chat" ? "실시간 채팅" : "댓글"' in deleter
     assert 'c-wiz[jsname="Ttx95"][data-token]' in deleter
     assert 'button[jslog^="114566"]' in deleter
     assert 'a[jsname="BLHFSc"][href*="lc="]' in deleter
     assert '.QTGV3c[jsname="r4nke"]' in deleter
-    assert "commentId" in deleter
+    assert "lineContent" in deleter
     assert "scrollTop: savedTop" in deleter
     assert "restoreAndFind" in deleter
-    assert "const attemptedIds = []" in deleter
     assert "attemptedIds.push(target.id)" in deleter
     assert "clickConfirmIfPresent" in deleter
+    assert "await waitRemoved(refreshed, 900)" in deleter
+    assert "await waitRemoved(refreshed, 1800)" in deleter
 
 
-def test_youtube_live_chat_delete_and_verify_pages_are_scoped() -> None:
-    deleter = read(EXTENSION / "youtube_live_chat_delete_page.js")
-    verifier = read(EXTENSION / "youtube_live_chat_verify_page.js")
+def test_shared_youtube_verifier_scopes_snapshot_by_activity_kind() -> None:
+    verifier = read(EXTENSION / "youtube_activity_verify_page.js")
 
-    assert 'page !== "youtube_live_chat"' in deleter
-    assert 'button[jslog^="114566"]' in deleter
-    assert "attemptedIds.push(target.id)" in deleter
-    assert "semantic_hash" in deleter
-    assert "row_text_hash" in deleter
-    assert "clickConfirmIfPresent" in deleter
-    assert 'document.querySelectorAll("[role=\'dialog\'],dialog,[aria-modal=\'true\']")' in deleter
-    assert "await waitRemoved(current, 900)" in deleter
-    assert "await waitRemoved(current, 1800)" in deleter
-    assert 'page !== "youtube_live_chat"' in verifier
-    assert 'scan_scope: "live_chat"' in verifier
-    assert 'youtube_activity_kind: "live_chat"' in verifier
-    assert 'extractor_version: "1.5.0"' in verifier
+    assert 'targets?.[0]?.activityKind === "live_chat"' in verifier
+    assert 'page = kind === "live_chat" ? "youtube_live_chat" : "youtube_comments"' in verifier
+    assert 'label = kind === "live_chat" ? "실시간 채팅" : "댓글"' in verifier
+    assert 'scan_scope: kind' in verifier
+    assert 'youtube_activity_kind: kind' in verifier
+    assert 'extractor_version: "1.6.0"' in verifier
     assert "snapshot_complete: complete" in verifier
-    assert "comment_id: token || null" in verifier
+    assert "comment_id: entry.token || null" in verifier
+    assert "uniqueMatch" in verifier
+    assert "semantic_hash" in verifier
+    assert "row_text_hash" in verifier
 
 
 def test_engine_uses_reload_verification_after_immediate_dom_delay() -> None:
@@ -111,19 +112,6 @@ def test_engine_uses_reload_verification_after_immediate_dom_delay() -> None:
     assert "unmatched.has(target.id) && firstPass.discoveryComplete === true" in engine
 
 
-def test_youtube_comment_verification_uses_exact_comment_id_and_collects_snapshot() -> None:
-    verifier = read(EXTENSION / "youtube_verify_page.js")
-
-    assert 'c-wiz[jsname="Ttx95"][data-token]' in verifier
-    assert 'button[jslog^="114566"]' in verifier
-    assert "const collected = new Map()" in verifier
-    assert "foundIds" in verifier
-    assert "snapshot_complete: complete" in verifier
-    assert 'extractor_version: "1.4.1"' in verifier
-    assert "if (targetCommentId) return Boolean(item.commentId && targetCommentId === item.commentId)" in verifier
-    assert "sameSpecificTitle" in verifier
-
-
 def test_existing_purchase_page_supports_comment_and_live_chat_and_restores_result() -> None:
     content = read(EXTENSION / "content_script.js")
     base = read(ROOT / "app" / "templates" / "base.html")
@@ -134,7 +122,7 @@ def test_existing_purchase_page_supports_comment_and_live_chat_and_restores_resu
     assert "installPurchaseDeletionBridge" in content
     assert 'platformKey = liveChat ? "youtube_live_chat" : "youtube"' in content
     assert '["comment", "live_chat"]' in content
-    assert "data.youtubeKind" in content or "dataset.youtubeKind" in content
+    assert "dataset.youtubeKind" in content
     assert "TRACELENS_DELETE_REQUEST" in content
     assert "/app?mode=delete" not in content
     assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v1"' in content
@@ -185,3 +173,9 @@ def test_complete_snapshot_prunes_only_matching_youtube_scope() -> None:
     assert 'payload.scan_scope not in {"comment", "live_chat"}' in tasks
     assert "_youtube_activity_kind(activity) != payload.scan_scope" in tasks
     assert "db.delete(activity)" in tasks
+
+
+def test_replaced_duplicate_youtube_files_are_removed() -> None:
+    assert not (EXTENSION / "youtube_verify_page.js").exists()
+    assert not (EXTENSION / "youtube_live_chat_delete_page.js").exists()
+    assert not (EXTENSION / "youtube_live_chat_verify_page.js").exists()
