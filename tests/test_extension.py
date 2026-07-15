@@ -14,6 +14,7 @@ def test_manifest_has_required_hosts_and_current_version() -> None:
     assert "https://www.instagram.com/*" in manifest["host_permissions"]
     assert "https://github.com/*" not in manifest["host_permissions"]
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
+    assert set(manifest["permissions"]) == {"activeTab", "storage", "tabs", "scripting"}
 
 
 def test_popup_uses_authenticated_user_token() -> None:
