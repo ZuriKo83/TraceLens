@@ -14,7 +14,7 @@ def test_reusable_deletion_engine_and_youtube_adapter_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.1.1"
+    assert manifest["version"] == "1.1.2"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_verify_page.js" in worker
@@ -35,7 +35,9 @@ def test_generic_engine_controls_tabs_retry_verification_and_sync() -> None:
     assert "verification.complete" in engine
     assert "adapter.deletePageFunction" in engine
     assert "adapter.verifyPageFunction" in engine
-    assert "syncArchive(adapter, config)" in engine
+    assert "syncArchive(adapter, config, tab.id)" in engine
+    assert 'stage: "closing"' in engine
+    assert "await closeTaskTab()" in engine
 
 
 def test_youtube_adapter_limits_batches_to_100_items() -> None:
@@ -47,7 +49,21 @@ def test_youtube_adapter_limits_batches_to_100_items() -> None:
     assert "batchPauseMs: 800" in adapter
     assert "traceLensDeleteYouTubeTargetsInPage" in adapter
     assert "traceLensVerifyYouTubeTargetsInPage" in adapter
-    assert "snapshot_complete" not in adapter
+    assert "snapshot_complete" in adapter
+
+
+def test_youtube_reuses_active_task_tab_for_sync_and_closes_it() -> None:
+    engine = read(EXTENSION / "deletion_engine.js")
+    adapter = read(EXTENSION / "youtube_deletion_adapter.js")
+
+    assert 'typeof adapter.syncCurrentTab === "function"' in engine
+    assert "adapter.syncCurrentTab(tabId, config)" in engine
+    assert "syncCurrentTab," in adapter
+    assert 'runExtractor(tabId, "youtube", "comment", "self_activity", null)' in adapter
+    assert "postExtraction(config, extraction)" in adapter
+    assert "scanSites" not in adapter
+    assert "state.closed = true" in engine
+    assert "chrome.tabs.remove(tabId)" in engine
 
 
 def test_youtube_deletion_uses_cached_bottom_up_batches() -> None:
