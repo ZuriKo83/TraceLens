@@ -66,6 +66,30 @@
     }
   }
 
+  async function syncCurrentTab(tabId, config) {
+    const extraction = await runExtractor(tabId, "youtube", "comment", "self_activity", null);
+    const complete = extraction?.status === "success" && extraction?.snapshot_complete === true;
+    if (!complete) {
+      return {
+        synced: false,
+        lines: ["✕ YouTube 댓글: 전체 기록 수집이 끝나지 않아 보관함 동기화를 확정하지 못했습니다."],
+        raw: {extraction},
+      };
+    }
+
+    const response = await postExtraction(config, extraction);
+    const synced = response?.ok !== false;
+    const found = Number(response?.found ?? extraction.items?.length ?? 0);
+    const imported = Number(response?.imported ?? 0);
+    return {
+      synced,
+      lines: [synced
+        ? `✓ YouTube 댓글: ${found}개 확인, ${imported}개 신규`
+        : "✕ YouTube 댓글: TraceLens 보관함 동기화에 실패했습니다."],
+      raw: {extraction, response},
+    };
+  }
+
   TraceLensDeletionEngine.registerAdapter("youtube", {
     label: "YouTube 댓글",
     itemLabel: "YouTube 댓글",
@@ -78,10 +102,7 @@
     isTaskUrl,
     deletePageFunction: traceLensDeleteYouTubeTargetsInPage,
     verifyPageFunction: traceLensVerifyYouTubeTargetsInPage,
-    syncSites: ["youtube"],
-    isSyncSuccessful(lines) {
-      return lines.some((line) => /YouTube 댓글/.test(line) && line.startsWith("✓"));
-    },
+    syncCurrentTab,
     openingMessage: "Google 내 활동의 YouTube 댓글 페이지를 여는 중입니다.",
     discoveryMessage(count) {
       return `${count}개 댓글을 전체 기록에서 한 번 탐색한 뒤 아래쪽부터 삭제합니다.`;
