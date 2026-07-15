@@ -14,7 +14,7 @@ def test_reusable_deletion_engine_and_youtube_adapter_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.1.3"
+    assert manifest["version"] == "1.1.4"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_verify_page.js" in worker
@@ -25,62 +25,62 @@ def test_reusable_deletion_engine_and_youtube_adapter_are_loaded() -> None:
     assert "https://myactivity.google.com/*" in manifest["host_permissions"]
 
 
-def test_generic_engine_controls_tabs_retry_verification_and_sync() -> None:
+def test_generic_engine_focuses_task_then_returns_to_tracelens() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
 
     assert "registerAdapter(platform, adapter)" in engine
     assert 'message?.type !== "DELETE_PLATFORM_ITEMS"' in engine
     assert "runningPlatforms" in engine
     assert "chrome.tabs.reload" in engine
-    assert "verification.complete" in engine
-    assert "adapter.deletePageFunction" in engine
-    assert "adapter.verifyPageFunction" in engine
-    assert "syncArchive(adapter, config, tab.id)" in engine
-    assert 'stage: "closing"' in engine
+    assert "chrome.tabs.update(tabId, {active: true})" in engine
+    assert "chrome.windows.update(tab.windowId, {focused: true})" in engine
+    assert "returnToWebTab" in engine
     assert "await closeTaskTab()" in engine
+    assert "await returnToWebTab()" in engine
 
 
-def test_youtube_adapter_limits_batches_to_100_items() -> None:
+def test_youtube_adapter_uses_single_verification_snapshot() -> None:
     adapter = read(EXTENSION / "youtube_deletion_adapter.js")
+    engine = read(EXTENSION / "deletion_engine.js")
 
     assert 'registerAdapter("youtube"' in adapter
     assert "maxTargets: 100" in adapter
     assert "batchSize: 20" in adapter
-    assert "batchPauseMs: 800" in adapter
-    assert "traceLensDeleteYouTubeTargetsInPage" in adapter
-    assert "traceLensVerifyYouTubeTargetsInPage" in adapter
-    assert "snapshot_complete" in adapter
-
-
-def test_youtube_reuses_active_task_tab_for_sync_and_closes_it() -> None:
-    engine = read(EXTENSION / "deletion_engine.js")
-    adapter = read(EXTENSION / "youtube_deletion_adapter.js")
-
-    assert 'typeof adapter.syncCurrentTab === "function"' in engine
-    assert "adapter.syncCurrentTab(tabId, config)" in engine
-    assert "syncCurrentTab," in adapter
-    assert 'runExtractor(tabId, "youtube", "comment", "self_activity", null)' in adapter
+    assert "batchPauseMs: 500" in adapter
+    assert "retry: false" in adapter
+    assert "syncFromVerification" in adapter
     assert "postExtraction(config, extraction)" in adapter
-    assert "scanSites" not in adapter
-    assert "state.closed = true" in engine
-    assert "chrome.tabs.remove(tabId)" in engine
-    assert engine.index("const sync = await syncArchive(adapter, config, tab.id)") < engine.index("await closeTaskTab()")
+    assert 'typeof adapter.syncFromVerification === "function"' in engine
+    assert "adapter.syncFromVerification(verification, config, tabId)" in engine
+    assert "syncArchive(adapter, config, tab.id, verification)" in engine
 
 
-def test_youtube_deletion_uses_cached_bottom_up_batches() -> None:
+def test_youtube_deletion_uses_exact_my_activity_dom() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
 
-    assert "const discovered = new Map()" in deleter
-    assert "const position = ()" in deleter
-    assert "const restore = async" in deleter
-    assert "saved?.rank" in deleter
-    assert "right.row.viewportTop - left.row.viewportTop" in deleter
+    assert 'c-wiz[jsname="Ttx95"][data-token]' in deleter
+    assert 'button[jslog^="114566"]' in deleter
+    assert 'a[jsname="BLHFSc"][href*="lc="]' in deleter
+    assert '.QTGV3c[jsname="r4nke"]' in deleter
+    assert "commentId" in deleter
+    assert "documentTop" in deleter
+    assert "right.id" in deleter
     assert "batchClicks >= batchSize" in deleter
-    assert "batchPauseMs" in deleter
-    assert "exactLocatorButton" in deleter
-    assert "chooseDeleteAction" in deleter
-    assert "confirmDialog" in deleter
-    assert "diagnostics" in deleter
+    assert "clickConfirmIfPresent" in deleter
+    assert "await waitRemoved(current, 900)" in deleter
+
+
+def test_youtube_verification_collects_snapshot_in_same_pass() -> None:
+    verifier = read(EXTENSION / "youtube_verify_page.js")
+
+    assert 'c-wiz[jsname="Ttx95"][data-token]' in verifier
+    assert 'button[jslog^="114566"]' in verifier
+    assert "const collected = new Map()" in verifier
+    assert "foundIds" in verifier
+    assert "snapshot_complete: complete" in verifier
+    assert "extraction" in verifier
+    assert 'extractor_version: "1.4.0"' in verifier
+    assert "bottomStable >= 5" in verifier
 
 
 def test_existing_purchase_page_keeps_credits_and_runs_deletion() -> None:
