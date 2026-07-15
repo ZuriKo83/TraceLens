@@ -45,6 +45,27 @@
     }
   }
 
+  async function installWorkerPulse(tabId) {
+    await previousExecuteScript({
+      target: {tabId},
+      func: () => {
+        if (globalThis.__TRACELENS_DELETE_WORKER_PULSE_V19) return;
+        const send = () => {
+          try {
+            chrome.runtime.sendMessage({
+              type: "DELETE_WORKER_PULSE",
+              at: Date.now(),
+            }).catch(() => undefined);
+          } catch {
+            // The service worker may be restarting; the next pulse wakes it again.
+          }
+        };
+        send();
+        globalThis.__TRACELENS_DELETE_WORKER_PULSE_V19 = setInterval(send, 4000);
+      },
+    }).catch(() => undefined);
+  }
+
   chrome.windows.create = async function(createData, callback) {
     if (!isDeletionPage(createData?.url)) {
       const created = await previousWindowsCreate(createData);
@@ -60,6 +81,12 @@
     });
     await keepVisibleUnfocused(created.id);
 
+    const tab = created.tabs?.[0]
+      || (await chrome.tabs.query({windowId: created.id, active: true}))[0];
+    if (tab?.id) {
+      await installWorkerPulse(tab.id);
+    }
+
     if (typeof callback === "function") callback(created);
     return created;
   };
@@ -68,9 +95,8 @@
     const state = managedWindows.get(Number(windowId));
     let nextInfo = updateInfo;
 
-    // A minimized/fully hidden My Activity window is heavily timer-throttled by
-    // Chrome. Keep a tiny 220x140 window rendered, but never steal focus during
-    // normal scanning/deletion. Foreground fallback remains allowed explicitly.
+    // Minimized/fully hidden My Activity windows are heavily timer-throttled.
+    // Keep a tiny rendered window, but never steal focus during normal work.
     if (state && updateInfo?.state === "minimized" && updateInfo?.focused !== true) {
       nextInfo = {
         ...updateInfo,
@@ -144,6 +170,7 @@
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     if (tab?.windowId && managedWindows.has(Number(tab.windowId))) {
       await keepVisibleUnfocused(tab.windowId);
+      await installWorkerPulse(tabId);
     }
 
     await installFastTimers(tabId);
@@ -155,6 +182,7 @@
       const latestTab = await chrome.tabs.get(tabId).catch(() => null);
       if (latestTab?.windowId && managedWindows.has(Number(latestTab.windowId))) {
         await keepVisibleUnfocused(latestTab.windowId);
+        await installWorkerPulse(tabId);
       }
     }
 
