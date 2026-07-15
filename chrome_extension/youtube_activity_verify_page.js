@@ -66,9 +66,11 @@ globalThis.traceLensVerifyYouTubeActivityTargetsInPage = async function(targets)
     const anchor = wrapper.querySelector('a[jsname="BLHFSc"][href*="lc="],a[href*="lc="]')
       || wrapper.querySelector('a[jsname="BLHFSc"][href],a[href*="youtube.com"],a[href*="youtu.be"]');
     const rawUrl = anchor?.href || anchor?.getAttribute("href") || "";
+    const rawParsed = parseUrl(rawUrl);
     const sourceUrl = canonicalUrl(rawUrl);
     const source = identity(sourceUrl);
-    const token = clean(wrapper.getAttribute("data-token") || wrapper.closest("c-wiz[data-token]")?.getAttribute("data-token") || parseUrl(rawUrl)?.searchParams.get("lc"));
+    const commentId = clean(rawParsed?.searchParams.get("lc"));
+    const activityToken = clean(wrapper.getAttribute("data-token") || wrapper.closest("c-wiz[data-token]")?.getAttribute("data-token"));
     const title = clean(anchor?.querySelector?.(".hFYxqd")?.innerText || anchor?.innerText || anchor?.textContent)
       || (kind === "live_chat" ? "YouTube 실시간 스트리밍" : "YouTube 동영상");
     const direct = wrapper.querySelector('.QTGV3c[jsname="r4nke"],[jsname="r4nke"],.QTGV3c');
@@ -77,14 +79,25 @@ globalThis.traceLensVerifyYouTubeActivityTargetsInPage = async function(targets)
     const semanticHash = fnv(`${page}|${source.key}|${title}|${content}`);
     const rowTextHash = fnv(rowText);
     const button = [...wrapper.querySelectorAll('button[jslog^="114566"],button,[role="button"]')].find((item) => visible(item) && isDelete(item));
-    return {token, title, content, rowTextNorm: norm(rowText), source, sourceUrl, semanticHash, rowTextHash,
-      signature: token || `${source.key}|${rowTextHash}`, button};
+    return {
+      commentId,
+      activityToken,
+      title,
+      content,
+      rowTextNorm: norm(rowText),
+      source,
+      sourceUrl,
+      semanticHash,
+      rowTextHash,
+      signature: commentId || `${activityToken}|${source.key}|${rowTextHash}`,
+      button,
+    };
   };
   const titleOf = (target, locator) => norm(target.title || locator.title).replace(/^\[실시간 채팅\]\s*/, "");
   const score = (target, item) => {
     const locator = target.locator || {};
-    const token = clean(target.commentId || locator.comment_id || locator.activity_token);
-    if (token) return token === item.token ? 500 : 0;
+    const trustedCommentId = clean(target.commentId || locator.comment_id);
+    if (trustedCommentId) return trustedCommentId === item.commentId ? 500 : 0;
     if (locator.semantic_hash && locator.semantic_hash === item.semanticHash) return 400;
     if (locator.row_text_hash && locator.row_text_hash === item.rowTextHash) return 320;
     const content = norm(target.content || locator.content);
@@ -130,35 +143,63 @@ globalThis.traceLensVerifyYouTubeActivityTargetsInPage = async function(targets)
     source_url: entry.sourceUrl,
     occurred_at: null,
     metadata: {
-      captured_from: location.href, page_title: document.title, ownership_scope: "self_activity", ownership_verified: true,
-      extractor_version: "1.6.0", youtube_activity_kind: kind, my_activity_page: page, comment_id: entry.token || null,
-      original_url: entry.sourceUrl, original_link_resolved: Boolean(entry.sourceUrl), original_link_status: entry.sourceUrl ? "resolved" : "not_exposed",
-      source_type: entry.source.type, source_id: entry.source.id || null,
+      captured_from: location.href,
+      page_title: document.title,
+      ownership_scope: "self_activity",
+      ownership_verified: true,
+      extractor_version: "1.6.1",
+      youtube_activity_kind: kind,
+      my_activity_page: page,
+      comment_id: entry.commentId || null,
+      activity_token: entry.activityToken || null,
+      original_url: entry.sourceUrl,
+      original_link_resolved: Boolean(entry.sourceUrl),
+      original_link_status: entry.sourceUrl ? "resolved" : "not_exposed",
+      source_type: entry.source.type,
+      source_id: entry.source.id || null,
       video_id: entry.source.type === "video" ? entry.source.id : null,
       post_id: entry.source.type === "post" ? entry.source.id : null,
       youtube_post_id: entry.source.type === "post" ? entry.source.id : null,
       deletion_locator: {
-        version: 4, page, activity_token: entry.token || null, comment_id: entry.token || null,
-        row_text_hash: entry.rowTextHash, semantic_hash: entry.semanticHash,
-        button_tag: entry.button?.tagName || null, button_role: entry.button?.getAttribute("role") || null,
-        button_aria_label: entry.button?.getAttribute("aria-label") || null, button_title: entry.button?.getAttribute("title") || null,
-        button_jslog: entry.button?.getAttribute("jslog") || null, title: entry.title, content: entry.content,
-        source_type: entry.source.type, source_id: entry.source.id || null, source_url: entry.sourceUrl,
-        video_id: entry.source.type === "video" ? entry.source.id : null, video_url: entry.source.type === "video" ? entry.sourceUrl : null,
-        post_id: entry.source.type === "post" ? entry.source.id : null, post_url: entry.source.type === "post" ? entry.sourceUrl : null
-      }
-    }
+        version: 5,
+        page,
+        activity_token: entry.activityToken || null,
+        comment_id: entry.commentId || null,
+        row_text_hash: entry.rowTextHash,
+        semantic_hash: entry.semanticHash,
+        button_tag: entry.button?.tagName || null,
+        button_role: entry.button?.getAttribute("role") || null,
+        button_aria_label: entry.button?.getAttribute("aria-label") || null,
+        button_title: entry.button?.getAttribute("title") || null,
+        button_jslog: entry.button?.getAttribute("jslog") || null,
+        title: entry.title,
+        content: entry.content,
+        source_type: entry.source.type,
+        source_id: entry.source.id || null,
+        source_url: entry.sourceUrl,
+        video_id: entry.source.type === "video" ? entry.source.id : null,
+        video_url: entry.source.type === "video" ? entry.sourceUrl : null,
+        post_id: entry.source.type === "post" ? entry.source.id : null,
+        post_url: entry.source.type === "post" ? entry.sourceUrl : null,
+      },
+    },
   }));
   return {
     complete,
     foundIds: [...foundIds],
     scannedUnique: collected.size,
     extraction: {
-      platform: "youtube", source_url: location.href, scan_scope: kind,
-      status: complete ? "success" : "partial", snapshot_complete: complete,
-      message: complete ? `YouTube ${label} ${items.length}개를 한 번의 재검증으로 끝까지 확인했습니다.` : `YouTube ${label} ${items.length}개를 확인했지만 끝까지 확인하지 못했습니다.`,
-      account_label: null, items
+      platform: "youtube",
+      source_url: location.href,
+      scan_scope: kind,
+      status: complete ? "success" : "partial",
+      snapshot_complete: complete,
+      message: complete
+        ? `YouTube ${label} ${items.length}개를 한 번의 재검증으로 끝까지 확인했습니다.`
+        : `YouTube ${label} ${items.length}개를 확인했지만 끝까지 확인하지 못했습니다.`,
+      account_label: null,
+      items,
     },
-    progress: {found: foundIds.size, total: targets.length, collected: items.length}
+    progress: {found: foundIds.size, total: targets.length, collected: items.length},
   };
 };
