@@ -1,38 +1,61 @@
 (() => {
   const PORT_NAME = "tracelens-delete-batch-v3";
+  const PULSE_MS = 5000;
 
   chrome.runtime.onConnect.addListener((port) => {
     if (port.name !== PORT_NAME) return;
 
-    port.onMessage.addListener((message) => {
-      if (message?.type !== "DELETE_BATCH_PING") return;
+    let pulseTimer = null;
+    let activeJobId = null;
 
-      // Incoming port messages wake/reset the MV3 service-worker idle timer.
-      // Touching a Chrome API as well makes the keepalive explicit while a
-      // long Google My Activity scan is running in the injected page.
-      chrome.runtime.getPlatformInfo()
-        .then(() => {
-          try {
-            port.postMessage({
-              type: "DELETE_BATCH_PONG",
-              at: Date.now(),
-              jobId: message.jobId || null,
-            });
-          } catch {
-            // The UI-side disconnect handler performs job cancellation/refund.
-          }
-        })
-        .catch(() => {
-          try {
-            port.postMessage({
-              type: "DELETE_BATCH_PONG",
-              at: Date.now(),
-              jobId: message.jobId || null,
-            });
-          } catch {
-            // Ignore a port that has already disconnected.
-          }
+    const sendPong = async () => {
+      try {
+        // Calling an extension API resets the MV3 service-worker idle timer.
+        await chrome.runtime.getPlatformInfo();
+      } catch {
+        // Still try to answer through the open port.
+      }
+
+      try {
+        port.postMessage({
+          type: "DELETE_BATCH_PONG",
+          at: Date.now(),
+          jobId: activeJobId,
         });
+      } catch {
+        // The UI-side disconnect handler owns cancellation/refund.
+      }
+    };
+
+    const stopPulse = () => {
+      if (pulseTimer) clearInterval(pulseTimer);
+      pulseTimer = null;
+      activeJobId = null;
+    };
+
+    const startPulse = (jobId) => {
+      stopPulse();
+      activeJobId = jobId || null;
+      void sendPong();
+      pulseTimer = setInterval(() => {
+        void sendPong();
+      }, PULSE_MS);
+    };
+
+    port.onMessage.addListener((message) => {
+      if (message?.type === "START_DELETE_BATCH") {
+        startPulse(message.job?.job_id || null);
+        return;
+      }
+
+      if (message?.type === "DELETE_BATCH_PING") {
+        activeJobId = message.jobId || activeJobId;
+        void sendPong();
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      stopPulse();
     });
   });
 })();
