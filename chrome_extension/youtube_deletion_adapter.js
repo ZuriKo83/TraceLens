@@ -82,6 +82,7 @@
     maxTargets: 100,
     batchSize: 20,
     batchPauseMs: 500,
+    verificationDelayMs: 1800,
     retry: false,
     normalizeTargets,
     isTaskUrl,
