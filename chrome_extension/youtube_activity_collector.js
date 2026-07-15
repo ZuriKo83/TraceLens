@@ -49,7 +49,7 @@
 
     const primary = payloads.find((payload) => payload.complete || payload.items?.length) || payloads[0];
     const complete = payloads.some((payload) => payload.complete === true) && items.length < 5000;
-    const label = activityType === "live_chat" ? "실시간 스트리밍 채팅 메시지" : "댓글";
+    const label = activityType === "live_chat" ? "실시간 채팅" : "댓글";
     const linkedCount = items.filter((item) => Boolean(item.source_url)).length;
     const unlinkedCount = Math.max(0, items.length - linkedCount);
     const completionText = complete ? "끝까지 확인했습니다." : "끝까지 확인하지 못해 부분 결과로 저장했습니다.";
@@ -58,11 +58,13 @@
       platform: "youtube",
       source_url: primary.source_url,
       scan_scope: activityType,
-      status: items.length ? (complete ? "success" : "partial") : primary.status || "partial",
+      status: complete ? "success" : "partial",
       snapshot_complete: complete,
       message: items.length
         ? `YouTube ${label} ${items.length}개를 확인했습니다. 원문 링크 ${linkedCount}개 확인${unlinkedCount ? `, ${unlinkedCount}개 미노출` : ""}. ${completionText}`
-        : primary.message || `YouTube ${label}을 찾지 못했습니다.`,
+        : complete
+          ? `YouTube ${label} 기록이 없습니다. 끝까지 확인했습니다.`
+          : primary.message || `YouTube ${label} 기록을 끝까지 확인하지 못했습니다.`,
       account_label: accountContext?.accountLabel || null,
       items: items.slice(0, 5000),
     };
@@ -383,17 +385,19 @@
     }
 
     const items = [...collected.values()];
-    const label = activityType === "live_chat" ? "실시간 스트리밍 채팅 메시지" : "댓글";
+    const label = activityType === "live_chat" ? "실시간 채팅" : "댓글";
     const linkedCount = items.filter((item) => Boolean(item.source_url)).length;
     return {
       platform: "youtube",
       source_url: location.href,
-      status: items.length ? (complete ? "success" : "partial") : "partial",
+      status: complete ? "success" : "partial",
       complete,
       stop_reason: stopReason,
       message: items.length
         ? `YouTube ${label} ${items.length}개를 확인했습니다. 원문 링크 ${linkedCount}개 확인. ${complete ? "끝까지 확인했습니다." : "수집이 끝까지 완료되지 않았습니다."}`
-        : `YouTube ${label}을 찾지 못했습니다.`,
+        : complete
+          ? `YouTube ${label} 기록이 없습니다. 끝까지 확인했습니다.`
+          : `YouTube ${label} 기록을 끝까지 확인하지 못했습니다.`,
       items,
     };
   }
