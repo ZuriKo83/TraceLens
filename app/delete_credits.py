@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, select
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.config import get_settings
 from app.db import Base, get_db
-from app.models import Activity, User, utcnow
+from app.models import Activity, CollectorToken, User, utcnow
 from app.supported_sites import ACTIVITY_TYPE_LABELS, PLATFORM_LABELS, VISIBLE_ACTIVITY_TYPES
 
 settings = get_settings()
@@ -84,11 +85,40 @@ def get_wallet(db: Session, user_id: int, *, create: bool = False) -> DeleteCred
     return wallet
 
 
+def issue_collector_token(db: Session, user: User) -> str:
+    now = utcnow()
+    db.execute(delete(CollectorToken).where(
+        CollectorToken.user_id == user.id,
+        CollectorToken.expires_at < now,
+    ))
+    active = list(db.scalars(
+        select(CollectorToken)
+        .where(CollectorToken.user_id == user.id, CollectorToken.revoked_at.is_(None))
+        .order_by(CollectorToken.created_at.desc())
+    ))
+    for stale in active[4:]:
+        stale.revoked_at = now
+
+    raw = secrets.token_urlsafe(40)
+    db.add(CollectorToken(
+        user_id=user.id,
+        token_hash=hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+        label="Chrome extension delete page",
+        expires_at=now + timedelta(days=settings.collector_token_days),
+    ))
+    db.flush()
+    return raw
+
+
 @router.get("/delete-credits/purchase", response_class=HTMLResponse)
 def purchase_page(request: Request, db: Session = Depends(get_db)):
     user = require_user(request, db, "/delete-credits/purchase")
     if isinstance(user, RedirectResponse):
         return user
+
+    extension_token = issue_collector_token(db, user)
+    db.commit()
+
     wallet = get_wallet(db, user.id)
     activities = list(db.scalars(
         select(Activity)
@@ -116,6 +146,9 @@ def purchase_page(request: Request, db: Session = Depends(get_db)):
             "activities": activities,
             "platform_labels": PLATFORM_LABELS,
             "activity_type_labels": ACTIVITY_TYPE_LABELS,
+            "extension_token": extension_token,
+            "extension_server": settings.public_base_url.rstrip("/"),
+            "extension_user_email": user.email,
         },
     )
 
