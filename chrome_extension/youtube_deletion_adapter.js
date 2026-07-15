@@ -108,6 +108,9 @@
       batchPauseMs: 500,
       verificationDelayMs: 1800,
       retry: false,
+      // Google 내 활동 카드가 사라져도 YouTube 실제 댓글 반영에는 시간이 걸릴 수 있다.
+      // 삭제 직후 전체 스냅샷으로 서버 기록을 지우지 않고 다음 정상 조회까지 유지한다.
+      deferArchiveSync: true,
       normalizeTargets: makeNormalizeTargets(kind),
       isTaskUrl(value) { return taskUrlMatches(value, page); },
       deletePageFunction: traceLensDeleteYouTubeTargetsInPage,
