@@ -101,8 +101,11 @@
     return payload;
   }
 
-  async function syncArchive(adapter, config) {
-    if (typeof adapter.syncArchive === "function") return adapter.syncArchive(config);
+  async function syncArchive(adapter, config, tabId) {
+    if (typeof adapter.syncCurrentTab === "function") {
+      return adapter.syncCurrentTab(tabId, config);
+    }
+    if (typeof adapter.syncArchive === "function") return adapter.syncArchive(config, tabId);
     const sites = Array.isArray(adapter.syncSites) && adapter.syncSites.length ? adapter.syncSites : [adapter.platform];
     const result = await scanSites(sites, config);
     const lines = result?.lines || [];
@@ -126,6 +129,13 @@
     };
     chrome.tabs.onRemoved.addListener(onRemoved);
     chrome.tabs.onUpdated.addListener(onUpdated);
+
+    const closeTaskTab = async () => {
+      if (!tab?.id || state.closed) return;
+      const tabId = tab.id;
+      state.closed = true;
+      await chrome.tabs.remove(tabId).catch(() => undefined);
+    };
 
     try {
       publish(webTabId, adapter, {stage: "opening", message: adapter.openingMessage || `${adapter.label} 삭제 페이지를 여는 중입니다.`});
@@ -166,8 +176,9 @@
         else alreadyMissingIds.push(target.id);
       }
 
-      publish(webTabId, adapter, {stage: "syncing", message: "TraceLens 보관함을 최신 상태와 동기화합니다."});
-      const sync = await syncArchive(adapter, config);
+      await assertTaskTab(tab.id, state, adapter);
+      publish(webTabId, adapter, {stage: "syncing", message: "현재 작업 탭에서 최신 기록을 수집해 TraceLens 보관함과 동기화합니다."});
+      const sync = await syncArchive(adapter, config, tab.id);
       const result = {
         ok: failures.length === 0 && sync.synced,
         platform: adapter.platform,
@@ -183,6 +194,9 @@
         lines: sync.lines,
         error: sync.synced ? null : (adapter.syncError || "삭제 후 TraceLens 보관함 동기화에 실패했습니다. 해당 사이트 조회를 다시 실행하세요."),
       };
+
+      publish(webTabId, adapter, {stage: "closing", message: "확인과 동기화가 끝나 작업 탭을 닫습니다."});
+      await closeTaskTab();
       publish(webTabId, adapter, {
         stage: "done",
         message: result.ok ? "삭제와 재검증이 완료되었습니다." : "일부 항목을 삭제하지 못했습니다.",
@@ -192,7 +206,7 @@
     } finally {
       chrome.tabs.onRemoved.removeListener(onRemoved);
       chrome.tabs.onUpdated.removeListener(onUpdated);
-      if (tab?.id && !state.closed) await chrome.tabs.remove(tab.id).catch(() => undefined);
+      await closeTaskTab();
     }
   }
 })();
