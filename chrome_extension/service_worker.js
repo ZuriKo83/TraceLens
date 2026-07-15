@@ -4,5 +4,7 @@ importScripts(
   "deletion_engine.js",
   "youtube_delete_page.js",
   "youtube_verify_page.js",
+  "youtube_live_chat_delete_page.js",
+  "youtube_live_chat_verify_page.js",
   "youtube_deletion_adapter.js"
 );
