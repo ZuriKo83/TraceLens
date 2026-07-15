@@ -14,7 +14,7 @@ def test_reusable_deletion_engine_and_youtube_adapters_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.2.0"
+    assert manifest["version"] == "1.2.1"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_verify_page.js" in worker
@@ -87,6 +87,10 @@ def test_youtube_live_chat_delete_and_verify_pages_are_scoped() -> None:
     assert "attemptedIds.push(target.id)" in deleter
     assert "semantic_hash" in deleter
     assert "row_text_hash" in deleter
+    assert "clickConfirmIfPresent" in deleter
+    assert 'document.querySelectorAll("[role=\'dialog\'],dialog,[aria-modal=\'true\']")' in deleter
+    assert "await waitRemoved(current, 900)" in deleter
+    assert "await waitRemoved(current, 1800)" in deleter
     assert 'page !== "youtube_live_chat"' in verifier
     assert 'scan_scope: "live_chat"' in verifier
     assert 'youtube_activity_kind: "live_chat"' in verifier
