@@ -14,7 +14,7 @@ def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.2.2"
+    assert manifest["version"] == "1.2.3"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_activity_verify_page.js" in worker
@@ -65,6 +65,16 @@ def test_youtube_comment_and_live_chat_adapters_use_same_page_functions() -> Non
     assert "retry: false" in adapter
 
 
+def test_adapter_does_not_treat_google_activity_token_as_comment_id() -> None:
+    adapter = read(EXTENSION / "youtube_deletion_adapter.js")
+
+    assert 'parseUrl(rawSourceUrl)?.searchParams.get("lc")' in adapter
+    assert "comment_id: urlCommentId || null" in adapter
+    assert "activity_token: null" in adapter
+    assert "legacy_activity_token" in adapter
+    assert "Google data-token은 항상 실제 댓글 ID가 아니므로" in adapter
+
+
 def test_shared_youtube_deletion_selects_page_from_activity_kind() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
 
@@ -84,7 +94,7 @@ def test_shared_youtube_deletion_selects_page_from_activity_kind() -> None:
     assert "await waitRemoved(refreshed, 1800)" in deleter
 
 
-def test_shared_youtube_verifier_scopes_snapshot_by_activity_kind() -> None:
+def test_shared_youtube_verifier_separates_comment_id_and_activity_token() -> None:
     verifier = read(EXTENSION / "youtube_activity_verify_page.js")
 
     assert 'targets?.[0]?.activityKind === "live_chat"' in verifier
@@ -92,9 +102,12 @@ def test_shared_youtube_verifier_scopes_snapshot_by_activity_kind() -> None:
     assert 'label = kind === "live_chat" ? "실시간 채팅" : "댓글"' in verifier
     assert 'scan_scope: kind' in verifier
     assert 'youtube_activity_kind: kind' in verifier
-    assert 'extractor_version: "1.6.0"' in verifier
+    assert 'extractor_version: "1.6.1"' in verifier
     assert "snapshot_complete: complete" in verifier
-    assert "comment_id: entry.token || null" in verifier
+    assert 'commentId = clean(rawParsed?.searchParams.get("lc"))' in verifier
+    assert "activityToken = clean(wrapper.getAttribute" in verifier
+    assert "comment_id: entry.commentId || null" in verifier
+    assert "activity_token: entry.activityToken || null" in verifier
     assert "uniqueMatch" in verifier
     assert "semantic_hash" in verifier
     assert "row_text_hash" in verifier
@@ -112,7 +125,7 @@ def test_engine_uses_reload_verification_after_immediate_dom_delay() -> None:
     assert "unmatched.has(target.id) && firstPass.discoveryComplete === true" in engine
 
 
-def test_existing_purchase_page_supports_comment_and_live_chat_and_restores_result() -> None:
+def test_purchase_page_refreshes_and_reconciles_with_server_list() -> None:
     content = read(EXTENSION / "content_script.js")
     base = read(ROOT / "app" / "templates" / "base.html")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
@@ -125,9 +138,13 @@ def test_existing_purchase_page_supports_comment_and_live_chat_and_restores_resu
     assert "dataset.youtubeKind" in content
     assert "TRACELENS_DELETE_REQUEST" in content
     assert "/app?mode=delete" not in content
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v1"' in content
-    assert "sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY" in content
-    assert "restoreStoredDeletionStatus" in content
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v2"' in content
+    assert "requestedActivityIds" in content
+    assert "reconcileWithServerList" in content
+    assert "serverRemoved" in content
+    assert "삭제되었거나 이미 Google 내 활동에 없습니다." in content
+    assert "성공·부분 실패와 관계없이 서버가 렌더링한 최신 삭제 목록" in content
+    assert "setTimeout(() => location.reload()" in content
     assert "마지막 삭제 결과" in content
 
     assert '<a href="/delete-credits/purchase">삭제</a>' in base
