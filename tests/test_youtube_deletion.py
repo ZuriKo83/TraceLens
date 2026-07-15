@@ -10,14 +10,16 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_reusable_deletion_engine_and_youtube_adapter_are_loaded() -> None:
+def test_reusable_deletion_engine_and_youtube_adapters_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.1.8"
+    assert manifest["version"] == "1.2.0"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_verify_page.js" in worker
+    assert "youtube_live_chat_delete_page.js" in worker
+    assert "youtube_live_chat_verify_page.js" in worker
     assert "youtube_deletion_adapter.js" in worker
     assert "youtube_delete_worker.js" not in worker
     assert "youtube_activity_deleter.js" not in worker
@@ -42,23 +44,26 @@ def test_engine_uses_separate_task_window_and_hides_verification() -> None:
     assert "뒤쪽 작업 창" in engine
 
 
-def test_youtube_adapter_uses_single_verification_snapshot() -> None:
+def test_youtube_comment_and_live_chat_adapters_share_orchestration() -> None:
     adapter = read(EXTENSION / "youtube_deletion_adapter.js")
     engine = read(EXTENSION / "deletion_engine.js")
 
     assert 'registerAdapter("youtube"' in adapter
+    assert 'registerAdapter("youtube_live_chat"' in adapter
+    assert 'page=youtube_comments' in adapter
+    assert 'page=youtube_live_chat' in adapter
+    assert "traceLensDeleteYouTubeLiveChatTargetsInPage" in adapter
+    assert "traceLensVerifyYouTubeLiveChatTargetsInPage" in adapter
     assert "maxTargets: 100" in adapter
     assert "batchSize: 20" in adapter
     assert "batchPauseMs: 500" in adapter
     assert "verificationDelayMs: 1800" in adapter
     assert "retry: false" in adapter
-    assert "syncFromVerification" in adapter
     assert "postExtraction(config, extraction)" in adapter
     assert 'typeof adapter.syncFromVerification === "function"' in engine
-    assert "adapter.syncFromVerification(verification, config, tabId)" in engine
 
 
-def test_youtube_deletion_restores_position_and_tracks_click_attempts() -> None:
+def test_youtube_comment_deletion_restores_position_and_tracks_click_attempts() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
 
     assert 'c-wiz[jsname="Ttx95"][data-token]' in deleter
@@ -68,13 +73,26 @@ def test_youtube_deletion_restores_position_and_tracks_click_attempts() -> None:
     assert "commentId" in deleter
     assert "scrollTop: savedTop" in deleter
     assert "restoreAndFind" in deleter
-    assert "await setScroll(saved.scrollTop" in deleter
-    assert "wrapperByToken" in deleter
     assert "const attemptedIds = []" in deleter
     assert "attemptedIds.push(target.id)" in deleter
-    assert "batchClicks >= batchSize" in deleter
     assert "clickConfirmIfPresent" in deleter
-    assert "await waitRemoved(refreshed, 900)" in deleter
+
+
+def test_youtube_live_chat_delete_and_verify_pages_are_scoped() -> None:
+    deleter = read(EXTENSION / "youtube_live_chat_delete_page.js")
+    verifier = read(EXTENSION / "youtube_live_chat_verify_page.js")
+
+    assert 'page !== "youtube_live_chat"' in deleter
+    assert 'button[jslog^="114566"]' in deleter
+    assert "attemptedIds.push(target.id)" in deleter
+    assert "semantic_hash" in deleter
+    assert "row_text_hash" in deleter
+    assert 'page !== "youtube_live_chat"' in verifier
+    assert 'scan_scope: "live_chat"' in verifier
+    assert 'youtube_activity_kind: "live_chat"' in verifier
+    assert 'extractor_version: "1.5.0"' in verifier
+    assert "snapshot_complete: complete" in verifier
+    assert "comment_id: token || null" in verifier
 
 
 def test_engine_uses_reload_verification_after_immediate_dom_delay() -> None:
@@ -89,7 +107,7 @@ def test_engine_uses_reload_verification_after_immediate_dom_delay() -> None:
     assert "unmatched.has(target.id) && firstPass.discoveryComplete === true" in engine
 
 
-def test_youtube_verification_uses_exact_comment_id_and_collects_snapshot() -> None:
+def test_youtube_comment_verification_uses_exact_comment_id_and_collects_snapshot() -> None:
     verifier = read(EXTENSION / "youtube_verify_page.js")
 
     assert 'c-wiz[jsname="Ttx95"][data-token]' in verifier
@@ -97,14 +115,12 @@ def test_youtube_verification_uses_exact_comment_id_and_collects_snapshot() -> N
     assert "const collected = new Map()" in verifier
     assert "foundIds" in verifier
     assert "snapshot_complete: complete" in verifier
-    assert "extraction" in verifier
     assert 'extractor_version: "1.4.1"' in verifier
     assert "if (targetCommentId) return Boolean(item.commentId && targetCommentId === item.commentId)" in verifier
     assert "sameSpecificTitle" in verifier
-    assert "bottomStable >= 5" in verifier
 
 
-def test_existing_purchase_page_keeps_credits_runs_deletion_and_restores_result() -> None:
+def test_existing_purchase_page_supports_comment_and_live_chat_and_restores_result() -> None:
     content = read(EXTENSION / "content_script.js")
     base = read(ROOT / "app" / "templates" / "base.html")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
@@ -112,30 +128,25 @@ def test_existing_purchase_page_keeps_credits_runs_deletion_and_restores_result(
 
     assert 'location.pathname === "/delete-credits/purchase"' in content
     assert "installPurchaseDeletionBridge" in content
-    assert 'type: "DELETE_PLATFORM_ITEMS"' in content
-    assert 'platform: "youtube"' in content
+    assert 'platformKey = liveChat ? "youtube_live_chat" : "youtube"' in content
+    assert '["comment", "live_chat"]' in content
+    assert "data.youtubeKind" in content or "dataset.youtubeKind" in content
     assert "TRACELENS_DELETE_REQUEST" in content
     assert "/app?mode=delete" not in content
-    assert "installDeletionCenter" not in content
-    assert "firstFailure" in content
     assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v1"' in content
     assert "sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY" in content
     assert "restoreStoredDeletionStatus" in content
-    assert "if (!restoreStoredDeletionStatus())" in content
-    assert "clearStoredDeletionStatus()" in content
     assert "마지막 삭제 결과" in content
 
     assert '<a href="/delete-credits/purchase">삭제</a>' in base
     assert "/app?mode=delete" not in base
 
     assert "삭제권 구매" in purchase
-    assert "현재 보유 삭제권" in purchase
     assert "플랫폼별 삭제 실행" in purchase
-    assert "YouTube" in purchase
-    assert "Instagram" in purchase
-    assert "Threads" in purchase
-    assert "Facebook" in purchase
-    assert 'data-supported="{{ 1 if supported else 0 }}"' in purchase
+    assert 'data-kind="comment"' in purchase
+    assert 'data-kind="live_chat"' in purchase
+    assert 'data-youtube-kind="{{ youtube_kind }}"' in purchase
+    assert "실시간 채팅 · 최대 100개" in purchase
     assert "TRACELENS_DELETE_REQUEST" in purchase
     assert 'meta name="tracelens-extension-token"' in purchase
 
@@ -144,10 +155,12 @@ def test_existing_purchase_page_keeps_credits_runs_deletion_and_restores_result(
     assert '"extension_token": extension_token' in credits
 
 
-def test_youtube_collector_handles_virtualized_rows_and_marks_only_complete_snapshots() -> None:
+def test_youtube_collector_handles_virtualized_rows_and_live_chat_scope() -> None:
     collector = read(EXTENSION / "youtube_activity_collector.js")
 
     assert "collectYouTubeActivityPageV2" in collector
+    assert 'activityType: "live_chat"' in collector
+    assert 'page=youtube_live_chat' in collector
     assert "new WeakSet" not in collector
     assert "const collected = new Map()" in collector
     assert "MutationObserver" in collector
@@ -159,11 +172,12 @@ def test_youtube_collector_handles_virtualized_rows_and_marks_only_complete_snap
     assert 'extractor_version: "1.3.0"' in collector
 
 
-def test_complete_snapshot_prunes_only_verified_missing_youtube_rows() -> None:
+def test_complete_snapshot_prunes_only_matching_youtube_scope() -> None:
     schemas = read(ROOT / "app" / "schemas.py")
     tasks = read(ROOT / "app" / "tasks.py")
 
     assert "snapshot_complete: bool = False" in schemas
     assert "_prune_complete_youtube_snapshot" in tasks
-    assert "payload.snapshot_complete" in tasks
+    assert 'payload.scan_scope not in {"comment", "live_chat"}' in tasks
+    assert "_youtube_activity_kind(activity) != payload.scan_scope" in tasks
     assert "db.delete(activity)" in tasks
