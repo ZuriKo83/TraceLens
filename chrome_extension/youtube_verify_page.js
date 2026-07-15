@@ -82,7 +82,7 @@ globalThis.traceLensVerifyYouTubeTargetsInPage = async function(targets) {
       page_title: document.title,
       ownership_scope: "self_activity",
       ownership_verified: true,
-      extractor_version: "1.4.0",
+      extractor_version: "1.4.1",
       youtube_activity_kind: "comment",
       my_activity_page: expectedPage,
       original_url: sourceUrl,
@@ -137,18 +137,20 @@ globalThis.traceLensVerifyYouTubeTargetsInPage = async function(targets) {
     };
   };
 
-  const score = (target, item) => {
+  const matchesTarget = (target, item) => {
     const locator = target.locator || {};
     const targetCommentId = clean(target.commentId || locator.comment_id || locator.activity_token);
-    if (targetCommentId && item.commentId && targetCommentId === item.commentId) return true;
+    if (targetCommentId) return Boolean(item.commentId && targetCommentId === item.commentId);
+
     if (locator.semantic_hash && locator.semantic_hash === item.semanticHash) return true;
     const targetContent = norm(target.content || locator.content);
     const targetTitle = norm(target.title || locator.title);
     const exactContent = Boolean(targetContent && targetContent === norm(item.content));
     const contentInItem = Boolean(targetContent && item.fullTextNorm.includes(targetContent));
     const sameSource = Boolean(target.sourceKey && item.sourceKey && target.sourceKey === item.sourceKey);
-    const sameTitle = Boolean(targetTitle && targetTitle === norm(item.title));
-    return exactContent || (contentInItem && (sameSource || sameTitle));
+    const genericTitle = /^(youtube\s*(동영상|게시물)|동영상|게시물|video|post)$/i.test(targetTitle);
+    const sameSpecificTitle = Boolean(!genericTitle && targetTitle && targetTitle === norm(item.title));
+    return (exactContent || contentInItem) && (sameSource || sameSpecificTitle);
   };
 
   const root = document.scrollingElement || document.documentElement;
@@ -167,7 +169,7 @@ globalThis.traceLensVerifyYouTubeTargetsInPage = async function(targets) {
     const currentItems = itemWrappers().map(parseItem).filter((item) => item.content);
     for (const item of currentItems) collected.set(item.signature, item);
     for (const target of targets) {
-      if (!foundIds.has(target.id) && currentItems.some((item) => score(target, item))) foundIds.add(target.id);
+      if (!foundIds.has(target.id) && currentItems.some((item) => matchesTarget(target, item))) foundIds.add(target.id);
     }
 
     const max = Math.max(0, root.scrollHeight - root.clientHeight);
