@@ -4,10 +4,12 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
   const norm = (value) => clean(value).toLowerCase();
   const batchSize = Math.max(1, Math.min(20, Number(options.batchSize) || 20));
   const batchPauseMs = Math.max(250, Number(options.batchPauseMs) || 500);
-  const expectedPage = "youtube_comments";
+  const activityKind = targets?.[0]?.activityKind === "live_chat" ? "live_chat" : "comment";
+  const expectedPage = activityKind === "live_chat" ? "youtube_live_chat" : "youtube_comments";
+  const itemLabel = activityKind === "live_chat" ? "실시간 채팅" : "댓글";
   const validPage = () => location.hostname === "myactivity.google.com"
     && new URL(location.href).searchParams.get("page") === expectedPage;
-  if (!validPage()) throw new Error("Google 내 활동의 YouTube 댓글 페이지가 아닙니다.");
+  if (!validPage()) throw new Error(`Google 내 활동의 YouTube ${itemLabel} 페이지가 아닙니다.`);
 
   const fnv = (value) => {
     let hash = 2166136261;
@@ -37,37 +39,69 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     return Boolean(rect && rect.width > 0 && rect.height > 0);
   };
 
-  const itemWrappers = () => [...document.querySelectorAll(
-    'c-wiz[jsname="Ttx95"][data-token], c-wiz[data-show-delete-individual="true"][data-token]'
-  )].filter((wrapper) => wrapper.querySelector('[role="listitem"][aria-label*="YouTube"], [role="listitem"]'));
+  const looksLikeDeleteButton = (button) => {
+    const label = clean(`${button.getAttribute("aria-label") || ""} ${button.getAttribute("title") || ""}`);
+    const text = clean(button.innerText || button.textContent);
+    return button.matches?.('button[jslog^="114566"]')
+      || /(활동\s*항목.*삭제|활동\s*삭제|삭제$|delete\s*activity|delete$|remove$)/i.test(label)
+      || ["×", "✕", "X"].includes(text);
+  };
+
+  const deleteButtons = () => [...document.querySelectorAll('button[jslog^="114566"],button,[role="button"]')]
+    .filter(isVisible)
+    .filter(looksLikeDeleteButton);
+
+  const itemWrappers = () => {
+    const exact = [...document.querySelectorAll(
+      'c-wiz[jsname="Ttx95"][data-token], c-wiz[data-show-delete-individual="true"][data-token]'
+    )];
+    const fallback = deleteButtons().map((button) => button.closest(
+      'c-wiz[data-token],[role="listitem"],article,li,div[data-id]'
+    )).filter(Boolean);
+    return [...new Set([...exact, ...fallback])].filter((wrapper) => wrapper.querySelector("button,[role='button']"));
+  };
 
   const wrapperByToken = (token) => {
     const wanted = clean(token);
     if (!wanted) return null;
-    return itemWrappers().find((wrapper) => clean(wrapper.getAttribute("data-token")) === wanted) || null;
+    return itemWrappers().find((wrapper) => {
+      const current = clean(wrapper.getAttribute("data-token") || wrapper.closest("c-wiz[data-token]")?.getAttribute("data-token"));
+      return current === wanted;
+    }) || null;
   };
 
   const deleteButtonFor = (wrapper, card) => {
     const exact = wrapper.querySelector('button[jslog^="114566"]');
     if (isVisible(exact)) return exact;
-    return [...wrapper.querySelectorAll("button,[role='button']")].filter(isVisible).find((button) => {
-      const label = clean(`${button.getAttribute("aria-label") || ""} ${button.getAttribute("title") || ""}`);
-      return /(활동\s*항목.*삭제|활동\s*삭제|삭제$|delete\s*activity|delete$|remove$)/i.test(label)
-        && (!card || card.contains(button));
-    }) || null;
+    return [...wrapper.querySelectorAll("button,[role='button']")]
+      .filter(isVisible)
+      .find((button) => looksLikeDeleteButton(button) && (!card || card.contains(button) || wrapper.contains(button))) || null;
+  };
+
+  const lineContent = (card, title) => {
+    const lines = String(card.innerText || card.textContent || "").split(/\r?\n/).map(clean).filter(Boolean);
+    const control = /^(YouTube|세부정보|Details|삭제|Delete|Remove|오전|오후|AM|PM|×|✕|X)$/i;
+    const relation = /에\s*남긴\s*댓글|에\s*작성한\s*댓글|에서\s*메시지를\s*전송함|commented on|sent a message/i;
+    const dateLine = /^(?:\d{4}[.\-/]\s*)?\d{1,2}[.\-/]\s*\d{1,2}|\d{1,2}:\d{2}|오늘|어제|today|yesterday/i;
+    return lines.find((line) => !control.test(line) && !relation.test(line) && !dateLine.test(line) && line !== title) || "";
   };
 
   const parseItem = (wrapper) => {
     const card = wrapper.querySelector('[role="listitem"][aria-label*="YouTube"]')
       || wrapper.querySelector('[role="listitem"]')
       || wrapper;
-    const commentAnchor = wrapper.querySelector('a[jsname="BLHFSc"][href*="lc="], a[href*="lc="]');
-    const sourceUrl = commentAnchor?.href || commentAnchor?.getAttribute("href") || "";
-    const commentId = clean(wrapper.getAttribute("data-token")) || commentIdFromUrl(sourceUrl);
-    const contentNode = wrapper.querySelector('.QTGV3c[jsname="r4nke"], [jsname="r4nke"], .QTGV3c');
-    const titleNode = commentAnchor?.querySelector(".hFYxqd") || commentAnchor;
-    const content = clean(contentNode?.innerText || contentNode?.textContent);
-    const title = clean(titleNode?.innerText || titleNode?.textContent);
+    const anchor = wrapper.querySelector('a[jsname="BLHFSc"][href*="lc="],a[href*="lc="]')
+      || wrapper.querySelector('a[jsname="BLHFSc"][href],a[href*="youtube.com"],a[href*="youtu.be"]');
+    const sourceUrl = anchor?.href || anchor?.getAttribute("href") || "";
+    const commentId = clean(wrapper.getAttribute("data-token")
+      || wrapper.closest("c-wiz[data-token]")?.getAttribute("data-token"))
+      || commentIdFromUrl(sourceUrl);
+    const contentNode = wrapper.querySelector('.QTGV3c[jsname="r4nke"],[jsname="r4nke"],.QTGV3c');
+    const titleNode = anchor?.querySelector?.(".hFYxqd") || anchor;
+    const title = clean(titleNode?.innerText || titleNode?.textContent)
+      || (activityKind === "live_chat" ? "YouTube 실시간 스트리밍" : "YouTube 동영상");
+    const directContent = clean(contentNode?.innerText || contentNode?.textContent);
+    const content = directContent || lineContent(card, title);
     const fullText = clean(card.innerText || card.textContent);
     const key = sourceKey(sourceUrl);
     return {
@@ -84,9 +118,11 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
       semanticHash: fnv(`${expectedPage}|${key}|${title}|${content}`),
       rowTextHash: fnv(fullText),
       signature: commentId || `${key}|${fnv(fullText)}`,
-      documentTop: (wrapper.getBoundingClientRect?.().top || 0) + (window.scrollY || 0),
     };
   };
+
+  const normalizedTargetTitle = (target, locator) => norm(target.title || locator.title)
+    .replace(/^\[실시간 채팅\]\s*/, "");
 
   const score = (target, item) => {
     const locator = target.locator || {};
@@ -96,19 +132,12 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
         ? {value: 500, strong: true}
         : {value: 0, strong: false};
     }
-
     let value = 0;
     let strong = false;
-    if (locator.semantic_hash && locator.semantic_hash === item.semanticHash) {
-      value += 160;
-      strong = true;
-    }
-    if (locator.row_text_hash && locator.row_text_hash === item.rowTextHash) {
-      value += 95;
-      strong = true;
-    }
+    if (locator.semantic_hash && locator.semantic_hash === item.semanticHash) { value += 160; strong = true; }
+    if (locator.row_text_hash && locator.row_text_hash === item.rowTextHash) { value += 95; strong = true; }
     const targetContent = norm(target.content || locator.content);
-    const targetTitle = norm(target.title || locator.title);
+    const targetTitle = normalizedTargetTitle(target, locator);
     const exactContent = Boolean(targetContent && targetContent === norm(item.content));
     const contentInItem = Boolean(targetContent && item.fullTextNorm.includes(targetContent));
     const sameSource = Boolean(target.sourceKey && item.sourceKey && target.sourceKey === item.sourceKey);
@@ -131,7 +160,7 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
   };
 
   const root = document.scrollingElement || document.documentElement;
-  const scanItems = () => itemWrappers().map(parseItem);
+  const scanItems = () => itemWrappers().map(parseItem).filter((item) => item.content);
   const setScroll = async (top) => {
     const max = Math.max(0, root.scrollHeight - root.clientHeight);
     const next = Math.max(0, Math.min(Number(top) || 0, max));
@@ -140,7 +169,6 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     root.dispatchEvent(new Event("scroll", {bubbles: true}));
     await sleep(220);
   };
-  const scrollToTop = async () => setScroll(0);
 
   let banner = document.getElementById("tracelens-delete-banner");
   if (!banner) {
@@ -154,9 +182,8 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     document.documentElement.appendChild(banner);
   }
 
-  banner.textContent = "TraceLens가 선택한 댓글 위치를 찾고 있습니다. 이 탭을 닫지 마세요.";
-  await scrollToTop();
-
+  banner.textContent = `TraceLens가 선택한 ${itemLabel} 위치를 찾고 있습니다. 이 창을 닫지 마세요.`;
+  await setScroll(0);
   const discovered = new Map();
   const scanned = new Set();
   let bottomStable = 0;
@@ -173,14 +200,12 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
       if (best) discovered.set(target.id, {item: best.item, scrollTop: savedTop, score: best.value});
     }
     if (discovered.size === targets.length) break;
-
     const max = Math.max(0, root.scrollHeight - root.clientHeight);
     const atBottom = root.scrollTop >= max - 8;
-    const bottomSignature = `${root.scrollTop}|${root.scrollHeight}|${items.length}|${discovered.size}`;
-    bottomStable = atBottom && bottomSignature === previousBottom ? bottomStable + 1 : 0;
-    previousBottom = bottomSignature;
+    const signature = `${root.scrollTop}|${root.scrollHeight}|${items.length}|${discovered.size}`;
+    bottomStable = atBottom && signature === previousBottom ? bottomStable + 1 : 0;
+    previousBottom = signature;
     if (atBottom && bottomStable >= 5) break;
-
     const before = root.scrollTop;
     root.scrollTop = Math.min(max, before + Math.max(700, Math.floor((root.clientHeight || innerHeight) * 0.9)));
     root.dispatchEvent(new Event("scroll", {bubbles: true}));
@@ -203,16 +228,14 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     const token = clean(target.commentId || locator.comment_id || locator.activity_token || saved?.item?.commentId);
     const exactWrapper = wrapperByToken(token);
     if (exactWrapper) return parseItem(exactWrapper);
-    const best = bestFor(target, scanItems());
-    return best?.item || null;
+    return bestFor(target, scanItems())?.item || null;
   };
 
   const restoreAndFind = async (target) => {
     const saved = discovered.get(target.id);
     if (!saved) return null;
     const viewport = Math.max(500, root.clientHeight || innerHeight || 800);
-    const offsets = [0, -0.45, 0.45, -0.9, 0.9];
-    for (const offset of offsets) {
+    for (const offset of [0, -0.45, 0.45, -0.9, 0.9]) {
       await setScroll(saved.scrollTop + viewport * offset);
       const current = findCurrentItem(target);
       if (current) return current;
@@ -239,33 +262,28 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
           const label = clean(`${button.getAttribute("aria-label") || ""} ${button.innerText || button.textContent || ""}`);
           return /^(활동\s*삭제|삭제하기|삭제|확인|delete\s*activity|delete|remove|confirm|ok)$/i.test(label);
         });
-        if (confirm) {
-          confirm.click();
-          return true;
-        }
+        if (confirm) { confirm.click(); return true; }
       }
       await sleep(90);
     }
     return false;
   };
 
-  banner.textContent = "TraceLens가 저장한 위치로 이동해 아래쪽 댓글부터 삭제하고 있습니다.";
+  banner.textContent = `TraceLens가 저장한 위치로 이동해 아래쪽 ${itemLabel}부터 삭제하고 있습니다.`;
   for (const target of pending) {
     const current = await restoreAndFind(target);
     if (!current) {
-      failed.push({id: target.id, reason: "처음 발견한 위치로 돌아갔지만 대상 댓글을 다시 찾지 못했습니다."});
+      failed.push({id: target.id, reason: `처음 발견한 위치로 돌아갔지만 대상 ${itemLabel}을 다시 찾지 못했습니다.`});
       continue;
     }
-
     current.wrapper.scrollIntoView({block: "center", behavior: "auto"});
     await sleep(100);
     const refreshed = findCurrentItem(target) || current;
     const button = refreshed.button || deleteButtonFor(refreshed.wrapper, refreshed.card);
     if (!button) {
-      failed.push({id: target.id, reason: "댓글 카드의 X 삭제 버튼(jslog 114566)을 찾지 못했습니다."});
+      failed.push({id: target.id, reason: `${itemLabel} 카드의 X 삭제 버튼(jslog 114566)을 찾지 못했습니다.`});
       continue;
     }
-
     try {
       button.focus?.({preventScroll: true});
       button.click();
@@ -276,11 +294,10 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
         if (confirmed) removed = await waitRemoved(refreshed, 1800);
       }
       if (removed) clickedIds.push(target.id);
-      else failed.push({id: target.id, reason: "X 삭제 버튼을 눌렀지만 댓글 카드가 즉시 사라지지 않았습니다."});
+      else failed.push({id: target.id, reason: `X 삭제 버튼을 눌렀지만 ${itemLabel} 카드가 즉시 사라지지 않았습니다.`});
     } catch (error) {
       failed.push({id: target.id, reason: error.message || String(error)});
     }
-
     batchClicks += 1;
     if (batchClicks >= batchSize) {
       banner.textContent = `${attemptedIds.length}개 삭제 요청 완료 · 잠시 반영을 기다립니다.`;
@@ -293,7 +310,7 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
 
   banner.textContent = attemptedIds.length
     ? `${attemptedIds.length}개 삭제 요청 완료 · 새로고침 후 한 번만 확인합니다.`
-    : "삭제 요청된 댓글이 없습니다. 실패 원인을 TraceLens로 전달합니다.";
+    : `삭제 요청된 ${itemLabel}이 없습니다. 실패 원인을 TraceLens로 전달합니다.`;
 
   return {
     clickedIds,
