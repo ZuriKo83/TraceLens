@@ -58,3 +58,31 @@ def test_instagram_parser_extracts_signed_in_visual_rows() -> None:
     assert 'visualTextLines' in background
     assert 'signedInCommentFromRow' in background
     assert 'accountPrefixPattern' in background
+    assert 'diagnosticAuthors' in background
+    assert 'openManagementRow' not in background
+    assert 'collectOwnCommentsFromPost' not in background
+
+
+def test_instagram_identity_is_dynamic_and_not_user_specific() -> None:
+    background = read("background.js")
+    assert "instagramIdentityVerified" in background
+    assert 'accountContext?.instagramUsername || ""' in background
+    assert "yeon_o11" not in background.lower()
+    assert "skykang01" not in background.lower()
+
+
+def test_tracelens_brand_and_icons() -> None:
+    manifest = json.loads(read("manifest.json"))
+    assert manifest["name"] == "TraceLens"
+    assert manifest["action"]["default_title"] == "TraceLens"
+    assert manifest["icons"]["128"] == "icons/icon128.png"
+    root = Path(__file__).resolve().parents[1]
+    assert (root / "chrome_extension" / "icons" / "icon128.png").exists()
+
+
+def test_public_domain_is_connected() -> None:
+    manifest = json.loads(read("manifest.json"))
+    assert "https://tracelens.kr/*" in manifest["host_permissions"]
+    assert "https://tracelens.kr/*" in manifest["content_scripts"][0]["matches"]
+    assert "https://tracelens.kr" in read("popup.js")
+    assert "https://tracelens.kr" in read("background.js")
