@@ -115,7 +115,7 @@
     );
     publish(webTabId, adapter, {
       stage: "verifying",
-      message: `뒤쪽 작업 창에서 확인 완료: 남아 있는 대상 ${payload.foundIds?.length || 0}개`,
+      message: `뒤쪽 작업 창에서 확인 완료: Google 내 활동에 남아 있는 대상 ${payload.foundIds?.length || 0}개`,
       progress: payload.progress || null,
     });
     return payload;
@@ -197,7 +197,7 @@
       publish(webTabId, adapter, {
         stage: "discovering",
         message: adapter.discoveryMessage?.(targets.length)
-          || `${targets.length}개 대상을 전체 기록에서 탐색한 뒤 아래쪽부터 삭제합니다.`,
+          || `${targets.length}개 대상을 전체 기록에서 탐색한 뒤 아래쪽부터 삭제를 요청합니다.`,
       });
       const firstPass = await deletionPass(taskTabId, targets, adapter, webTabId);
       await assertTaskTab(taskTabId, state, adapter);
@@ -205,7 +205,7 @@
       const verificationDelayMs = Math.max(500, Number(adapter.verificationDelayMs) || 1800);
       publish(webTabId, adapter, {
         stage: "settling",
-        message: `삭제 반영을 ${Math.ceil(verificationDelayMs / 1000)}초 기다린 뒤 뒤에서 확인합니다.`,
+        message: `삭제 요청 반영을 ${Math.ceil(verificationDelayMs / 1000)}초 기다린 뒤 Google 내 활동에서 확인합니다.`,
       });
       await sleep(verificationDelayMs);
       await returnToWebTab();
@@ -239,43 +239,60 @@
       const firstFailures = new Map((firstPass.failed || []).map((entry) => [entry.id, entry.reason]));
       const retryFailures = new Map((retryPass.failed || []).map((entry) => [entry.id, entry.reason]));
       const unmatched = new Set([...(firstPass.unmatchedIds || []), ...(retryPass.unmatchedIds || [])]);
-      const deletedIds = [];
+      const pendingIds = [];
       const alreadyMissingIds = [];
       const failures = [];
 
       for (const target of targets) {
         if (found.has(target.id)) {
-          failures.push({id: target.id, reason: "새로고침 후에도 동일한 댓글 ID가 남아 있습니다."});
+          failures.push({id: target.id, reason: "새로고침 후에도 동일한 항목이 Google 내 활동에 남아 있습니다."});
         } else if (!verification.complete) {
-          failures.push({id: target.id, reason: "전체 기록 확인이 끝나지 않아 삭제 여부를 확정할 수 없습니다."});
+          failures.push({id: target.id, reason: "Google 내 활동 전체 확인이 끝나지 않아 삭제 요청 결과를 확정할 수 없습니다."});
         } else if (attempted.has(target.id)) {
-          deletedIds.push(target.id);
+          pendingIds.push(target.id);
         } else if (firstFailures.has(target.id) || retryFailures.has(target.id)) {
           failures.push({id: target.id, reason: retryFailures.get(target.id) || firstFailures.get(target.id)});
         } else if (unmatched.has(target.id) && firstPass.discoveryComplete === true) {
           alreadyMissingIds.push(target.id);
         } else {
-          failures.push({id: target.id, reason: "삭제 버튼 클릭 기록이 없어 삭제 여부를 확정할 수 없습니다."});
+          failures.push({id: target.id, reason: "삭제 버튼 클릭 기록이 없어 삭제 요청 여부를 확정할 수 없습니다."});
         }
       }
 
       await assertTaskTab(taskTabId, state, adapter);
-      publish(webTabId, adapter, {stage: "syncing", message: "방금 확인한 결과로 TraceLens 보관함을 바로 동기화합니다."});
-      const sync = await syncArchive(adapter, config, taskTabId, verification);
+      let sync = {synced: false, deferred: false, lines: []};
+      if (adapter.deferArchiveSync === true) {
+        sync = {
+          synced: false,
+          deferred: true,
+          lines: ["YouTube 실제 댓글 반영이 확인되기 전까지 TraceLens 보관함을 유지합니다."],
+        };
+        publish(webTabId, adapter, {
+          stage: "syncing",
+          message: "YouTube 실제 반영 전까지 TraceLens 보관함 기록을 유지합니다.",
+        });
+      } else {
+        publish(webTabId, adapter, {stage: "syncing", message: "확인 결과로 TraceLens 보관함을 동기화합니다."});
+        sync = await syncArchive(adapter, config, taskTabId, verification);
+      }
+
       const result = {
         ok: failures.length === 0,
         platform: adapter.platform,
         requested: targets.length,
-        deleted: deletedIds.length,
-        deletedIds,
+        deleted: 0,
+        deletedIds: [],
+        pending: pendingIds.length,
+        pendingIds,
         alreadyMissing: alreadyMissingIds.length,
         alreadyMissingIds,
         failed: failures.length,
         failures,
         verificationComplete: Boolean(verification.complete),
         synced: sync.synced,
+        syncDeferred: Boolean(sync.deferred),
         lines: sync.lines,
-        warning: sync.synced ? null : (adapter.syncError || "삭제 후 보관함 동기화에 실패했습니다."),
+        warning: sync.deferred || sync.synced ? null : (adapter.syncError || "삭제 후 보관함 동기화에 실패했습니다."),
         error: failures.length ? failures[0]?.reason : null,
       };
 
@@ -285,7 +302,7 @@
       await returnToWebTab();
       publish(webTabId, adapter, {
         stage: "done",
-        message: result.ok ? "삭제 확인이 완료되었습니다." : "일부 댓글이 남아 있습니다.",
+        message: result.ok ? "삭제 요청 확인이 완료되었습니다." : "일부 항목이 Google 내 활동에 남아 있습니다.",
         result,
       });
       return result;
