@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TraceLens",
-  "version": "1.2.3",
-  "description": "내가 작성한 게시글과 댓글을 여러 사이트에서 찾아 TraceLens 보관함에 정리하고 삭제권 화면에서 선택한 YouTube 댓글과 실시간 채팅을 동일한 삭제 방식으로 처리합니다.",
+  "version": "1.2.4",
+  "description": "내가 작성한 게시글과 댓글을 여러 사이트에서 찾아 TraceLens 보관함에 정리하고 YouTube 삭제 요청과 실제 반영 대기 상태를 구분합니다.",
   "minimum_chrome_version": "109",
   "permissions": [
     "activeTab",
