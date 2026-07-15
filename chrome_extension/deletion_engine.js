@@ -1,6 +1,7 @@
 (() => {
   const adapters = new Map();
   const runningPlatforms = new Set();
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   globalThis.TraceLensDeletionEngine = {
     registerAdapter(platform, adapter) {
@@ -44,12 +45,12 @@
     }).catch(() => undefined);
   }
 
-  async function focusTab(tabId) {
+  async function activateTab(tabId, focusWindow = true) {
     if (!tabId) return null;
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     if (!tab) return null;
     await chrome.tabs.update(tabId, {active: true}).catch(() => undefined);
-    if (Number.isInteger(tab.windowId)) {
+    if (focusWindow && Number.isInteger(tab.windowId)) {
       await chrome.windows.update(tab.windowId, {focused: true}).catch(() => undefined);
     }
     return tab;
@@ -65,12 +66,12 @@
     return tab;
   }
 
-  async function reloadAndWait(tabId, state, adapter) {
-    await focusTab(tabId);
+  async function reloadAndWait(tabId, state, adapter, focusWindow = false) {
+    await activateTab(tabId, focusWindow);
     await chrome.tabs.reload(tabId);
     await waitForTabComplete(tabId, adapter.loadTimeoutMs || 45000);
     await waitForPageSettled(tabId, adapter.settleTimeoutMs || 15000);
-    await focusTab(tabId);
+    await activateTab(tabId, focusWindow);
     await assertTaskTab(tabId, state, adapter);
   }
 
@@ -83,7 +84,7 @@
   }
 
   async function deletionPass(tabId, targets, adapter, webTabId) {
-    await focusTab(tabId);
+    await activateTab(tabId, true);
     const payload = await executePageFunction(
       tabId,
       adapter.deletePageFunction,
@@ -93,17 +94,19 @@
       }],
       `${adapter.label || adapter.platform} 삭제 페이지에서 결과를 받지 못했습니다.`,
     );
-    const immediateAttempts = (payload.failed || []).filter((entry) => /X 삭제 버튼을 눌렀지만/.test(String(entry?.reason || ""))).length;
+    const attempted = payload.attemptedIds?.length
+      || payload.clickedIds?.length
+      || (payload.failed || []).filter((entry) => /X 삭제 버튼을 눌렀지만/.test(String(entry?.reason || ""))).length;
     publish(webTabId, adapter, {
       stage: "deleting",
-      message: `${payload.scannedUnique || payload.scanned || 0}개 행 탐색, ${(payload.clickedIds?.length || 0) + immediateAttempts}개 삭제 요청 완료`,
+      message: `${payload.scannedUnique || payload.scanned || 0}개 행 탐색, ${attempted || 0}개 삭제 요청 완료`,
       progress: payload.progress || null,
     });
     return payload;
   }
 
   async function verificationPass(tabId, targets, adapter, webTabId) {
-    await focusTab(tabId);
+    await activateTab(tabId, false);
     const payload = await executePageFunction(
       tabId,
       adapter.verifyPageFunction,
@@ -112,7 +115,7 @@
     );
     publish(webTabId, adapter, {
       stage: "verifying",
-      message: `같은 작업 탭에서 확인 완료: 남아 있는 대상 ${payload.foundIds?.length || 0}개`,
+      message: `뒤쪽 작업 창에서 확인 완료: 남아 있는 대상 ${payload.foundIds?.length || 0}개`,
       progress: payload.progress || null,
     });
     return payload;
@@ -135,6 +138,16 @@
     return {synced, lines, raw: result};
   }
 
+  async function createTaskWindow(url) {
+    const created = await chrome.windows.create({url, focused: true, type: "popup"});
+    let taskTab = created?.tabs?.[0] || null;
+    if (!taskTab && Number.isInteger(created?.id)) {
+      taskTab = (await chrome.tabs.query({windowId: created.id}))[0] || null;
+    }
+    if (!taskTab?.id) throw new Error("삭제 작업 창을 열지 못했습니다.");
+    return {windowId: created.id, tab: taskTab};
+  }
+
   async function runDeletion(adapter, rawTargets, config, webTabId) {
     const targets = adapter.normalizeTargets(rawTargets);
     const maxTargets = Math.max(1, Number(adapter.maxTargets) || 100);
@@ -142,35 +155,43 @@
     if (targets.length > maxTargets) throw new Error(`한 번에 최대 ${maxTargets}개까지 삭제할 수 있습니다.`);
 
     let tab = null;
+    let taskWindowId = null;
     let completed = false;
     const state = {closed: false, navigated: false};
     const onRemoved = (tabId) => { if (tabId === tab?.id) state.closed = true; };
+    const onWindowRemoved = (windowId) => { if (windowId === taskWindowId) state.closed = true; };
     const onUpdated = (tabId, changeInfo) => {
       if (tabId === tab?.id && changeInfo.url && !adapter.isTaskUrl(changeInfo.url)) state.navigated = true;
     };
     chrome.tabs.onRemoved.addListener(onRemoved);
+    chrome.windows.onRemoved.addListener(onWindowRemoved);
     chrome.tabs.onUpdated.addListener(onUpdated);
 
-    const closeTaskTab = async () => {
-      if (!tab?.id || state.closed) return;
-      const tabId = tab.id;
+    const closeTaskWindow = async () => {
+      if (state.closed) return;
       state.closed = true;
-      await chrome.tabs.remove(tabId).catch(() => undefined);
+      if (Number.isInteger(taskWindowId)) {
+        await chrome.windows.remove(taskWindowId).catch(() => undefined);
+      } else if (tab?.id) {
+        await chrome.tabs.remove(tab.id).catch(() => undefined);
+      }
     };
 
     const returnToWebTab = async () => {
       if (!webTabId) return;
-      await focusTab(webTabId);
+      await activateTab(webTabId, true);
     };
 
     try {
       publish(webTabId, adapter, {stage: "opening", message: adapter.openingMessage || `${adapter.label} 삭제 페이지를 여는 중입니다.`});
-      tab = await chrome.tabs.create({url: adapter.taskUrl, active: true});
+      const taskSurface = await createTaskWindow(adapter.taskUrl);
+      taskWindowId = taskSurface.windowId;
+      tab = taskSurface.tab;
       const taskTabId = tab.id;
-      await focusTab(taskTabId);
+      await activateTab(taskTabId, true);
       await waitForTabComplete(taskTabId, adapter.loadTimeoutMs || 45000);
       await waitForPageSettled(taskTabId, adapter.settleTimeoutMs || 15000);
-      await focusTab(taskTabId);
+      await activateTab(taskTabId, true);
       await assertTaskTab(taskTabId, state, adapter);
 
       publish(webTabId, adapter, {
@@ -181,27 +202,42 @@
       const firstPass = await deletionPass(taskTabId, targets, adapter, webTabId);
       await assertTaskTab(taskTabId, state, adapter);
 
-      publish(webTabId, adapter, {stage: "verifying", message: "같은 작업 탭을 새로고침해 한 번만 확인합니다."});
-      await reloadAndWait(taskTabId, state, adapter);
+      const verificationDelayMs = Math.max(500, Number(adapter.verificationDelayMs) || 1800);
+      publish(webTabId, adapter, {
+        stage: "settling",
+        message: `삭제 반영을 ${Math.ceil(verificationDelayMs / 1000)}초 기다린 뒤 뒤에서 확인합니다.`,
+      });
+      await sleep(verificationDelayMs);
+      await returnToWebTab();
+
+      publish(webTabId, adapter, {stage: "verifying", message: "TraceLens 화면을 유지한 채 뒤쪽 작업 창에서 한 번만 확인합니다."});
+      await reloadAndWait(taskTabId, state, adapter, false);
       let verification = await verificationPass(taskTabId, targets, adapter, webTabId);
 
       const retryTargets = targets.filter((target) => verification.foundIds?.includes(target.id));
-      let retryPass = {clickedIds: [], failed: [], unmatchedIds: []};
+      let retryPass = {clickedIds: [], attemptedIds: [], failed: [], unmatchedIds: []};
       if (retryTargets.length && adapter.retry !== false) {
-        publish(webTabId, adapter, {stage: "retrying", message: `${retryTargets.length}개 남은 항목만 같은 탭에서 한 번 더 처리합니다.`});
+        publish(webTabId, adapter, {stage: "retrying", message: `${retryTargets.length}개 남은 항목만 작업 창을 다시 열어 처리합니다.`});
         retryPass = await deletionPass(taskTabId, retryTargets, adapter, webTabId);
-        await reloadAndWait(taskTabId, state, adapter);
+        await sleep(verificationDelayMs);
+        await returnToWebTab();
+        await reloadAndWait(taskTabId, state, adapter, false);
         verification = await verificationPass(taskTabId, targets, adapter, webTabId);
       }
 
       const clicked = new Set([...(firstPass.clickedIds || []), ...(retryPass.clickedIds || [])]);
+      const attempted = new Set([
+        ...(firstPass.attemptedIds || []),
+        ...(retryPass.attemptedIds || []),
+        ...clicked,
+      ]);
+      for (const entry of [...(firstPass.failed || []), ...(retryPass.failed || [])]) {
+        if (/X 삭제 버튼을 눌렀지만/.test(String(entry?.reason || ""))) attempted.add(entry.id);
+      }
+
       const found = new Set(verification.foundIds || []);
       const firstFailures = new Map((firstPass.failed || []).map((entry) => [entry.id, entry.reason]));
       const retryFailures = new Map((retryPass.failed || []).map((entry) => [entry.id, entry.reason]));
-      const clickAttempted = new Set(clicked);
-      for (const entry of [...(firstPass.failed || []), ...(retryPass.failed || [])]) {
-        if (/X 삭제 버튼을 눌렀지만/.test(String(entry?.reason || ""))) clickAttempted.add(entry.id);
-      }
       const unmatched = new Set([...(firstPass.unmatchedIds || []), ...(retryPass.unmatchedIds || [])]);
       const deletedIds = [];
       const alreadyMissingIds = [];
@@ -209,10 +245,10 @@
 
       for (const target of targets) {
         if (found.has(target.id)) {
-          failures.push({id: target.id, reason: "새로고침 후에도 대상 댓글이 남아 있습니다."});
+          failures.push({id: target.id, reason: "새로고침 후에도 동일한 댓글 ID가 남아 있습니다."});
         } else if (!verification.complete) {
           failures.push({id: target.id, reason: "전체 기록 확인이 끝나지 않아 삭제 여부를 확정할 수 없습니다."});
-        } else if (clickAttempted.has(target.id)) {
+        } else if (attempted.has(target.id)) {
           deletedIds.push(target.id);
         } else if (firstFailures.has(target.id) || retryFailures.has(target.id)) {
           failures.push({id: target.id, reason: retryFailures.get(target.id) || firstFailures.get(target.id)});
@@ -244,8 +280,8 @@
       };
 
       completed = true;
-      publish(webTabId, adapter, {stage: "closing", message: "삭제 확인이 끝나 작업 탭을 닫고 TraceLens로 돌아갑니다."});
-      await closeTaskTab();
+      publish(webTabId, adapter, {stage: "closing", message: "뒤쪽 확인이 끝나 작업 창을 닫습니다."});
+      await closeTaskWindow();
       await returnToWebTab();
       publish(webTabId, adapter, {
         stage: "done",
@@ -256,14 +292,15 @@
     } catch (error) {
       publish(webTabId, adapter, {
         stage: "error",
-        message: `삭제 확인 중 오류가 발생했습니다. 작업 탭은 확인을 위해 열어 둡니다: ${error.message || String(error)}`,
+        message: `삭제 확인 중 오류가 발생했습니다. 작업 창은 확인을 위해 뒤에 남겨 둡니다: ${error.message || String(error)}`,
       });
       await returnToWebTab();
       throw error;
     } finally {
       chrome.tabs.onRemoved.removeListener(onRemoved);
+      chrome.windows.onRemoved.removeListener(onWindowRemoved);
       chrome.tabs.onUpdated.removeListener(onUpdated);
-      if (completed) await closeTaskTab();
+      if (completed) await closeTaskWindow();
     }
   }
 })();
