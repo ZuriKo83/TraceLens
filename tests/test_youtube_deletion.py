@@ -14,7 +14,7 @@ def test_reusable_deletion_engine_and_youtube_adapter_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.1.2"
+    assert manifest["version"] == "1.1.3"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_verify_page.js" in worker
@@ -74,9 +74,13 @@ def test_youtube_deletion_uses_cached_bottom_up_batches() -> None:
     assert "const position = ()" in deleter
     assert "const restore = async" in deleter
     assert "saved?.rank" in deleter
-    assert "b.row.viewportTop - a.row.viewportTop" in deleter
+    assert "right.row.viewportTop - left.row.viewportTop" in deleter
     assert "batchClicks >= batchSize" in deleter
     assert "batchPauseMs" in deleter
+    assert "exactLocatorButton" in deleter
+    assert "chooseDeleteAction" in deleter
+    assert "confirmDialog" in deleter
+    assert "diagnostics" in deleter
 
 
 def test_existing_purchase_page_keeps_credits_and_runs_deletion() -> None:
@@ -92,6 +96,7 @@ def test_existing_purchase_page_keeps_credits_and_runs_deletion() -> None:
     assert "TRACELENS_DELETE_REQUEST" in content
     assert "/app?mode=delete" not in content
     assert "installDeletionCenter" not in content
+    assert "firstFailure" in content
 
     assert '<a href="/delete-credits/purchase">삭제</a>' in base
     assert "/app?mode=delete" not in base
