@@ -21,9 +21,7 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
   const parseUrl = (value) => {
     try { return value ? new URL(value, location.href) : null; } catch { return null; }
   };
-
   const commentIdFromUrl = (value) => parseUrl(value)?.searchParams.get("lc") || "";
-
   const sourceKey = (value) => {
     const url = parseUrl(value);
     if (!url) return "";
@@ -43,11 +41,16 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     'c-wiz[jsname="Ttx95"][data-token], c-wiz[data-show-delete-individual="true"][data-token]'
   )].filter((wrapper) => wrapper.querySelector('[role="listitem"][aria-label*="YouTube"], [role="listitem"]'));
 
+  const wrapperByToken = (token) => {
+    const wanted = clean(token);
+    if (!wanted) return null;
+    return itemWrappers().find((wrapper) => clean(wrapper.getAttribute("data-token")) === wanted) || null;
+  };
+
   const deleteButtonFor = (wrapper, card) => {
     const exact = wrapper.querySelector('button[jslog^="114566"]');
     if (isVisible(exact)) return exact;
-    const candidates = [...wrapper.querySelectorAll("button,[role='button']")].filter(isVisible);
-    return candidates.find((button) => {
+    return [...wrapper.querySelectorAll("button,[role='button']")].filter(isVisible).find((button) => {
       const label = clean(`${button.getAttribute("aria-label") || ""} ${button.getAttribute("title") || ""}`);
       return /(활동\s*항목.*삭제|활동\s*삭제|삭제$|delete\s*activity|delete$|remove$)/i.test(label)
         && (!card || card.contains(button));
@@ -66,21 +69,21 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     const content = clean(contentNode?.innerText || contentNode?.textContent);
     const title = clean(titleNode?.innerText || titleNode?.textContent);
     const fullText = clean(card.innerText || card.textContent);
-    const button = deleteButtonFor(wrapper, card);
+    const key = sourceKey(sourceUrl);
     return {
       wrapper,
       card,
-      button,
+      button: deleteButtonFor(wrapper, card),
       commentId,
       title,
       content,
       fullText,
       fullTextNorm: norm(fullText),
       sourceUrl,
-      sourceKey: sourceKey(sourceUrl),
-      semanticHash: fnv(`${expectedPage}|${sourceKey(sourceUrl)}|${title}|${content}`),
+      sourceKey: key,
+      semanticHash: fnv(`${expectedPage}|${key}|${title}|${content}`),
       rowTextHash: fnv(fullText),
-      signature: commentId || `${sourceKey(sourceUrl)}|${fnv(fullText)}`,
+      signature: commentId || `${key}|${fnv(fullText)}`,
       documentTop: (wrapper.getBoundingClientRect?.().top || 0) + (window.scrollY || 0),
     };
   };
@@ -91,15 +94,15 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     let value = 0;
     let strong = false;
     if (targetCommentId && item.commentId && targetCommentId === item.commentId) {
-      value += 400;
+      value += 500;
       strong = true;
     }
     if (locator.semantic_hash && locator.semantic_hash === item.semanticHash) {
-      value += 150;
+      value += 160;
       strong = true;
     }
     if (locator.row_text_hash && locator.row_text_hash === item.rowTextHash) {
-      value += 90;
+      value += 95;
       strong = true;
     }
     const targetContent = norm(target.content || locator.content);
@@ -108,10 +111,10 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     const contentInItem = Boolean(targetContent && item.fullTextNorm.includes(targetContent));
     const sameSource = Boolean(target.sourceKey && item.sourceKey && target.sourceKey === item.sourceKey);
     const exactTitle = Boolean(targetTitle && targetTitle === norm(item.title));
-    if (exactContent) { value += 120; strong = true; }
-    else if (contentInItem) { value += 90; strong = true; }
-    if (sameSource) value += 45;
-    if (exactTitle) value += 30;
+    if (exactContent) { value += 130; strong = true; }
+    else if (contentInItem) { value += 95; strong = true; }
+    if (sameSource) value += 50;
+    if (exactTitle) value += 35;
     return {value, strong};
   };
 
@@ -119,20 +122,23 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     const ranked = items.map((item) => ({item, ...score(target, item)}))
       .sort((left, right) => right.value - left.value);
     const best = ranked[0];
-    if (!best || best.value < 90 || !best.strong) return null;
+    if (!best || best.value < 95 || !best.strong) return null;
     const second = ranked[1]?.value || 0;
-    if (second && best.value === second && best.value < 400) return null;
+    if (second && best.value === second && best.value < 500) return null;
     return best;
   };
 
   const root = document.scrollingElement || document.documentElement;
   const scanItems = () => itemWrappers().map(parseItem);
-  const scrollToTop = async () => {
-    window.scrollTo(0, 0);
-    root.scrollTop = 0;
+  const setScroll = async (top) => {
+    const max = Math.max(0, root.scrollHeight - root.clientHeight);
+    const next = Math.max(0, Math.min(Number(top) || 0, max));
+    root.scrollTop = next;
+    window.scrollTo(0, next);
     root.dispatchEvent(new Event("scroll", {bubbles: true}));
-    await sleep(180);
+    await sleep(220);
   };
+  const scrollToTop = async () => setScroll(0);
 
   let banner = document.getElementById("tracelens-delete-banner");
   if (!banner) {
@@ -146,7 +152,7 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     document.documentElement.appendChild(banner);
   }
 
-  banner.textContent = "TraceLens가 선택한 댓글을 찾고 있습니다. 이 탭을 닫지 마세요.";
+  banner.textContent = "TraceLens가 선택한 댓글 위치를 찾고 있습니다. 이 탭을 닫지 마세요.";
   await scrollToTop();
 
   const discovered = new Map();
@@ -158,10 +164,11 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     if (!validPage()) throw new Error("삭제 작업 중 페이지 주소가 변경되었습니다.");
     const items = scanItems();
     items.forEach((item) => scanned.add(item.signature));
+    const savedTop = root.scrollTop || window.scrollY || 0;
     for (const target of targets) {
       if (discovered.has(target.id)) continue;
       const best = bestFor(target, items);
-      if (best) discovered.set(target.id, best.item);
+      if (best) discovered.set(target.id, {item: best.item, scrollTop: savedTop, score: best.value});
     }
     if (discovered.size === targets.length) break;
 
@@ -181,7 +188,7 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
 
   const pending = targets
     .filter((target) => discovered.has(target.id))
-    .sort((left, right) => (discovered.get(right.id)?.documentTop || 0) - (discovered.get(left.id)?.documentTop || 0));
+    .sort((left, right) => (discovered.get(right.id)?.scrollTop || 0) - (discovered.get(left.id)?.scrollTop || 0));
   const clickedIds = [];
   const failed = [];
   const unmatchedIds = targets.filter((target) => !discovered.has(target.id)).map((target) => target.id);
@@ -189,21 +196,32 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
 
   const findCurrentItem = (target) => {
     const locator = target.locator || {};
-    const token = clean(target.commentId || locator.comment_id || locator.activity_token || discovered.get(target.id)?.commentId);
-    if (token && globalThis.CSS?.escape) {
-      const exact = document.querySelector(`c-wiz[data-token="${CSS.escape(token)}"]`);
-      if (exact) return parseItem(exact);
-    }
+    const saved = discovered.get(target.id);
+    const token = clean(target.commentId || locator.comment_id || locator.activity_token || saved?.item?.commentId);
+    const exactWrapper = wrapperByToken(token);
+    if (exactWrapper) return parseItem(exactWrapper);
     const best = bestFor(target, scanItems());
     return best?.item || null;
+  };
+
+  const restoreAndFind = async (target) => {
+    const saved = discovered.get(target.id);
+    if (!saved) return null;
+    const viewport = Math.max(500, root.clientHeight || innerHeight || 800);
+    const offsets = [0, -0.45, 0.45, -0.9, 0.9];
+    for (const offset of offsets) {
+      await setScroll(saved.scrollTop + viewport * offset);
+      const current = findCurrentItem(target);
+      if (current) return current;
+    }
+    return null;
   };
 
   const waitRemoved = async (item, timeoutMs) => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       if (!item.wrapper.isConnected) return true;
-      if (item.commentId && globalThis.CSS?.escape
-        && !document.querySelector(`c-wiz[data-token="${CSS.escape(item.commentId)}"]`)) return true;
+      if (item.commentId && !wrapperByToken(item.commentId)) return true;
       await sleep(90);
     }
     return false;
@@ -228,17 +246,18 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     return false;
   };
 
-  banner.textContent = "TraceLens가 아래쪽 댓글부터 삭제하고 있습니다.";
+  banner.textContent = "TraceLens가 저장한 위치로 이동해 아래쪽 댓글부터 삭제하고 있습니다.";
   for (const target of pending) {
-    const item = findCurrentItem(target);
-    if (!item) {
-      failed.push({id: target.id, reason: "저장된 대상 댓글을 현재 화면에서 다시 찾지 못했습니다."});
+    const current = await restoreAndFind(target);
+    if (!current) {
+      failed.push({id: target.id, reason: "처음 발견한 위치로 돌아갔지만 대상 댓글을 다시 찾지 못했습니다."});
       continue;
     }
-    item.wrapper.scrollIntoView({block: "center", behavior: "auto"});
-    await sleep(90);
-    const current = findCurrentItem(target) || item;
-    const button = current.button || deleteButtonFor(current.wrapper, current.card);
+
+    current.wrapper.scrollIntoView({block: "center", behavior: "auto"});
+    await sleep(100);
+    const refreshed = findCurrentItem(target) || current;
+    const button = refreshed.button || deleteButtonFor(refreshed.wrapper, refreshed.card);
     if (!button) {
       failed.push({id: target.id, reason: "댓글 카드의 X 삭제 버튼(jslog 114566)을 찾지 못했습니다."});
       continue;
@@ -247,10 +266,10 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     try {
       button.focus?.({preventScroll: true});
       button.click();
-      let removed = await waitRemoved(current, 900);
+      let removed = await waitRemoved(refreshed, 900);
       if (!removed) {
         const confirmed = await clickConfirmIfPresent();
-        if (confirmed) removed = await waitRemoved(current, 1800);
+        if (confirmed) removed = await waitRemoved(refreshed, 1800);
       }
       if (removed) clickedIds.push(target.id);
       else failed.push({id: target.id, reason: "X 삭제 버튼을 눌렀지만 댓글 카드가 사라지지 않았습니다."});
