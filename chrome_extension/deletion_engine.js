@@ -62,6 +62,7 @@
     if (!tab || !adapter.isTaskUrl(tab.url || "")) {
       throw new Error(`${adapter.label || adapter.platform} 삭제 페이지를 확인하지 못했습니다.`);
     }
+    return tab;
   }
 
   async function reloadAndWait(tabId, state, adapter) {
@@ -110,7 +111,7 @@
     );
     publish(webTabId, adapter, {
       stage: "verifying",
-      message: `한 번의 전체 확인 완료: 남아 있는 대상 ${payload.foundIds?.length || 0}개`,
+      message: `같은 작업 탭에서 확인 완료: 남아 있는 대상 ${payload.foundIds?.length || 0}개`,
       progress: payload.progress || null,
     });
     return payload;
@@ -140,6 +141,7 @@
     if (targets.length > maxTargets) throw new Error(`한 번에 최대 ${maxTargets}개까지 삭제할 수 있습니다.`);
 
     let tab = null;
+    let completed = false;
     const state = {closed: false, navigated: false};
     const onRemoved = (tabId) => { if (tabId === tab?.id) state.closed = true; };
     const onUpdated = (tabId, changeInfo) => {
@@ -163,47 +165,62 @@
     try {
       publish(webTabId, adapter, {stage: "opening", message: adapter.openingMessage || `${adapter.label} 삭제 페이지를 여는 중입니다.`});
       tab = await chrome.tabs.create({url: adapter.taskUrl, active: true});
-      await focusTab(tab.id);
-      await waitForTabComplete(tab.id, adapter.loadTimeoutMs || 45000);
-      await waitForPageSettled(tab.id, adapter.settleTimeoutMs || 15000);
-      await focusTab(tab.id);
-      await assertTaskTab(tab.id, state, adapter);
+      const taskTabId = tab.id;
+      await focusTab(taskTabId);
+      await waitForTabComplete(taskTabId, adapter.loadTimeoutMs || 45000);
+      await waitForPageSettled(taskTabId, adapter.settleTimeoutMs || 15000);
+      await focusTab(taskTabId);
+      await assertTaskTab(taskTabId, state, adapter);
 
       publish(webTabId, adapter, {
         stage: "discovering",
         message: adapter.discoveryMessage?.(targets.length)
           || `${targets.length}개 대상을 전체 기록에서 탐색한 뒤 아래쪽부터 삭제합니다.`,
       });
-      const firstPass = await deletionPass(tab.id, targets, adapter, webTabId);
+      const firstPass = await deletionPass(taskTabId, targets, adapter, webTabId);
+      await assertTaskTab(taskTabId, state, adapter);
 
-      publish(webTabId, adapter, {stage: "verifying", message: "새로고침 후 전체 기록을 한 번만 확인합니다."});
-      await reloadAndWait(tab.id, state, adapter);
-      let verification = await verificationPass(tab.id, targets, adapter, webTabId);
+      publish(webTabId, adapter, {stage: "verifying", message: "같은 작업 탭을 새로고침해 한 번만 확인합니다."});
+      await reloadAndWait(taskTabId, state, adapter);
+      let verification = await verificationPass(taskTabId, targets, adapter, webTabId);
 
       const retryTargets = targets.filter((target) => verification.foundIds?.includes(target.id));
-      let retryPass = {clickedIds: []};
+      let retryPass = {clickedIds: [], failed: [], unmatchedIds: []};
       if (retryTargets.length && adapter.retry !== false) {
-        publish(webTabId, adapter, {stage: "retrying", message: `${retryTargets.length}개 남은 항목만 한 번 더 탐색합니다.`});
-        retryPass = await deletionPass(tab.id, retryTargets, adapter, webTabId);
-        await reloadAndWait(tab.id, state, adapter);
-        verification = await verificationPass(tab.id, targets, adapter, webTabId);
+        publish(webTabId, adapter, {stage: "retrying", message: `${retryTargets.length}개 남은 항목만 같은 탭에서 한 번 더 처리합니다.`});
+        retryPass = await deletionPass(taskTabId, retryTargets, adapter, webTabId);
+        await reloadAndWait(taskTabId, state, adapter);
+        verification = await verificationPass(taskTabId, targets, adapter, webTabId);
       }
 
       const clicked = new Set([...(firstPass.clickedIds || []), ...(retryPass.clickedIds || [])]);
       const found = new Set(verification.foundIds || []);
+      const firstFailures = new Map((firstPass.failed || []).map((entry) => [entry.id, entry.reason]));
+      const retryFailures = new Map((retryPass.failed || []).map((entry) => [entry.id, entry.reason]));
+      const unmatched = new Set([...(firstPass.unmatchedIds || []), ...(retryPass.unmatchedIds || [])]);
       const deletedIds = [];
       const alreadyMissingIds = [];
       const failures = [];
+
       for (const target of targets) {
-        if (found.has(target.id)) failures.push({id: target.id, reason: "새로고침 후에도 대상 댓글이 남아 있습니다."});
-        else if (!verification.complete) failures.push({id: target.id, reason: "전체 기록 확인이 끝나지 않아 삭제 여부를 확정할 수 없습니다."});
-        else if (clicked.has(target.id)) deletedIds.push(target.id);
-        else alreadyMissingIds.push(target.id);
+        if (found.has(target.id)) {
+          failures.push({id: target.id, reason: "새로고침 후에도 대상 댓글이 남아 있습니다."});
+        } else if (!verification.complete) {
+          failures.push({id: target.id, reason: "전체 기록 확인이 끝나지 않아 삭제 여부를 확정할 수 없습니다."});
+        } else if (clicked.has(target.id)) {
+          deletedIds.push(target.id);
+        } else if (firstFailures.has(target.id) || retryFailures.has(target.id)) {
+          failures.push({id: target.id, reason: retryFailures.get(target.id) || firstFailures.get(target.id)});
+        } else if (unmatched.has(target.id) && firstPass.discoveryComplete === true) {
+          alreadyMissingIds.push(target.id);
+        } else {
+          failures.push({id: target.id, reason: "삭제 버튼 클릭 기록이 없어 삭제 여부를 확정할 수 없습니다."});
+        }
       }
 
-      await assertTaskTab(tab.id, state, adapter);
+      await assertTaskTab(taskTabId, state, adapter);
       publish(webTabId, adapter, {stage: "syncing", message: "방금 확인한 결과로 TraceLens 보관함을 바로 동기화합니다."});
-      const sync = await syncArchive(adapter, config, tab.id, verification);
+      const sync = await syncArchive(adapter, config, taskTabId, verification);
       const result = {
         ok: failures.length === 0,
         platform: adapter.platform,
@@ -221,7 +238,8 @@
         error: failures.length ? failures[0]?.reason : null,
       };
 
-      publish(webTabId, adapter, {stage: "closing", message: "확인이 끝나 작업 탭을 닫고 TraceLens로 돌아갑니다."});
+      completed = true;
+      publish(webTabId, adapter, {stage: "closing", message: "삭제 확인이 끝나 작업 탭을 닫고 TraceLens로 돌아갑니다."});
       await closeTaskTab();
       await returnToWebTab();
       publish(webTabId, adapter, {
@@ -230,11 +248,17 @@
         result,
       });
       return result;
+    } catch (error) {
+      publish(webTabId, adapter, {
+        stage: "error",
+        message: `삭제 확인 중 오류가 발생했습니다. 작업 탭은 확인을 위해 열어 둡니다: ${error.message || String(error)}`,
+      });
+      await returnToWebTab();
+      throw error;
     } finally {
       chrome.tabs.onRemoved.removeListener(onRemoved);
       chrome.tabs.onUpdated.removeListener(onUpdated);
-      await closeTaskTab();
-      await returnToWebTab();
+      if (completed) await closeTaskTab();
     }
   }
 })();
