@@ -13,15 +13,10 @@
 
   chrome.runtime.sendMessage({type: "WEB_CONNECT", config}, (response) => {
     if (chrome.runtime.lastError || !response?.ok) {
-      publish({
-        type: "CONNECTION",
-        connected: false,
-        error: chrome.runtime.lastError?.message || response?.error || "연결 실패",
-      });
+      publish({type: "CONNECTION", connected: false, error: chrome.runtime.lastError?.message || response?.error || "연결 실패"});
       if (deletionPage) updateDeletionStatus("확장 프로그램 연결에 실패했습니다. 확장 프로그램을 새로고침하세요.", "error");
       return;
     }
-
     document.documentElement.dataset.tracelensExtension = "connected";
     document.documentElement.dataset.tracelensExtensionUser = response.userEmail || userEmail;
     publish({type: "CONNECTION", connected: true, userEmail: response.userEmail || userEmail});
@@ -35,13 +30,11 @@
       return;
     }
     if (detail.type !== "START_SCAN") return;
-
     const sites = Array.isArray(detail.sites) ? detail.sites : [];
     if (!sites.length) {
       publish({type: "SCAN_RESULT", ok: false, error: "조회할 사이트를 하나 이상 선택하세요."});
       return;
     }
-
     publish({type: "SCAN_STARTED", sites});
     chrome.runtime.sendMessage({type: "SCAN_SITES", sites, config}, (response) => {
       if (chrome.runtime.lastError) {
@@ -53,7 +46,8 @@
   });
 
   chrome.runtime.onMessage.addListener((message) => {
-    if (!deletionPage || message?.type !== "PLATFORM_DELETE_PROGRESS" || message?.platform !== "youtube") return false;
+    if (!deletionPage || message?.type !== "PLATFORM_DELETE_PROGRESS") return false;
+    if (!["youtube", "youtube_live_chat"].includes(message?.platform)) return false;
     updateDeletionStatus(message.message || "");
     return false;
   });
@@ -79,23 +73,12 @@
 
   function storeDeletionStatus(message, kind, result) {
     try {
-      sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY, JSON.stringify({
-        message,
-        kind,
-        result: result || null,
-        savedAt: Date.now(),
-      }));
-    } catch {
-      // 저장 실패 시 현재 화면에는 계속 표시합니다.
-    }
+      sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY, JSON.stringify({message, kind, result: result || null, savedAt: Date.now()}));
+    } catch {}
   }
 
   function clearStoredDeletionStatus() {
-    try {
-      sessionStorage.removeItem(DELETE_RESULT_STORAGE_KEY);
-    } catch {
-      // 무시
-    }
+    try { sessionStorage.removeItem(DELETE_RESULT_STORAGE_KEY); } catch {}
   }
 
   function restoreStoredDeletionStatus() {
@@ -108,86 +91,90 @@
   function installPurchaseDeletionBridge() {
     if (document.documentElement.dataset.tracelensDeleteBridge === "ready") return;
     document.documentElement.dataset.tracelensDeleteBridge = "ready";
-
     const supportedRows = [...document.querySelectorAll('.delete-activity-row[data-supported="1"]')];
     supportedRows.forEach((row, index) => {
       row.dataset.tracelensYoutubeTargetId = `youtube-activity-${row.dataset.activityId || index + 1}`;
     });
-
     if (!restoreStoredDeletionStatus()) {
-      updateDeletionStatus("확장 프로그램 연결됨 · YouTube 댓글을 최대 100개까지 선택할 수 있습니다.", "success");
+      updateDeletionStatus("확장 프로그램 연결됨 · YouTube 댓글 또는 실시간 채팅을 최대 100개까지 선택할 수 있습니다.", "success");
     }
     window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_READY"));
-
     window.addEventListener("TRACELENS_DELETE_REQUEST", (event) => {
       const detail = event.detail || {};
-      if (detail.platform !== "youtube" || detail.activityType !== "comment") return;
-      startYouTubeDeletion();
+      if (detail.platform !== "youtube" || !["comment", "live_chat"].includes(detail.activityType)) return;
+      startYouTubeDeletion(detail.activityType);
     });
   }
 
   function selectedDeletionRows() {
-    return [...document.querySelectorAll('.delete-activity-row[data-supported="1"]')].filter((row) => row.querySelector(".delete-activity-checkbox")?.checked);
+    return [...document.querySelectorAll('.delete-activity-row[data-supported="1"]')]
+      .filter((row) => row.querySelector(".delete-activity-checkbox")?.checked);
   }
 
   function rowTarget(row) {
     let metadata = {};
-    try {
-      metadata = JSON.parse(row.dataset.metadata || "{}");
-    } catch {
-      metadata = {};
-    }
+    try { metadata = JSON.parse(row.dataset.metadata || "{}"); } catch { metadata = {}; }
     const locator = metadata.deletion_locator && typeof metadata.deletion_locator === "object" ? metadata.deletion_locator : {};
     return {
       id: row.dataset.tracelensYoutubeTargetId || `youtube-activity-${row.dataset.activityId || "unknown"}`,
-      title: row.querySelector("h3")?.textContent?.trim() || locator.title || "",
+      title: locator.title || row.querySelector("h3")?.textContent?.trim() || "",
       content: row.querySelector("p")?.textContent?.trim() || locator.content || "",
       sourceUrl: row.querySelector("a.delete-source")?.href || locator.source_url || "",
+      commentId: locator.comment_id || locator.activity_token || metadata.comment_id || "",
       locator,
     };
   }
 
-  function startYouTubeDeletion() {
+  function startYouTubeDeletion(requestedKind) {
     const rows = selectedDeletionRows();
     if (!rows.length) {
-      updateDeletionStatus("삭제할 YouTube 댓글을 선택하세요.", "error");
+      updateDeletionStatus("삭제할 YouTube 항목을 선택하세요.", "error");
       return;
     }
     if (rows.length > MAX_YOUTUBE_DELETE_SELECTION) {
       updateDeletionStatus(`한 번에 최대 ${MAX_YOUTUBE_DELETE_SELECTION}개까지 선택할 수 있습니다.`, "error");
       return;
     }
-
-    const confirmed = confirm(`선택한 YouTube 댓글 ${rows.length}개를 실제로 삭제합니다.\n\n삭제 후 되돌릴 수 없습니다. 계속하시겠습니까?`);
+    const kinds = new Set(rows.map((row) => row.dataset.youtubeKind || "comment"));
+    if (kinds.size !== 1) {
+      updateDeletionStatus("일반 댓글과 실시간 채팅은 서로 다른 Google 페이지에서 삭제되므로 한 종류씩 선택하세요.", "error");
+      return;
+    }
+    const activityKind = [...kinds][0];
+    if (requestedKind && requestedKind !== activityKind) {
+      updateDeletionStatus("현재 선택한 항목 유형과 삭제 메뉴가 일치하지 않습니다.", "error");
+      return;
+    }
+    const liveChat = activityKind === "live_chat";
+    const label = liveChat ? "실시간 채팅" : "댓글";
+    const platformKey = liveChat ? "youtube_live_chat" : "youtube";
+    const confirmed = confirm(`선택한 YouTube ${label} ${rows.length}개를 실제로 삭제합니다.\n\n삭제 후 되돌릴 수 없습니다. 계속하시겠습니까?`);
     if (!confirmed) return;
-
     clearStoredDeletionStatus();
-    setDeletionControlsDisabled(true);
-    updateDeletionStatus("전체 기록에서 대상을 찾은 뒤 아래쪽부터 삭제합니다. 작업 탭을 닫거나 이동하지 마세요.");
-
-    chrome.runtime.sendMessage({type: "DELETE_PLATFORM_ITEMS", platform: "youtube", targets: rows.map(rowTarget), config}, (response) => {
+    setDeletionControlsDisabled(true, label);
+    updateDeletionStatus(`전체 ${label} 기록에서 대상을 찾은 뒤 아래쪽부터 삭제합니다. 작업 창을 닫거나 이동하지 마세요.`);
+    chrome.runtime.sendMessage({type: "DELETE_PLATFORM_ITEMS", platform: platformKey, targets: rows.map(rowTarget), config}, (response) => {
       if (chrome.runtime.lastError) {
-        finishDeletion({ok: false, error: chrome.runtime.lastError.message});
+        finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message});
         return;
       }
-      finishDeletion(response || {ok: false, error: "삭제 결과를 받지 못했습니다."});
+      finishDeletion(response || {ok: false, platform: platformKey, error: "삭제 결과를 받지 못했습니다."});
     });
   }
 
-  function setDeletionControlsDisabled(disabled) {
-    for (const element of document.querySelectorAll("#selected-delete-button, #select-visible, #clear-selected, #reset-delete-filters, #delete-search, #delete-platform-filter, #delete-type-filter, .delete-activity-checkbox")) {
+  function setDeletionControlsDisabled(disabled, label = "항목") {
+    for (const element of document.querySelectorAll("#selected-delete-button, #select-visible, #clear-selected, #reset-delete-filters, #delete-search, #delete-platform-filter, #delete-type-filter, .youtube-kind-filter, .delete-activity-checkbox")) {
       const unsupported = element.classList.contains("delete-activity-checkbox") && element.closest(".delete-activity-row")?.dataset.supported !== "1";
       element.disabled = unsupported || disabled;
     }
-
     const button = document.getElementById("selected-delete-button");
     if (!button) return;
     if (disabled) {
       button.dataset.running = "1";
-      button.textContent = "삭제 진행 중…";
+      button.textContent = `${label} 삭제 진행 중…`;
     } else {
       delete button.dataset.running;
-      button.textContent = "선택 댓글 삭제";
+      button.textContent = "선택 항목 삭제";
     }
   }
 
@@ -205,23 +192,23 @@
   }
 
   function finishDeletion(result) {
+    const liveChat = result?.platform === "youtube_live_chat";
+    const label = liveChat ? "실시간 채팅" : "댓글";
     const hasDeletionResult = result && ("deleted" in result || "alreadyMissing" in result || "failed" in result);
     const deletionFailed = Number(result?.failed || 0) > 0 || (!hasDeletionResult && !result?.ok);
     const firstFailure = Array.isArray(result?.failures) ? result.failures[0]?.reason : "";
     const syncWarning = result?.warning || (!result?.synced ? result?.error : "");
-
     if (deletionFailed) {
-      const summary = `삭제 확인 ${result?.deleted || 0}개, 이미 없음 ${result?.alreadyMissing || 0}개, 실패 ${result?.failed || 0}개`;
-      const reason = firstFailure || result?.error || "삭제 대상이나 Google 삭제 버튼을 확인하지 못했습니다.";
+      const summary = `${label} 삭제 확인 ${result?.deleted || 0}개, 이미 없음 ${result?.alreadyMissing || 0}개, 실패 ${result?.failed || 0}개`;
+      const reason = firstFailure || result?.error || `삭제 대상이나 Google ${label} 삭제 버튼을 확인하지 못했습니다.`;
       showFinalDeletionStatus(`${summary} · ${reason}`, "error", result);
       setDeletionControlsDisabled(false);
       window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: result || {ok: false}}));
       return;
     }
-
-    const summary = `삭제 확인 ${result.deleted || 0}개, 이미 없음 ${result.alreadyMissing || 0}개`;
+    const summary = `${label} 삭제 확인 ${result.deleted || 0}개, 이미 없음 ${result.alreadyMissing || 0}개`;
     if (syncWarning) {
-      showFinalDeletionStatus(`${summary} · 댓글 삭제는 완료됐지만 보관함 동기화는 실패했습니다. 내 활동에서 YouTube 조회를 다시 실행하세요.`, "error", result);
+      showFinalDeletionStatus(`${summary} · 삭제는 완료됐지만 보관함 동기화는 실패했습니다. 내 활동에서 YouTube 조회를 다시 실행하세요.`, "error", result);
     } else {
       showFinalDeletionStatus(`${summary} · 삭제와 보관함 동기화가 완료됐습니다.`, "success", result);
     }
