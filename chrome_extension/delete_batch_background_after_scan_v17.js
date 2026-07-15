@@ -47,7 +47,14 @@
   async function showWorkerForFallback(state) {
     if (!state) return;
     state.allowForeground = true;
-    await previousWindowsUpdate(state.windowId, {focused: true}).catch(() => undefined);
+    await previousWindowsUpdate(state.windowId, {state: "normal"}).catch(() => undefined);
+    await previousWindowsUpdate(state.windowId, {
+      focused: true,
+      width: state.width,
+      height: state.height,
+      left: state.left,
+      top: state.top,
+    }).catch(() => undefined);
     await previousTabsUpdate(state.tabId, {active: true}).catch(() => undefined);
     await previousSetZoom(state.tabId, 0.25).catch(() => undefined);
     await sleep(300);
@@ -56,6 +63,7 @@
   async function hideWorkerAgain(state) {
     if (!state) return;
     state.allowForeground = false;
+    await previousWindowsUpdate(state.windowId, {state: "minimized"}).catch(() => undefined);
     await returnToOriginalWindow(state);
   }
 
@@ -130,8 +138,6 @@
       ),
       clicked_item_ids: [...clicked],
       failures,
-      // Keep the first full-scan counts because they represent the state before
-      // any successful background deletion. Retry counts may already be lower.
       baseline_counts: {
         ...(retry?.baseline_counts || {}),
         ...(first?.baseline_counts || {}),
@@ -152,7 +158,33 @@
     }
 
     const originalWindow = await chrome.windows.getLastFocused().catch(() => null);
-    const created = await previousWindowsCreate({...createData, focused: false});
+    const width = Number(createData?.width || 360);
+    const height = Number(createData?.height || 280);
+    const left = Number.isFinite(Number(createData?.left))
+      ? Number(createData.left)
+      : Math.max(0, Number(originalWindow?.left || 0) + Number(originalWindow?.width || width) - width - 16);
+    const top = Number.isFinite(Number(createData?.top))
+      ? Number(createData.top)
+      : Math.max(0, Number(originalWindow?.top || 0) + Number(originalWindow?.height || height) - height - 48);
+
+    const hiddenCreateData = {
+      ...createData,
+      focused: false,
+      state: "minimized",
+    };
+    delete hiddenCreateData.left;
+    delete hiddenCreateData.top;
+    delete hiddenCreateData.width;
+    delete hiddenCreateData.height;
+
+    let created;
+    try {
+      created = await previousWindowsCreate(hiddenCreateData);
+    } catch {
+      created = await previousWindowsCreate({...createData, focused: false});
+      await previousWindowsUpdate(created.id, {state: "minimized"}).catch(() => undefined);
+    }
+
     const tab = created.tabs?.[0]
       || (await chrome.tabs.query({windowId: created.id, active: true}))[0];
 
@@ -164,6 +196,10 @@
         originalWindowId: originalWindow?.id || null,
         restoreZoom: Number.isFinite(currentZoom) && currentZoom > 0 ? currentZoom : 1,
         allowForeground: false,
+        width,
+        height,
+        left,
+        top,
       };
       workersByWindow.set(created.id, state);
       workersByTab.set(tab.id, state);
@@ -207,7 +243,7 @@
     }
 
     state.allowForeground = false;
-    await returnToOriginalWindow(state);
+    await hideWorkerAgain(state);
     await installFastScanTimers(tabId);
 
     let firstResults = null;
