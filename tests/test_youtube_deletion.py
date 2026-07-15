@@ -14,7 +14,7 @@ def test_reusable_deletion_engine_and_youtube_adapter_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.1.5"
+    assert manifest["version"] == "1.1.6"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_verify_page.js" in worker
@@ -74,9 +74,13 @@ def test_youtube_deletion_restores_discovered_position_before_clicking() -> None
     assert "await waitRemoved(refreshed, 900)" in deleter
 
 
-def test_engine_does_not_misclassify_click_failures_as_already_missing() -> None:
+def test_engine_uses_reload_verification_after_immediate_dom_delay() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
 
+    assert "const clickAttempted = new Set(clicked)" in engine
+    assert "X 삭제 버튼을 눌렀지만" in engine
+    assert "clickAttempted.add(entry.id)" in engine
+    assert "clickAttempted.has(target.id)" in engine
     assert "const firstFailures = new Map" in engine
     assert "firstFailures.has(target.id)" in engine
     assert "삭제 버튼 클릭 기록이 없어 삭제 여부를 확정할 수 없습니다." in engine
