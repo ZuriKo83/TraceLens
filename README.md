@@ -1,138 +1,112 @@
-# TraceLens v1.0.0
+# TraceLens
 
-TraceLens는 여러 웹사이트에 흩어진 **내 게시글·댓글·질문·답변**을 한곳에서 조회하고 검색하는 웹 앱과 Chrome 확장 프로그램입니다.
+TraceLens는 여러 플랫폼에 흩어진 사용자의 게시글·댓글·질문·답변을 수집해 개인 보관함에서 조회하고 검색할 수 있게 하는 웹 애플리케이션과 Chrome 확장 프로그램입니다.
 
-## 핵심 기능
+## 주요 기능
 
-- 이메일 매직 링크 로그인
-- 사용자별 보관함 분리
-- 웹 대시보드에서 조회 사이트 선택 및 실행
+- 이메일·비밀번호 로그인, 이메일 인증 및 비밀번호 재설정
+- 사용자별 활동 보관함과 플랫폼·계정·활동 유형별 검색
 - YouTube, Instagram, Threads, Facebook, X, 네이버 블로그, 네이버 지식iN 지원
-- 플랫폼·계정·활동 유형별 검색
-- 관리자 전용 `/admin` 화면
-- Chrome 확장 프로그램 자동 연결
+- Chrome 확장 프로그램 기반 활동 수집
+- 관리자 도구, 커뮤니티, 신고 및 이용 제한 기능
+- PostgreSQL, Redis 세션, RQ 백그라운드 작업 지원
 
-## 로컬 실행
+## 디렉터리 구성
 
-Windows에서는 프로젝트 루트의 `START_HERE.bat`를 실행합니다.
+- `app/`: FastAPI 웹 애플리케이션
+- `chrome_extension/`: Chrome 확장 프로그램
+- `alembic/`: 데이터베이스 마이그레이션
+- `scripts/`: 백업·검증·마이그레이션 도구
+- `systemd/`: Linux 서비스 정의
+- `tests/`: 자동화 테스트
 
-직접 실행:
+## 환경 설정
+
+저장소를 받은 뒤 예제 환경 파일을 복사하고 실제 값을 입력합니다.
+
+```bash
+cp .env.example .env
+```
+
+최소한 다음 항목은 운영 환경에 맞게 변경해야 합니다.
+
+- `DATABASE_URL`
+- `REDIS_URL`
+- `SESSION_SECRET`
+- `PUBLIC_BASE_URL`
+- `SMTP_PASSWORD`
+- `ADMIN_EMAILS`
+
+`.env`와 API 키, 비밀번호는 Git에 커밋하지 않습니다.
+
+## Linux 설치 및 실행
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+./scripts/migrate.sh
+```
+
+개별 프로세스 실행:
+
+```bash
+./start_web.sh
+./start_worker.sh
+./start_maintenance.sh
+```
+
+systemd 서비스 설치:
+
+```bash
+chmod +x install_tracelens_services.sh
+APP_DIR="$PWD" APP_USER="$USER" APP_GROUP="$(id -gn)" ./install_tracelens_services.sh
+```
+
+상태 확인:
+
+```bash
+sudo systemctl status tracelens-web tracelens-worker tracelens-maintenance --no-pager
+sudo journalctl -u tracelens-web -n 100 --no-pager
+```
+
+## Windows 개발 실행
 
 ```bat
 copy .env.example .env
-python -m venv .venv
+py -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8021
+START_HERE.bat
 ```
-
-접속 주소:
-
-```text
-http://127.0.0.1:8021
-```
-
-
-## 관리자 계정
-
-관리자 권한은 `.env`의 `ADMIN_EMAILS`에 명시된 이메일에만 부여됩니다.
-첫 가입자는 자동으로 관리자가 되지 않습니다.
-
-```env
-ADMIN_EMAILS=drkoby0803@gmail.com
-FIRST_USER_IS_ADMIN=false
-```
-
-서버 시작 시 기존 DB의 관리자 권한도 이 설정에 맞춰 자동 동기화됩니다.
-따라서 예전에 첫 가입자에게 부여됐던 관리자 권한은 자동으로 해제됩니다.
 
 ## Chrome 확장 프로그램
 
-개발 모드 설치:
+1. Chrome에서 `chrome://extensions`를 엽니다.
+2. 개발자 모드를 활성화합니다.
+3. `압축해제된 확장 프로그램을 로드합니다`를 선택합니다.
+4. `chrome_extension` 폴더를 지정합니다.
 
-1. `chrome://extensions` 열기
-2. 개발자 모드 활성화
-3. `압축해제된 확장 프로그램을 로드합니다` 선택
-4. `chrome_extension` 폴더 선택
-5. TraceLens 로그인 후 `/app` 접속
+Web Store 제출 정보는 `CHROME_WEB_STORE.md`를 참고합니다.
 
-Chrome Web Store 업로드 파일은 프로젝트와 함께 제공되는
-`tracelens-extension-v1.0.7-cloudflare-https.zip`입니다.
+## 공개 배포
 
-## 이메일의 역할
+Cloudflare Tunnel을 사용하는 경우 공개 호스트의 원본 서비스는 다음과 같이 설정합니다.
 
-이메일은 TraceLens 로그인, 사용자 데이터 분리, 계정 복구에 사용됩니다.
-사이트 활동은 이메일로 검색하지 않습니다. 실제 조회 기준은 현재 Chrome에 로그인된 각 사이트 계정입니다.
+```text
+http://localhost:8021
+```
 
-## 데이터베이스
-
-새 기본 파일명은 `tracelens.db`입니다. `START_HERE.bat`는 같은 폴더에 기존 `footprint.db`가 있으면 최초 실행 시 `tracelens.db`로 복사합니다.
-
-## 공개 배포 전 필수 작업
-
-- 실제 HTTPS 도메인에 웹 앱 배포
-- `.env`의 `PUBLIC_BASE_URL`, SMTP, `SESSION_SECRET`, `SECURE_COOKIES` 설정
-- 배포 도메인을 확장 프로그램 `manifest.json`의 `host_permissions`와 `content_scripts.matches`에 추가
-- 개인정보처리방침 공개
-- Chrome Web Store 개인정보 보호 항목 및 권한 사용 이유 작성
-
-현재 패키지는 로컬 주소 `localhost:8021`, `127.0.0.1:8021`을 포함합니다.
-일반 사용자에게 공개하려면 실제 서비스 도메인을 반드시 추가해야 합니다.
+외부 주소는 `.env`의 `PUBLIC_BASE_URL`과 일치해야 하며, 운영 환경에서는 `SECURE_COOKIES=true`를 유지합니다.
 
 ## 테스트
 
-```bat
+```bash
 pytest -q
 ```
 
+## 관련 문서
 
-## v1.0.3 관리자 필터 수정
-
-관리자 화면에서 `모든 사용자` 또는 `모든 플랫폼`을 선택했을 때 빈 쿼리 문자열이 전송되어
-FastAPI가 `user_id`를 정수로 변환하지 못하던 문제를 수정했습니다.
-
-- 빈 `user_id`는 필터 없음으로 처리
-- 잘못된 `user_id` 값도 422 오류 없이 무시
-- 브라우저에서도 빈 필터 파라미터를 URL에서 제거
-
-
-## tracelens.kr 및 Resend 연결
-
-공개 주소와 매직 링크 기본값은 `https://tracelens.kr`이며, Cloudflare Tunnel이 로컬 `127.0.0.1:8021`로 전달합니다.
-운영 설정은 `.env.production.example`을 사용합니다. 실제 배포 절차는 `DEPLOY_TRACELENS_KR.md`를 참고하세요.
-
-중요: 도메인 DNS 인증은 메일 발송 권한만 확인합니다. 웹사이트를 열려면 별도의 FastAPI 서버 배포와 가비아 A/CNAME 연결이 필요합니다.
-
-
-## 연결 구성 (v1.0.7)
-
-- TraceLens 내부 서버: `0.0.0.0:8021`
-- 공유기 포트포워딩: 외부 `80/TCP` → `192.168.0.19:8021`
-- 로컬 접속: `http://127.0.0.1:8021`
-- 공개 접속: `https://tracelens.kr`
-- Tunnel 원본 서비스: `http://localhost:8021`
-
-외부 포트가 HTTP 기본 포트 80이므로 주소에서 포트 번호를 생략할 수 있습니다.
-
-
-
-
-## 실행 명령어
-
-```
-cd ~/Desktop/TraceLens
-nano .env
-
-sudo systemctl restart tracelens-web tracelens-worker tracelens-maintenance
-sudo systemctl status tracelens-web tracelens-worker tracelens-maintenance --no-pager
-sudo journalctl -u tracelens-web -n 50 --no-pager
-```
-
-
-이 명령은 모든 사용자의 보관함 데이터를 영구 삭제합니다.
-
-```
-sudo -u postgres psql -d tracelens -c "
-TRUNCATE TABLE scan_logs, activities RESTART IDENTITY CASCADE;
-"
-```
+- `OPERATIONS.md`: 백업, 모니터링, Redis 및 운영 구성
+- `CHROME_WEB_STORE.md`: Chrome Web Store 등록 정보
+- `PRIVACY_POLICY.md`: 개인정보처리방침
