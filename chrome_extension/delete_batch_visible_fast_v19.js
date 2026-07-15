@@ -3,8 +3,10 @@
   const previousWindowsUpdate = chrome.windows.update.bind(chrome.windows);
   const previousWindowsRemove = chrome.windows.remove.bind(chrome.windows);
   const previousExecuteScript = chrome.scripting.executeScript.bind(chrome.scripting);
+  const previousRunExtractor = runExtractor;
 
   const managedWindows = new Map();
+  const managedTabs = new Map();
 
   function isDeletionPage(url) {
     try {
@@ -18,8 +20,8 @@
   }
 
   function compactBounds(original) {
-    const width = 220;
-    const height = 140;
+    const width = 280;
+    const height = 180;
     return {
       width,
       height,
@@ -32,16 +34,36 @@
     };
   }
 
-  async function keepVisibleUnfocused(windowId) {
-    const state = managedWindows.get(Number(windowId));
+  async function focusWorker(state) {
     if (!state) return;
-    await previousWindowsUpdate(Number(windowId), {
+    await previousWindowsUpdate(state.windowId, {
       state: "normal",
-      focused: false,
+      focused: true,
       ...state.bounds,
     }).catch(() => undefined);
-    if (state.originalWindowId) {
-      await previousWindowsUpdate(state.originalWindowId, {focused: true}).catch(() => undefined);
+    await chrome.tabs.update(state.tabId, {active: true}).catch(() => undefined);
+    await chrome.tabs.setZoom(state.tabId, 0.25).catch(() => undefined);
+  }
+
+  async function restoreOriginal(state) {
+    if (!state?.originalWindowId) return;
+    await previousWindowsUpdate(state.originalWindowId, {focused: true}).catch(() => undefined);
+  }
+
+  async function runWithWorkerFocused(tabId, operation) {
+    const state = managedTabs.get(Number(tabId));
+    if (!state) return operation();
+
+    await focusWorker(state);
+    const focusTimer = setInterval(() => {
+      void focusWorker(state);
+    }, 700);
+
+    try {
+      return await operation();
+    } finally {
+      clearInterval(focusTimer);
+      await restoreOriginal(state);
     }
   }
 
@@ -57,7 +79,7 @@
               at: Date.now(),
             }).catch(() => undefined);
           } catch {
-            // The service worker may be restarting; the next pulse wakes it again.
+            // The next pulse wakes a restarted service worker.
           }
         };
         send();
@@ -65,58 +87,6 @@
       },
     }).catch(() => undefined);
   }
-
-  chrome.windows.create = async function(createData, callback) {
-    if (!isDeletionPage(createData?.url)) {
-      const created = await previousWindowsCreate(createData);
-      if (typeof callback === "function") callback(created);
-      return created;
-    }
-
-    const original = await chrome.windows.getLastFocused().catch(() => null);
-    const created = await previousWindowsCreate({...createData, focused: false});
-    managedWindows.set(Number(created.id), {
-      originalWindowId: original?.id || null,
-      bounds: compactBounds(original),
-    });
-    await keepVisibleUnfocused(created.id);
-
-    const tab = created.tabs?.[0]
-      || (await chrome.tabs.query({windowId: created.id, active: true}))[0];
-    if (tab?.id) {
-      await installWorkerPulse(tab.id);
-    }
-
-    if (typeof callback === "function") callback(created);
-    return created;
-  };
-
-  chrome.windows.update = async function(windowId, updateInfo, callback) {
-    const state = managedWindows.get(Number(windowId));
-    let nextInfo = updateInfo;
-
-    // Minimized/fully hidden My Activity windows are heavily timer-throttled.
-    // Keep a tiny rendered window, but never steal focus during normal work.
-    if (state && updateInfo?.state === "minimized" && updateInfo?.focused !== true) {
-      nextInfo = {
-        ...updateInfo,
-        state: "normal",
-        focused: false,
-        ...state.bounds,
-      };
-    }
-
-    const updated = await previousWindowsUpdate(windowId, nextInfo);
-    if (typeof callback === "function") callback(updated);
-    return updated;
-  };
-
-  chrome.windows.remove = async function(windowId, callback) {
-    managedWindows.delete(Number(windowId));
-    const removed = await previousWindowsRemove(windowId).catch(() => undefined);
-    if (typeof callback === "function") callback();
-    return removed;
-  };
 
   async function installFastTimers(tabId) {
     await previousExecuteScript({
@@ -159,6 +129,44 @@
     }).catch(() => undefined);
   }
 
+  chrome.windows.create = async function(createData, callback) {
+    if (!isDeletionPage(createData?.url)) {
+      const created = await previousWindowsCreate(createData);
+      if (typeof callback === "function") callback(created);
+      return created;
+    }
+
+    const original = await chrome.windows.getLastFocused().catch(() => null);
+    const bounds = compactBounds(original);
+    const created = await previousWindowsCreate({
+      ...createData,
+      type: "popup",
+      state: "normal",
+      focused: true,
+      ...bounds,
+    });
+    const tab = created.tabs?.[0]
+      || (await chrome.tabs.query({windowId: created.id, active: true}))[0];
+
+    if (tab?.id) {
+      const currentZoom = await chrome.tabs.getZoom(tab.id).catch(() => 1);
+      const state = {
+        windowId: Number(created.id),
+        tabId: Number(tab.id),
+        originalWindowId: original?.id || null,
+        restoreZoom: Number.isFinite(currentZoom) && currentZoom > 0 ? currentZoom : 1,
+        bounds,
+      };
+      managedWindows.set(state.windowId, state);
+      managedTabs.set(state.tabId, state);
+      await focusWorker(state);
+      await installWorkerPulse(state.tabId);
+    }
+
+    if (typeof callback === "function") callback(created);
+    return created;
+  };
+
   chrome.scripting.executeScript = async function(details, callback) {
     if (details?.func?.name !== "scanThenDeleteV16") {
       const results = await previousExecuteScript(details);
@@ -167,26 +175,42 @@
     }
 
     const tabId = Number(details?.target?.tabId);
-    const tab = await chrome.tabs.get(tabId).catch(() => null);
-    if (tab?.windowId && managedWindows.has(Number(tab.windowId))) {
-      await keepVisibleUnfocused(tab.windowId);
+    const results = await runWithWorkerFocused(tabId, async () => {
       await installWorkerPulse(tabId);
-    }
-
-    await installFastTimers(tabId);
-    let results;
-    try {
-      results = await previousExecuteScript(details);
-    } finally {
-      await restoreTimers(tabId);
-      const latestTab = await chrome.tabs.get(tabId).catch(() => null);
-      if (latestTab?.windowId && managedWindows.has(Number(latestTab.windowId))) {
-        await keepVisibleUnfocused(latestTab.windowId);
-        await installWorkerPulse(tabId);
+      await installFastTimers(tabId);
+      try {
+        return await previousExecuteScript(details);
+      } finally {
+        await restoreTimers(tabId);
       }
-    }
+    });
 
     if (typeof callback === "function") callback(results);
     return results;
+  };
+
+  runExtractor = async function(tabId, platform, activityType, ownershipScope = "self_activity", accountContext = null) {
+    if (!managedTabs.has(Number(tabId))) {
+      return previousRunExtractor(tabId, platform, activityType, ownershipScope, accountContext);
+    }
+
+    return runWithWorkerFocused(Number(tabId), async () => {
+      await installWorkerPulse(Number(tabId));
+      return previousRunExtractor(tabId, platform, activityType, ownershipScope, accountContext);
+    });
+  };
+
+  chrome.windows.remove = async function(windowId, callback) {
+    const state = managedWindows.get(Number(windowId));
+    if (state) {
+      await chrome.tabs.setZoom(state.tabId, state.restoreZoom).catch(() => undefined);
+      managedWindows.delete(state.windowId);
+      managedTabs.delete(state.tabId);
+    }
+
+    const removed = await previousWindowsRemove(windowId).catch(() => undefined);
+    if (state) await restoreOriginal(state);
+    if (typeof callback === "function") callback();
+    return removed;
   };
 })();
