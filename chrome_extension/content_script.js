@@ -51,9 +51,7 @@
   });
 
   chrome.runtime.onMessage.addListener((message) => {
-    if (!deletionPage || message?.type !== "PLATFORM_DELETE_PROGRESS" || message?.platform !== "youtube") {
-      return false;
-    }
+    if (!deletionPage || message?.type !== "PLATFORM_DELETE_PROGRESS" || message?.platform !== "youtube") return false;
     updateDeletionStatus(message.message || "");
     return false;
   });
@@ -78,9 +76,7 @@
   }
 
   function selectedDeletionRows() {
-    return [...document.querySelectorAll('.delete-activity-row[data-supported="1"]')].filter((row) =>
-      row.querySelector(".delete-activity-checkbox")?.checked
-    );
+    return [...document.querySelectorAll('.delete-activity-row[data-supported="1"]')].filter((row) => row.querySelector(".delete-activity-checkbox")?.checked);
   }
 
   function rowTarget(row) {
@@ -90,14 +86,13 @@
     } catch {
       metadata = {};
     }
+    const locator = metadata.deletion_locator && typeof metadata.deletion_locator === "object" ? metadata.deletion_locator : {};
     return {
       id: row.dataset.tracelensYoutubeTargetId || `youtube-activity-${row.dataset.activityId || "unknown"}`,
-      title: row.querySelector("h3")?.textContent?.trim() || "",
-      content: row.querySelector("p")?.textContent?.trim() || "",
-      sourceUrl: row.querySelector("a.delete-source")?.href || "",
-      locator: metadata.deletion_locator && typeof metadata.deletion_locator === "object"
-        ? metadata.deletion_locator
-        : {},
+      title: row.querySelector("h3")?.textContent?.trim() || locator.title || "",
+      content: row.querySelector("p")?.textContent?.trim() || locator.content || "",
+      sourceUrl: row.querySelector("a.delete-source")?.href || locator.source_url || "",
+      locator,
     };
   }
 
@@ -112,21 +107,13 @@
       return;
     }
 
-    const confirmed = confirm(
-      `선택한 YouTube 댓글 ${rows.length}개를 실제로 삭제합니다.\n\n` +
-      "삭제 후 되돌릴 수 없습니다. 계속하시겠습니까?"
-    );
+    const confirmed = confirm(`선택한 YouTube 댓글 ${rows.length}개를 실제로 삭제합니다.\n\n삭제 후 되돌릴 수 없습니다. 계속하시겠습니까?`);
     if (!confirmed) return;
 
     setDeletionControlsDisabled(true);
     updateDeletionStatus("전체 기록에서 대상을 찾은 뒤 아래쪽부터 삭제합니다. 작업 탭을 닫거나 이동하지 마세요.");
 
-    chrome.runtime.sendMessage({
-      type: "DELETE_PLATFORM_ITEMS",
-      platform: "youtube",
-      targets: rows.map(rowTarget),
-      config,
-    }, (response) => {
+    chrome.runtime.sendMessage({type: "DELETE_PLATFORM_ITEMS", platform: "youtube", targets: rows.map(rowTarget), config}, (response) => {
       if (chrome.runtime.lastError) {
         finishDeletion({ok: false, error: chrome.runtime.lastError.message});
         return;
@@ -136,19 +123,19 @@
   }
 
   function setDeletionControlsDisabled(disabled) {
-    for (const element of document.querySelectorAll(
-      "#selected-delete-button, #select-visible, #clear-selected, #reset-delete-filters, " +
-      "#delete-search, #delete-platform-filter, #delete-type-filter, .delete-activity-checkbox"
-    )) {
-      const unsupported = element.classList.contains("delete-activity-checkbox")
-        && element.closest(".delete-activity-row")?.dataset.supported !== "1";
+    for (const element of document.querySelectorAll("#selected-delete-button, #select-visible, #clear-selected, #reset-delete-filters, #delete-search, #delete-platform-filter, #delete-type-filter, .delete-activity-checkbox")) {
+      const unsupported = element.classList.contains("delete-activity-checkbox") && element.closest(".delete-activity-row")?.dataset.supported !== "1";
       element.disabled = unsupported || disabled;
     }
 
     const button = document.getElementById("selected-delete-button");
-    if (button && disabled) {
+    if (!button) return;
+    if (disabled) {
       button.dataset.running = "1";
       button.textContent = "삭제 진행 중…";
+    } else {
+      delete button.dataset.running;
+      button.textContent = "선택 댓글 삭제";
     }
   }
 
@@ -161,17 +148,27 @@
   }
 
   function finishDeletion(result) {
-    const failed = !result?.ok && !result?.synced;
-    if (failed) {
-      updateDeletionStatus(result?.error || "삭제 작업에 실패했습니다.", "error");
+    const hasDeletionResult = result && ("deleted" in result || "alreadyMissing" in result || "failed" in result);
+    const deletionFailed = Number(result?.failed || 0) > 0 || (!hasDeletionResult && !result?.ok);
+    const firstFailure = Array.isArray(result?.failures) ? result.failures[0]?.reason : "";
+    const syncWarning = result?.warning || (!result?.synced ? result?.error : "");
+
+    if (deletionFailed) {
+      const summary = `삭제 확인 ${result?.deleted || 0}개, 이미 없음 ${result?.alreadyMissing || 0}개, 실패 ${result?.failed || 0}개`;
+      const reason = firstFailure || result?.error || "삭제 대상이나 Google 삭제 버튼을 확인하지 못했습니다.";
+      updateDeletionStatus(`${summary} · ${reason}`, "error");
       setDeletionControlsDisabled(false);
       window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: result || {ok: false}}));
       return;
     }
 
-    const summary = `삭제 확인 ${result.deleted || 0}개, 이미 없음 ${result.alreadyMissing || 0}개, 실패 ${result.failed || 0}개`;
-    updateDeletionStatus(`${summary}. 삭제 목록을 새로고침합니다.`, result.failed ? "error" : "success");
+    const summary = `삭제 확인 ${result.deleted || 0}개, 이미 없음 ${result.alreadyMissing || 0}개`;
+    if (syncWarning) {
+      updateDeletionStatus(`${summary} · 댓글 삭제는 완료됐지만 보관함 동기화는 실패했습니다. 내 활동에서 YouTube 조회를 다시 실행하세요.`, "error");
+    } else {
+      updateDeletionStatus(`${summary} · 삭제와 보관함 동기화가 완료됐습니다.`, "success");
+    }
     window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: result}));
-    setTimeout(() => location.reload(), 2200);
+    setTimeout(() => location.reload(), syncWarning ? 4500 : 2200);
   }
 })();
