@@ -14,7 +14,7 @@ def test_reusable_deletion_engine_and_youtube_adapter_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.1.7"
+    assert manifest["version"] == "1.1.8"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_verify_page.js" in worker
@@ -104,7 +104,7 @@ def test_youtube_verification_uses_exact_comment_id_and_collects_snapshot() -> N
     assert "bottomStable >= 5" in verifier
 
 
-def test_existing_purchase_page_keeps_credits_and_runs_deletion() -> None:
+def test_existing_purchase_page_keeps_credits_runs_deletion_and_restores_result() -> None:
     content = read(EXTENSION / "content_script.js")
     base = read(ROOT / "app" / "templates" / "base.html")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
@@ -118,6 +118,12 @@ def test_existing_purchase_page_keeps_credits_and_runs_deletion() -> None:
     assert "/app?mode=delete" not in content
     assert "installDeletionCenter" not in content
     assert "firstFailure" in content
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v1"' in content
+    assert "sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY" in content
+    assert "restoreStoredDeletionStatus" in content
+    assert "if (!restoreStoredDeletionStatus())" in content
+    assert "clearStoredDeletionStatus()" in content
+    assert "마지막 삭제 결과" in content
 
     assert '<a href="/delete-credits/purchase">삭제</a>' in base
     assert "/app?mode=delete" not in base
