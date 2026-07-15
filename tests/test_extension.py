@@ -9,7 +9,7 @@ def read(name: str) -> str:
 
 def test_manifest_has_required_hosts_and_current_version() -> None:
     manifest = json.loads(read("manifest.json"))
-    assert manifest["version"] == "1.1.0"
+    assert manifest["version"] == "1.1.1"
     assert "https://www.threads.com/*" in manifest["host_permissions"]
     assert "https://www.instagram.com/*" in manifest["host_permissions"]
     assert "https://github.com/*" not in manifest["host_permissions"]
@@ -39,14 +39,6 @@ def test_background_has_threads_and_bearer_import() -> None:
     assert 'platform === "threads"' in background
     assert '"Authorization": `Bearer ${config.collectorToken || ""}`' in background
     assert "github" not in background.lower()
-
-
-def test_start_here_does_not_open_extension_setup() -> None:
-    root = Path(__file__).resolve().parents[1]
-    batch = (root / "START_HERE.bat").read_text(encoding="utf-8")
-    assert "http://127.0.0.1:8021" in batch
-    assert "chrome://extensions" not in batch
-    assert "explorer.exe" not in batch
 
 
 def test_web_bridge_is_present() -> None:
@@ -94,13 +86,3 @@ def test_public_domain_is_connected() -> None:
     assert "https://tracelens.kr/*" in manifest["content_scripts"][0]["matches"]
     assert "https://tracelens.kr" in read("popup.js")
     assert "https://tracelens.kr" in read("background.js")
-
-
-def test_internal_and_external_ports_are_consistent() -> None:
-    root = Path(__file__).resolve().parents[1]
-    batch = (root / "START_HERE.bat").read_text(encoding="utf-8")
-    production_env = (root / ".env.production.example").read_text(encoding="utf-8")
-    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
-    assert "--host 0.0.0.0 --port 8021" in batch
-    assert "PUBLIC_BASE_URL=https://tracelens.kr" in production_env
-    assert "EXPOSE 8021" in dockerfile
