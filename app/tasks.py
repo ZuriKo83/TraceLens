@@ -144,39 +144,52 @@ def _youtube_activity_kind(activity: Activity) -> str:
     return "live_chat" if title.startswith("[실시간 채팅]") else "comment"
 
 
-def _prune_complete_youtube_snapshot(
+def _reconcile_complete_youtube_snapshot(
     db: Session,
     *,
     user_id: int,
     payload: CollectorImport,
     account: str | None,
     snapshot_fingerprints: set[str],
-) -> int:
+) -> tuple[int, int]:
+    """Mark a missing YouTube row once, and delete only after a second complete miss.
+
+    Google My Activity is virtualized and a single scrape can omit valid rows. Requiring
+    two consecutive complete snapshots prevents one parser miss from being reported as
+    a successful deletion or from immediately erasing the TraceLens archive row.
+    """
     if payload.platform != "youtube" or payload.status != "success" or not payload.snapshot_complete:
-        return 0
+        return 0, 0
     if payload.scan_scope not in {"comment", "live_chat"}:
-        return 0
+        return 0, 0
 
     stmt = select(Activity).where(
         Activity.user_id == user_id,
         Activity.platform == "youtube",
-        Activity.status == "visible",
+        Activity.status.in_(["visible", "missing_once"]),
     )
     if account is None:
         stmt = stmt.where(Activity.account_label.is_(None))
     else:
         stmt = stmt.where(Activity.account_label == account)
 
-    removed = 0
+    marked = removed = 0
     for activity in db.scalars(stmt):
         if _youtube_activity_kind(activity) != payload.scan_scope:
             continue
         fingerprint = (activity.content_fingerprint or "").strip()
-        if not fingerprint or fingerprint in snapshot_fingerprints:
+        if not fingerprint:
             continue
-        db.delete(activity)
-        removed += 1
-    return removed
+        if fingerprint in snapshot_fingerprints:
+            activity.status = "visible"
+            continue
+        if activity.status == "missing_once":
+            db.delete(activity)
+            removed += 1
+        else:
+            activity.status = "missing_once"
+            marked += 1
+    return marked, removed
 
 
 def process_collector_import(payload_data: dict, user_id: int) -> dict:
@@ -264,7 +277,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 ))
                 imported += 1
 
-        pruned = _prune_complete_youtube_snapshot(
+        pending_recheck, pruned = _reconcile_complete_youtube_snapshot(
             db,
             user_id=user.id,
             payload=payload,
@@ -275,8 +288,10 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
         message = payload.message
         if payload.items and not accepted:
             message = "본인이 작성한 게시글·댓글·질문·답변으로 확인되지 않은 기록은 제외했습니다."
+        if pending_recheck:
+            message = f"{message} 이번 조회에서 보이지 않은 기존 기록 {pending_recheck}개는 다음 완전 조회까지 유지합니다.".strip()
         if pruned:
-            message = f"{message} 삭제가 확인된 기존 기록 {pruned}개를 보관함에서 제거했습니다.".strip()
+            message = f"{message} 두 번 연속 완전 조회에서 보이지 않은 기존 기록 {pruned}개를 보관함에서 제거했습니다.".strip()
         db.add(ScanLog(
             user_id=user.id,
             platform=payload.platform,
@@ -297,6 +312,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             "found": len(accepted),
             "imported": imported,
             "updated": updated,
+            "pending_recheck": pending_recheck,
             "pruned": pruned,
             "ignored": len(payload.items) - len(accepted),
             "account_label": account,
