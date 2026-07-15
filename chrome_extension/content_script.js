@@ -1,6 +1,6 @@
 (() => {
   const MAX_YOUTUBE_DELETE_SELECTION = 100;
-  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v1";
+  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v2";
   const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
   const serverUrl = document.querySelector('meta[name="tracelens-server-url"]')?.content?.trim() || location.origin;
@@ -71,19 +71,71 @@
     }
   }
 
-  function storeDeletionStatus(message, kind, result) {
-    try {
-      sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY, JSON.stringify({message, kind, result: result || null, savedAt: Date.now()}));
-    } catch {}
+  function writeStoredDeletionStatus(stored) {
+    try { sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY, JSON.stringify(stored)); } catch {}
+  }
+
+  function storeDeletionStatus(message, kind, result, context = {}) {
+    writeStoredDeletionStatus({
+      message,
+      kind,
+      result: result || null,
+      label: context.label || "항목",
+      requestedActivityIds: Array.isArray(context.requestedActivityIds) ? context.requestedActivityIds : [],
+      awaitingServerRefresh: Boolean(context.awaitingServerRefresh),
+      savedAt: Date.now(),
+    });
   }
 
   function clearStoredDeletionStatus() {
     try { sessionStorage.removeItem(DELETE_RESULT_STORAGE_KEY); } catch {}
   }
 
+  function reconcileWithServerList(stored) {
+    const requested = Array.isArray(stored?.requestedActivityIds)
+      ? [...new Set(stored.requestedActivityIds.map(String).filter(Boolean))]
+      : [];
+    if (!requested.length || !stored.awaitingServerRefresh) return stored;
+
+    const existing = new Set(
+      [...document.querySelectorAll('.delete-activity-row[data-activity-id]')]
+        .map((row) => String(row.dataset.activityId || ""))
+        .filter(Boolean)
+    );
+    const removed = requested.filter((id) => !existing.has(id)).length;
+    const remaining = requested.length - removed;
+    const label = stored.label || "항목";
+
+    let message = stored.message;
+    let kind = stored.kind || "";
+    if (removed === requested.length) {
+      message = `서버 재확인 결과 · ${label} ${removed}개가 삭제되었거나 이미 Google 내 활동에 없습니다.`;
+      kind = "success";
+    } else if (removed > 0) {
+      message = `서버 재확인 결과 · ${label} 삭제되었거나 없음 ${removed}개, 아직 남아 있음 ${remaining}개`;
+      kind = "error";
+    } else {
+      message = `서버 재확인 결과 · ${label} ${remaining}개가 아직 TraceLens 목록에 남아 있습니다. ${stored.message}`;
+      kind = "error";
+    }
+
+    const reconciled = {
+      ...stored,
+      message,
+      kind,
+      awaitingServerRefresh: false,
+      serverRemoved: removed,
+      serverRemaining: remaining,
+      savedAt: Date.now(),
+    };
+    writeStoredDeletionStatus(reconciled);
+    return reconciled;
+  }
+
   function restoreStoredDeletionStatus() {
-    const stored = readStoredDeletionStatus();
-    if (!stored) return false;
+    const raw = readStoredDeletionStatus();
+    if (!raw) return false;
+    const stored = reconcileWithServerList(raw);
     updateDeletionStatus(`마지막 삭제 결과 · ${stored.message}`, stored.kind || "");
     return true;
   }
@@ -120,7 +172,7 @@
       title: locator.title || row.querySelector("h3")?.textContent?.trim() || "",
       content: row.querySelector("p")?.textContent?.trim() || locator.content || "",
       sourceUrl: row.querySelector("a.delete-source")?.href || locator.source_url || "",
-      commentId: locator.comment_id || locator.activity_token || metadata.comment_id || "",
+      commentId: "",
       locator,
     };
   }
@@ -148,6 +200,8 @@
     const liveChat = activityKind === "live_chat";
     const label = liveChat ? "실시간 채팅" : "댓글";
     const platformKey = liveChat ? "youtube_live_chat" : "youtube";
+    const requestedActivityIds = rows.map((row) => String(row.dataset.activityId || "")).filter(Boolean);
+    const context = {label, requestedActivityIds};
     const confirmed = confirm(`선택한 YouTube ${label} ${rows.length}개를 실제로 삭제합니다.\n\n삭제 후 되돌릴 수 없습니다. 계속하시겠습니까?`);
     if (!confirmed) return;
     clearStoredDeletionStatus();
@@ -155,10 +209,10 @@
     updateDeletionStatus(`전체 ${label} 기록에서 대상을 찾은 뒤 아래쪽부터 삭제합니다. 작업 창을 닫거나 이동하지 마세요.`);
     chrome.runtime.sendMessage({type: "DELETE_PLATFORM_ITEMS", platform: platformKey, targets: rows.map(rowTarget), config}, (response) => {
       if (chrome.runtime.lastError) {
-        finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message});
+        finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message}, context);
         return;
       }
-      finishDeletion(response || {ok: false, platform: platformKey, error: "삭제 결과를 받지 못했습니다."});
+      finishDeletion(response || {ok: false, platform: platformKey, error: "삭제 결과를 받지 못했습니다."}, context);
     });
   }
 
@@ -186,33 +240,34 @@
     status.classList.toggle("success", kind === "success");
   }
 
-  function showFinalDeletionStatus(message, kind, result) {
-    storeDeletionStatus(message, kind, result);
+  function showFinalDeletionStatus(message, kind, result, context) {
+    storeDeletionStatus(message, kind, result, {...context, awaitingServerRefresh: true});
     updateDeletionStatus(message, kind);
   }
 
-  function finishDeletion(result) {
+  function finishDeletion(result, context = {}) {
     const liveChat = result?.platform === "youtube_live_chat";
-    const label = liveChat ? "실시간 채팅" : "댓글";
+    const label = context.label || (liveChat ? "실시간 채팅" : "댓글");
     const hasDeletionResult = result && ("deleted" in result || "alreadyMissing" in result || "failed" in result);
     const deletionFailed = Number(result?.failed || 0) > 0 || (!hasDeletionResult && !result?.ok);
     const firstFailure = Array.isArray(result?.failures) ? result.failures[0]?.reason : "";
     const syncWarning = result?.warning || (!result?.synced ? result?.error : "");
+
     if (deletionFailed) {
-      const summary = `${label} 삭제 확인 ${result?.deleted || 0}개, 이미 없음 ${result?.alreadyMissing || 0}개, 실패 ${result?.failed || 0}개`;
+      const summary = `${label} 삭제 확인 ${result?.deleted || 0}개, 이미 삭제되었거나 없음 ${result?.alreadyMissing || 0}개, 확인 실패 ${result?.failed || 0}개`;
       const reason = firstFailure || result?.error || `삭제 대상이나 Google ${label} 삭제 버튼을 확인하지 못했습니다.`;
-      showFinalDeletionStatus(`${summary} · ${reason}`, "error", result);
-      setDeletionControlsDisabled(false);
-      window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: result || {ok: false}}));
-      return;
-    }
-    const summary = `${label} 삭제 확인 ${result.deleted || 0}개, 이미 없음 ${result.alreadyMissing || 0}개`;
-    if (syncWarning) {
-      showFinalDeletionStatus(`${summary} · 삭제는 완료됐지만 보관함 동기화는 실패했습니다. 내 활동에서 YouTube 조회를 다시 실행하세요.`, "error", result);
+      showFinalDeletionStatus(`${summary} · ${reason}`, "error", result, context);
     } else {
-      showFinalDeletionStatus(`${summary} · 삭제와 보관함 동기화가 완료됐습니다.`, "success", result);
+      const summary = `${label} 삭제 확인 ${result.deleted || 0}개, 이미 삭제되었거나 없음 ${result.alreadyMissing || 0}개`;
+      if (syncWarning) {
+        showFinalDeletionStatus(`${summary} · 삭제는 완료됐지만 보관함 동기화는 실패했습니다.`, "error", result, context);
+      } else {
+        showFinalDeletionStatus(`${summary} · 삭제와 보관함 동기화가 완료됐습니다.`, "success", result, context);
+      }
     }
-    window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: result}));
-    setTimeout(() => location.reload(), syncWarning ? 4500 : 2200);
+
+    window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: result || {ok: false}}));
+    // 성공·부분 실패와 관계없이 서버가 렌더링한 최신 삭제 목록으로 최종 재확인한다.
+    setTimeout(() => location.reload(), syncWarning ? 4200 : 1800);
   }
 })();
