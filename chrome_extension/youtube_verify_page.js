@@ -27,59 +27,97 @@ globalThis.traceLensVerifyYouTubeTargetsInPage = async function(targets) {
     try { const u = new URL(value); const post = u.pathname.match(/^\/post\/([^/?#]+)/i)?.[1]; return post ? `post:${post}` : (u.searchParams.get("v") || ""); }
     catch { return ""; }
   };
-  const buttons = () => [...document.querySelectorAll("button,[role='button']")].filter((button) => {
-    const label = clean(`${button.getAttribute("aria-label") || ""} ${button.getAttribute("title") || ""}`); const text = clean(button.innerText || button.textContent);
-    return /삭제|delete|remove|활동 삭제/i.test(label) || ["×", "✕", "X"].includes(text);
+  const isVisible = (element) => {
+    if (!element?.isConnected) return false;
+    const style = getComputedStyle(element);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+    const rect = element.getBoundingClientRect?.();
+    return Boolean(rect && rect.width > 0 && rect.height > 0);
+  };
+  const controlLabel = (element) => clean(`${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""} ${element.innerText || element.textContent || ""}`);
+  const controls = () => [...document.querySelectorAll("button,[role='button'],[role='menuitem']")].filter((element) => {
+    if (!isVisible(element)) return false;
+    const label = controlLabel(element);
+    return /(삭제|삭제하기|delete|remove|더보기|옵션|메뉴|more|options|actions)/i.test(label) || element.getAttribute("aria-haspopup") === "menu";
   });
-  const rowFor = (button) => {
-    const direct = button.closest("[role='listitem'],article,li,div[data-id]"); if (direct) return direct;
-    let node = button.parentElement;
-    for (let depth = 0; node && depth < 12; depth += 1, node = node.parentElement) {
-      const text = clean(node.innerText || node.textContent); if (text.length >= 3 && text.length <= 9000 && /YouTube/i.test(text)) return node;
+  const rowFor = (control) => {
+    const direct = control.closest("[role='listitem'],article,li,div[data-id],div[jsdata],div[data-ved]");
+    if (direct) return direct;
+    let node = control.parentElement;
+    for (let depth = 0; node && depth < 14; depth += 1, node = node.parentElement) {
+      const text = clean(node.innerText || node.textContent);
+      const hasYouTubeLink = [...node.querySelectorAll("a[href]")].some((anchor) => Boolean(canonical(anchor.href)));
+      if (text.length >= 3 && text.length <= 12000 && (hasYouTubeLink || /YouTube|남긴 댓글|작성한 댓글|commented on/i.test(text))) return node;
     }
     return null;
   };
   const parseRow = (row) => {
-    const anchors = [...row.querySelectorAll("a[href]")]; const urls = anchors.map((a) => canonical(a.href || a.getAttribute("href"))).filter(Boolean);
-    const url = urls[0] || null; const link = anchors.find((a) => canonical(a.href || a.getAttribute("href")) === url); const linkTitle = clean(link?.innerText || link?.textContent);
+    const anchors = [...row.querySelectorAll("a[href]")];
+    const urls = anchors.map((a) => canonical(a.href || a.getAttribute("href"))).filter(Boolean);
+    const url = urls[0] || null;
+    const link = anchors.find((a) => canonical(a.href || a.getAttribute("href")) === url);
+    const linkTitle = clean(link?.innerText || link?.textContent);
     const lines = String(row.innerText || row.textContent || "").split(/\r?\n/).map(clean).filter(Boolean);
-    const control = /^(YouTube|세부정보|Details|삭제|Delete|Remove|오전|오후|AM|PM)$/i; const relation = /에\s*남긴\s*댓글|에\s*작성한\s*댓글|commented on/i;
-    const candidates = lines.filter((line) => !control.test(line)); const content = candidates.find((line) => !relation.test(line) && line !== linkTitle && !/^YouTube$/i.test(line)) || "";
+    const control = /^(YouTube|세부정보|Details|삭제|삭제하기|Delete|Remove|더보기|옵션|오전|오후|AM|PM)$/i;
+    const relation = /에\s*남긴\s*댓글|에\s*작성한\s*댓글|commented on/i;
+    const dateLine = /^(?:\d{4}[.\-/]\s*)?\d{1,2}[.\-/]\s*\d{1,2}|\d{1,2}:\d{2}|오늘|어제|today|yesterday/i;
+    const candidates = lines.filter((line) => !control.test(line));
+    const content = candidates.find((line) => !relation.test(line) && !dateLine.test(line) && line !== linkTitle && !/^YouTube$/i.test(line)) || "";
     let title = linkTitle;
-    if (!title || title === content || /^(YouTube|동영상|video)$/i.test(title)) { const relationLine = candidates.find((line) => relation.test(line)); title = relationLine ? relationLine.replace(relation, "").trim() : ""; }
-    title = clean(title); const body = clean(content); const key = sourceKey(url); const text = clean(row.innerText || row.textContent);
-    return {title, content: body, sourceKey: key, rowDataId: row.getAttribute("data-id") || "", rowJsdata: row.getAttribute("jsdata") || "", rowDataVed: row.getAttribute("data-ved") || "", rowTextHash: fnv(text), semanticHash: fnv(`${expectedPage}|${key}|${title}|${body}`), signature: `${row.getAttribute("data-id") || ""}|${key}|${fnv(text)}`};
+    if (!title || title === content || /^(YouTube|동영상|video)$/i.test(title)) {
+      const relationLine = candidates.find((line) => relation.test(line));
+      title = relationLine ? relationLine.replace(relation, "").trim() : "";
+    }
+    const body = clean(content); const key = sourceKey(url); const text = clean(row.innerText || row.textContent);
+    return {title: clean(title), content: body, fullText: norm(text), sourceKey: key, rowDataId: row.getAttribute("data-id") || "", rowJsdata: row.getAttribute("jsdata") || "", rowDataVed: row.getAttribute("data-ved") || "", rowTextHash: fnv(text), semanticHash: fnv(`${expectedPage}|${key}|${clean(title)}|${body}`), signature: `${row.getAttribute("data-id") || ""}|${key}|${fnv(text)}`};
   };
   const score = (target, row) => {
     const locator = target.locator || {}; let value = 0; let strong = false;
     const exact = (a, b, weight) => { if (a && b && String(a) === String(b)) { value += weight; strong = true; } };
-    exact(locator.semantic_hash, row.semanticHash, 130); exact(locator.row_data_id, row.rowDataId, 120); exact(locator.row_jsdata, row.rowJsdata, 105); exact(locator.row_data_ved, row.rowDataVed, 95); exact(locator.row_text_hash, row.rowTextHash, 80);
-    const tt = norm(target.title), tc = norm(target.content), rt = norm(row.title), rc = norm(row.content);
-    const sameSource = Boolean(target.sourceKey && row.sourceKey && target.sourceKey === row.sourceKey); const sameContent = Boolean(tc && rc && tc === rc); const sameTitle = Boolean(tt && rt && tt === rt);
-    if (sameSource) value += 48; if (sameContent) { value += 58; if (sameSource || sameTitle) strong = true; } else if (tc && rc && (tc.includes(rc) || rc.includes(tc))) value += 30;
-    if (sameTitle) value += 26; else if (tt && rt && (tt.includes(rt) || rt.includes(tt))) value += 12;
-    return value >= 72 && (strong || value >= 95);
+    exact(locator.semantic_hash, row.semanticHash, 140); exact(locator.row_data_id, row.rowDataId, 125); exact(locator.row_jsdata, row.rowJsdata, 110); exact(locator.row_data_ved, row.rowDataVed, 100); exact(locator.row_text_hash, row.rowTextHash, 85);
+    const tt = norm(target.title || locator.title); const tc = norm(target.content || locator.content); const rt = norm(row.title); const rc = norm(row.content);
+    const sameSource = Boolean(target.sourceKey && row.sourceKey && target.sourceKey === row.sourceKey);
+    const sameContent = Boolean(tc && rc && tc === rc); const contentInRow = Boolean(tc && row.fullText.includes(tc)); const sameTitle = Boolean(tt && rt && tt === rt); const titleInRow = Boolean(tt && row.fullText.includes(tt));
+    if (sameSource) value += 52;
+    if (sameContent) { value += 72; strong = true; }
+    else if (contentInRow) { value += 58; if (sameSource || sameTitle || titleInRow) strong = true; }
+    else if (tc && rc && (tc.includes(rc) || rc.includes(tc))) value += 34;
+    if (sameTitle) value += 28; else if (titleInRow) value += 18;
+    return value >= 72 && (strong || value >= 100);
   };
   const scrollers = () => {
     const list = [document.scrollingElement, document.documentElement, document.body, ...document.querySelectorAll("body *")].filter(Boolean).filter((el) => {
       const style = getComputedStyle(el); const rect = el.getBoundingClientRect?.() || {height: 0};
-      return rect.height >= 250 && el.scrollHeight > el.clientHeight + 100 && /(auto|scroll)/.test(style.overflowY || "");
+      return rect.height >= 250 && el.scrollHeight > el.clientHeight + 100 && (el === document.scrollingElement || /(auto|scroll)/.test(style.overflowY || ""));
     });
     return [...new Set(list)].sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
   };
 
   const foundIds = new Set(); const scanned = new Set(); let stable = 0; let previous = "";
-  window.scrollTo(0, 0); scrollers().slice(0, 4).forEach((el) => { el.scrollTop = 0; }); await sleep(320);
-  for (let step = 0; step < 650; step += 1) {
+  window.scrollTo(0, 0); scrollers().slice(0, 4).forEach((el) => { el.scrollTop = 0; }); await sleep(420);
+  for (let step = 0; step < 800; step += 1) {
     const seen = new Set(); const rows = [];
-    for (const button of buttons()) { const node = rowFor(button); if (!node || seen.has(node)) continue; seen.add(node); const row = parseRow(node); rows.push(row); scanned.add(row.signature); }
-    for (const target of targets) { if (!foundIds.has(target.id) && rows.some((row) => score(target, row))) foundIds.add(target.id); }
-    const active = scrollers().slice(0, 4); const signature = `${foundIds.size}|${document.documentElement.scrollHeight}|${active.map((el) => `${el.scrollTop}:${el.scrollHeight}`).join(",")}`;
+    for (const control of controls()) {
+      const node = rowFor(control);
+      if (!node || seen.has(node)) continue;
+      seen.add(node); const row = parseRow(node); rows.push(row); scanned.add(row.signature);
+    }
+    for (const target of targets) {
+      if (!foundIds.has(target.id) && rows.some((row) => score(target, row))) foundIds.add(target.id);
+    }
+    const active = scrollers().slice(0, 4);
+    const signature = `${foundIds.size}|${document.documentElement.scrollHeight}|${active.map((el) => `${el.scrollTop}:${el.scrollHeight}`).join(",")}`;
     stable = signature === previous ? stable + 1 : 0; previous = signature;
-    if (foundIds.size === targets.length || stable >= 14) break;
+    if (foundIds.size === targets.length || stable >= 16) break;
     let moved = false;
-    for (const el of active) { const before = el.scrollTop; el.scrollTop = Math.min(el.scrollHeight, before + Math.max(650, Math.floor((el.clientHeight || innerHeight) * .88))); if (el.scrollTop !== before) moved = true; }
-    if (!moved) window.scrollBy(0, Math.max(750, innerHeight * .88)); await sleep(380);
+    for (const el of active) {
+      const before = el.scrollTop; const max = Math.max(0, el.scrollHeight - el.clientHeight);
+      el.scrollTop = Math.min(max, before + Math.max(520, Math.floor((el.clientHeight || innerHeight) * 0.68)));
+      el.dispatchEvent(new Event("scroll", {bubbles: true}));
+      if (el.scrollTop !== before) moved = true;
+    }
+    if (!moved) window.scrollBy(0, Math.max(600, innerHeight * 0.68));
+    await sleep(420);
   }
-  return {complete: foundIds.size === targets.length || stable >= 14, foundIds: [...foundIds], scannedUnique: scanned.size, progress: {found: foundIds.size, total: targets.length}};
+  return {complete: foundIds.size === targets.length || stable >= 16, foundIds: [...foundIds], scannedUnique: scanned.size, progress: {found: foundIds.size, total: targets.length}};
 };
