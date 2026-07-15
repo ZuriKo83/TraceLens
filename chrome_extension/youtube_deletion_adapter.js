@@ -34,22 +34,31 @@
       const output = [];
       const seen = new Set();
       for (const raw of Array.isArray(rawTargets) ? rawTargets : []) {
-        const locator = raw?.locator && typeof raw.locator === "object" ? raw.locator : {};
-        const title = clean(locator.title || raw?.title);
-        const content = clean(raw?.content || locator.content);
-        const rawSourceUrl = raw?.sourceUrl || raw?.source_url || locator.source_url || "";
-        const commentId = clean(raw?.commentId || raw?.comment_id || locator.comment_id || locator.activity_token || parseUrl(rawSourceUrl)?.searchParams.get("lc"));
+        const originalLocator = raw?.locator && typeof raw.locator === "object" ? raw.locator : {};
+        const rawSourceUrl = raw?.sourceUrl || raw?.source_url || originalLocator.source_url || "";
+        const urlCommentId = clean(parseUrl(rawSourceUrl)?.searchParams.get("lc"));
+        const title = clean(originalLocator.title || raw?.title);
+        const content = clean(raw?.content || originalLocator.content);
         const sourceUrl = canonicalYouTubeUrl(rawSourceUrl);
-        if (!title && !content && !sourceUrl && !commentId) continue;
+        if (!title && !content && !sourceUrl && !urlCommentId) continue;
         const id = clean(raw?.id) || `target-${output.length + 1}`;
         if (seen.has(id)) continue;
         seen.add(id);
+
+        // Google data-token은 항상 실제 댓글 ID가 아니므로 정확 ID로 사용하지 않는다.
+        // URL의 lc 값만 신뢰하고, 기존 토큰은 진단용으로만 보존한다.
+        const locator = {
+          ...originalLocator,
+          comment_id: urlCommentId || null,
+          activity_token: null,
+          legacy_activity_token: clean(originalLocator.activity_token || originalLocator.comment_id) || null,
+        };
         output.push({
           id,
           activityKind,
           title,
           content,
-          commentId,
+          commentId: urlCommentId,
           sourceUrl,
           sourceKey: sourceIdentity(sourceUrl),
           locator,
