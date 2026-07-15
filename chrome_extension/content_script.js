@@ -211,13 +211,13 @@
     } else if (pending > 0) {
       showFinalDeletionStatus(
         `${label} 삭제 요청 ${pending}개가 접수됐습니다. YouTube 실제 댓글 반영을 기다리는 중이며, 반영 전까지 TraceLens 목록을 유지합니다.`,
-        "success",
+        "",
         result,
       );
     } else if (alreadyMissing > 0) {
       showFinalDeletionStatus(
         `${label} ${alreadyMissing}개는 Google 내 활동에 이미 없습니다. YouTube 실제 댓글 삭제 여부는 확인되지 않았습니다.`,
-        "error",
+        "",
         result,
       );
     } else {
