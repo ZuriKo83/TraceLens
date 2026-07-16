@@ -66,6 +66,13 @@ class DeleteCreditBalanceCheck(BaseModel):
     requested_count: int = Field(ge=1, le=100)
 
 
+def ensure_delete_credit_schema(db: Session) -> None:
+    bind = db.get_bind()
+    DeleteCreditWallet.__table__.create(bind=bind, checkfirst=True)
+    DeleteCreditLedger.__table__.create(bind=bind, checkfirst=True)
+    DeleteCreditUsage.__table__.create(bind=bind, checkfirst=True)
+
+
 def csrf_token(request: Request) -> str:
     token = request.session.get("csrf_token")
     if not token:
@@ -149,6 +156,7 @@ def youtube_activity_kind(activity: Activity) -> str:
 
 @router.get("/delete-credits/purchase", response_class=HTMLResponse)
 def purchase_page(request: Request, db: Session = Depends(get_db)):
+    ensure_delete_credit_schema(db)
     user = require_user(request, db, "/delete-credits/purchase")
     if isinstance(user, RedirectResponse):
         return user
@@ -184,7 +192,7 @@ def purchase_page(request: Request, db: Session = Depends(get_db)):
             "platform_labels": PLATFORM_LABELS,
             "activity_type_labels": ACTIVITY_TYPE_LABELS,
             "extension_token": extension_token,
-            "extension_server": request.base_url._url.rstrip("/"),
+            "extension_server": str(request.base_url).rstrip("/"),
             "extension_user_email": user.email,
         },
     )
@@ -196,6 +204,7 @@ def check_delete_credit_balance(
     user: User = Depends(collector_user),
     db: Session = Depends(get_db),
 ):
+    ensure_delete_credit_schema(db)
     wallet = get_wallet(db, user.id)
     balance = int(wallet.balance if wallet else 0)
     return {
@@ -212,6 +221,7 @@ def confirm_deleted_activities(
     user: User = Depends(collector_user),
     db: Session = Depends(get_db),
 ):
+    ensure_delete_credit_schema(db)
     activity_kind = payload.activity_kind.strip().lower()
     if activity_kind not in {"comment", "live_chat"}:
         raise HTTPException(400, "지원하지 않는 YouTube 활동 유형입니다.")
@@ -258,7 +268,6 @@ def confirm_deleted_activities(
 
     if wallet is None:
         wallet = get_wallet(db, user.id, create=True)
-        balance = int(wallet.balance)
 
     for row in rows:
         db.delete(row)
@@ -303,6 +312,7 @@ def confirm_deleted_activities(
 
 @router.get("/admin/delete-credits", response_class=HTMLResponse)
 def admin_credit_page(request: Request, q: str = "", db: Session = Depends(get_db)):
+    ensure_delete_credit_schema(db)
     admin = require_admin(request, db)
     if isinstance(admin, RedirectResponse):
         return admin
@@ -344,6 +354,7 @@ def admin_grant_credits(
     csrf: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    ensure_delete_credit_schema(db)
     admin = require_admin(request, db)
     if isinstance(admin, RedirectResponse):
         return admin
