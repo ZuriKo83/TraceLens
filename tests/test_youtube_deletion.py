@@ -30,8 +30,6 @@ def test_engine_uses_separate_task_window_and_hidden_verification() -> None:
     assert "await returnToWebTab()" in engine
     assert "reloadAndWait(taskTabId, state, adapter, false)" in engine
     assert "verificationPass(taskTabId" in engine
-    assert "const retryTargets = targets.filter" in engine
-    assert "retryPass = await deletionPass(taskTabId, retryTargets" in engine
     assert "closeTaskWindow" in engine
 
 
@@ -119,8 +117,12 @@ def test_verifier_uses_same_robust_matching_rules() -> None:
     assert "snapshot_complete:complete" in verifier
 
 
-def test_engine_removes_deleted_rows_and_preserves_failures() -> None:
+def test_engine_retries_remaining_items_and_removes_resolved_rows() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
+    assert "const retryTargets = targets.filter" in engine
+    assert "adapter.retry !== false" in engine
+    assert "retryPass = await deletionPass" in engine
+    assert "verification = await verificationPass" in engine
     assert "const verifiedDeletedIds = []" in engine
     assert "const alreadyMissingIds = []" in engine
     assert "verifiedDeletedIds.push(target.id)" in engine
@@ -164,7 +166,11 @@ def test_purchase_page_reconciles_already_missing_selected_rows() -> None:
     assert "user: User = Depends(collector_user)" in delete_credits
     assert "Activity.user_id == user.id" in delete_credits
     assert 'Activity.platform == "youtube"' in delete_credits
-    assert "youtube_activity_kind(row) == activity_kind" in delete_credits
+    assert 'Activity.activity_type == "comment"' in delete_credits
+    assert '"deleted_ids": activity_ids' in delete_credits
+    assert '"resolved_ids": activity_ids' in delete_credits
+    assert '"physically_deleted_ids": physically_deleted_ids' in delete_credits
+    assert '"already_absent_ids": already_absent_ids' in delete_credits
     assert "db.delete(row)" in delete_credits
 
 
