@@ -1,6 +1,6 @@
 (() => {
   const MAX_YOUTUBE_DELETE_SELECTION = 100;
-  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v3";
+  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v4";
   const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
   const serverUrl = document.querySelector('meta[name="tracelens-server-url"]')?.content?.trim() || location.origin;
@@ -73,12 +73,7 @@
 
   function storeDeletionStatus(message, kind, result) {
     try {
-      sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY, JSON.stringify({
-        message,
-        kind,
-        result: result || null,
-        savedAt: Date.now(),
-      }));
+      sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY, JSON.stringify({message, kind, result: result || null, savedAt: Date.now()}));
     } catch {}
   }
 
@@ -120,13 +115,19 @@
     let metadata = {};
     try { metadata = JSON.parse(row.dataset.metadata || "{}"); } catch { metadata = {}; }
     const locator = metadata.deletion_locator && typeof metadata.deletion_locator === "object" ? metadata.deletion_locator : {};
+    const visibleTitle = row.querySelector("h3")?.textContent?.trim() || "";
+    const visibleContent = row.querySelector("p")?.textContent?.trim() || "";
     return {
       id: row.dataset.tracelensYoutubeTargetId || `youtube-activity-${row.dataset.activityId || "unknown"}`,
-      title: locator.title || row.querySelector("h3")?.textContent?.trim() || "",
-      content: row.querySelector("p")?.textContent?.trim() || locator.content || "",
+      title: visibleTitle || locator.title || "",
+      content: visibleContent || locator.content || "",
       sourceUrl: row.querySelector("a.delete-source")?.href || locator.source_url || "",
       commentId: "",
-      locator,
+      locator: {
+        ...locator,
+        title: visibleTitle || locator.title || "",
+        content: visibleContent || locator.content || "",
+      },
     };
   }
 
