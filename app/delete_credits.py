@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, delete, select
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.config import get_settings
@@ -43,9 +43,27 @@ class DeleteCreditLedger(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
+class DeleteCreditUsage(Base):
+    __tablename__ = "delete_credit_usages"
+    __table_args__ = (
+        UniqueConstraint("user_id", "activity_id", name="uq_delete_credit_usage_user_activity"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    activity_id: Mapped[int] = mapped_column(Integer, index=True)
+    activity_kind: Mapped[str] = mapped_column(String(40), default="comment")
+    charged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class ConfirmDeletedActivities(BaseModel):
     activity_ids: list[int] = Field(min_length=1, max_length=100)
     activity_kind: str = "comment"
+    charge_activity_ids: list[int] = Field(default_factory=list, max_length=100)
+
+
+class DeleteCreditBalanceCheck(BaseModel):
+    requested_count: int = Field(ge=1, le=100)
 
 
 def csrf_token(request: Request) -> str:
@@ -166,10 +184,26 @@ def purchase_page(request: Request, db: Session = Depends(get_db)):
             "platform_labels": PLATFORM_LABELS,
             "activity_type_labels": ACTIVITY_TYPE_LABELS,
             "extension_token": extension_token,
-            "extension_server": settings.public_base_url.rstrip("/"),
+            "extension_server": request.base_url._url.rstrip("/"),
             "extension_user_email": user.email,
         },
     )
+
+
+@router.post("/api/delete-credits/check-balance")
+def check_delete_credit_balance(
+    payload: DeleteCreditBalanceCheck,
+    user: User = Depends(collector_user),
+    db: Session = Depends(get_db),
+):
+    wallet = get_wallet(db, user.id)
+    balance = int(wallet.balance if wallet else 0)
+    return {
+        "ok": True,
+        "balance": balance,
+        "requested": payload.requested_count,
+        "enough": balance >= payload.requested_count,
+    }
 
 
 @router.post("/api/delete-credits/confirm-deleted")
@@ -183,8 +217,11 @@ def confirm_deleted_activities(
         raise HTTPException(400, "지원하지 않는 YouTube 활동 유형입니다.")
 
     activity_ids = sorted({int(value) for value in payload.activity_ids if int(value) > 0})
+    charge_activity_ids = sorted({int(value) for value in payload.charge_activity_ids if int(value) > 0})
     if not activity_ids or len(activity_ids) > 100:
         raise HTTPException(400, "삭제 확인 행은 1개 이상 100개 이하이어야 합니다.")
+    if not set(charge_activity_ids).issubset(activity_ids):
+        raise HTTPException(400, "차감 대상은 삭제 확인 행에 포함되어야 합니다.")
 
     rows = list(db.scalars(
         select(Activity).where(
@@ -199,12 +236,53 @@ def confirm_deleted_activities(
     already_absent_ids = sorted(set(activity_ids) - existing_ids)
     kind_mismatch_ids = sorted(row.id for row in rows if youtube_activity_kind(row) != activity_kind)
 
+    already_charged_ids = set(db.scalars(
+        select(DeleteCreditUsage.activity_id).where(
+            DeleteCreditUsage.user_id == user.id,
+            DeleteCreditUsage.activity_id.in_(charge_activity_ids),
+        )
+    )) if charge_activity_ids else set()
+    newly_charged_ids = sorted(set(charge_activity_ids) - already_charged_ids)
+
+    wallet = db.scalar(
+        select(DeleteCreditWallet)
+        .where(DeleteCreditWallet.user_id == user.id)
+        .with_for_update()
+    )
+    balance = int(wallet.balance if wallet else 0)
+    if len(newly_charged_ids) > balance:
+        raise HTTPException(
+            402,
+            f"삭제권이 부족합니다. 필요 {len(newly_charged_ids)}개, 보유 {balance}개입니다.",
+        )
+
+    if wallet is None:
+        wallet = get_wallet(db, user.id, create=True)
+        balance = int(wallet.balance)
+
     for row in rows:
         db.delete(row)
+
+    if newly_charged_ids:
+        wallet.balance -= len(newly_charged_ids)
+        wallet.updated_at = utcnow()
+        for activity_id in newly_charged_ids:
+            db.add(DeleteCreditUsage(
+                user_id=user.id,
+                activity_id=activity_id,
+                activity_kind=activity_kind,
+            ))
+        db.add(DeleteCreditLedger(
+            user_id=user.id,
+            amount=-len(newly_charged_ids),
+            balance_after=wallet.balance,
+            reason="YouTube 삭제 실행 차감",
+            note=f"activity_kind={activity_kind}; activity_ids={','.join(map(str, newly_charged_ids))}",
+            created_by=user.id,
+        ))
+
     db.commit()
 
-    # deleted_ids는 호출자가 최종 정리 성공 여부를 판단하는 필드이므로
-    # 이미 DB에서 사라진 ID까지 포함한 전체 resolved ID를 반환한다.
     return {
         "ok": True,
         "requested": len(activity_ids),
@@ -216,6 +294,10 @@ def confirm_deleted_activities(
         "already_absent_ids": already_absent_ids,
         "not_deleted_ids": [],
         "kind_mismatch_ids": kind_mismatch_ids,
+        "charged": len(newly_charged_ids),
+        "charged_activity_ids": newly_charged_ids,
+        "already_charged_activity_ids": sorted(already_charged_ids),
+        "balance": int(wallet.balance),
     }
 
 
