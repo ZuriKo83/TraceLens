@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TraceLens",
-  "version": "1.2.6",
-  "description": "내가 작성한 게시글과 댓글을 여러 사이트에서 찾아 TraceLens 보관함에 정리하고 Google 내 활동의 구형·신형 YouTube 카드에서 삭제 대상을 정확히 찾습니다.",
+  "version": "1.2.7",
+  "description": "내가 작성한 게시글과 댓글을 여러 사이트에서 찾아 TraceLens 보관함에 정리하고 Google 내 활동에서 삭제 확인된 YouTube 항목만 목록에서 제거합니다.",
   "minimum_chrome_version": "109",
   "permissions": [
     "activeTab",
