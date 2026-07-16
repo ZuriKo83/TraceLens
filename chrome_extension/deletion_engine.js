@@ -260,29 +260,30 @@
       }
 
       await assertTaskTab(taskTabId, state, adapter);
-      const verifiedDeletedTargets = targets.filter((target) => verifiedDeletedIds.includes(target.id));
-      let sync = {synced: verifiedDeletedTargets.length === 0, lines: [], raw: null};
-      if (verifiedDeletedTargets.length && typeof adapter.confirmDeletedTargets === "function") {
+      const absentIds = new Set([...verifiedDeletedIds, ...alreadyMissingIds]);
+      const absentTargets = targets.filter((target) => absentIds.has(target.id));
+      let sync = {synced: absentTargets.length === 0, lines: [], raw: null};
+      if (absentTargets.length && typeof adapter.confirmDeletedTargets === "function") {
         publish(webTabId, adapter, {
           stage: "syncing",
-          message: `삭제 확인된 ${verifiedDeletedTargets.length}개만 TraceLens 목록에서 제거합니다.`,
+          message: `삭제됐거나 이미 없는 ${absentTargets.length}개만 TraceLens 목록에서 제거합니다.`,
         });
         try {
-          const raw = await adapter.confirmDeletedTargets(verifiedDeletedTargets, config);
-          const expectedActivityIds = [...new Set(verifiedDeletedTargets.map((target) => Number(target.activityId || 0)).filter((value) => value > 0))];
+          const raw = await adapter.confirmDeletedTargets(absentTargets, config);
+          const expectedActivityIds = [...new Set(absentTargets.map((target) => Number(target.activityId || 0)).filter((value) => value > 0))];
           const removedActivityIds = new Set((raw?.deleted_ids || []).map(Number));
           const synced = expectedActivityIds.length > 0 && expectedActivityIds.every((id) => removedActivityIds.has(id));
           sync = {
             synced,
             lines: [synced
-              ? `✓ TraceLens 목록에서 삭제 확인 ${expectedActivityIds.length}개 제거`
+              ? `✓ TraceLens 목록에서 삭제 또는 이미 없음 ${expectedActivityIds.length}개 제거`
               : `✕ TraceLens 목록 동기화: ${raw?.deleted || 0}/${expectedActivityIds.length}개 제거`],
             raw,
           };
         } catch (error) {
           sync = {synced: false, lines: [`✕ TraceLens 목록 동기화: ${error.message || String(error)}`], raw: null};
         }
-      } else if (verifiedDeletedTargets.length) {
+      } else if (absentTargets.length) {
         publish(webTabId, adapter, {stage: "syncing", message: "확인 결과로 TraceLens 보관함을 동기화합니다."});
         sync = await syncArchive(adapter, config, taskTabId, verification);
       }
@@ -304,7 +305,7 @@
         synced: sync.synced,
         syncDeferred: false,
         lines: sync.lines,
-        warning: verifiedDeletedIds.length && !sync.synced
+        warning: absentTargets.length && !sync.synced
           ? (adapter.syncError || "삭제 확인 후 TraceLens 목록 동기화에 실패했습니다.")
           : null,
         error: failures.length ? failures[0]?.reason : null,
@@ -317,8 +318,8 @@
       publish(webTabId, adapter, {
         stage: "done",
         message: failures.length
-          ? `Google 내 활동 삭제 확인 ${verifiedDeletedIds.length}개, 실패 ${failures.length}개입니다.`
-          : `Google 내 활동 삭제 확인 ${verifiedDeletedIds.length}개가 완료됐습니다.`,
+          ? `Google 내 활동 삭제 확인 ${verifiedDeletedIds.length}개, 이미 없음 ${alreadyMissingIds.length}개, 실패 ${failures.length}개입니다.`
+          : `Google 내 활동 삭제 확인 ${verifiedDeletedIds.length}개, 이미 없음 ${alreadyMissingIds.length}개 처리가 완료됐습니다.`,
         result,
       });
       return result;
