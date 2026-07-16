@@ -97,6 +97,14 @@ def current_user(request: Request, db: Session) -> User | None:
     return user
 
 
+def delete_api_user(request: Request, db: Session = Depends(get_db)) -> User:
+    session_user = current_user(request, db)
+    if session_user is not None:
+        require_csrf(request, request.headers.get("x-csrf-token", ""))
+        return session_user
+    return collector_user(request, db)
+
+
 def require_user(request: Request, db: Session, next_path: str) -> User | RedirectResponse:
     user = current_user(request, db)
     return user if user else RedirectResponse(f"/login?next={next_path}", status_code=303)
@@ -201,7 +209,7 @@ def purchase_page(request: Request, db: Session = Depends(get_db)):
 @router.post("/api/delete-credits/check-balance")
 def check_delete_credit_balance(
     payload: DeleteCreditBalanceCheck,
-    user: User = Depends(collector_user),
+    user: User = Depends(delete_api_user),
     db: Session = Depends(get_db),
 ):
     ensure_delete_credit_schema(db)
@@ -218,7 +226,7 @@ def check_delete_credit_balance(
 @router.post("/api/delete-credits/confirm-deleted")
 def confirm_deleted_activities(
     payload: ConfirmDeletedActivities,
-    user: User = Depends(collector_user),
+    user: User = Depends(delete_api_user),
     db: Session = Depends(get_db),
 ):
     ensure_delete_credit_schema(db)
