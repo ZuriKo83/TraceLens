@@ -1,7 +1,8 @@
 (() => {
   const MAX_YOUTUBE_DELETE_SELECTION = 100;
-  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v9";
+  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v10";
   const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
+  const extensionVersion = chrome.runtime.getManifest?.().version || "";
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
   const serverUrl = document.querySelector('meta[name="tracelens-server-url"]')?.content?.trim() || location.origin;
   const userEmail = document.querySelector('meta[name="tracelens-user-email"]')?.content?.trim() || "";
@@ -10,6 +11,9 @@
   const config = {serverUrl, collectorToken: token, userEmail};
   const deletionPage = location.pathname === "/delete-credits/purchase";
   const publish = (detail) => window.dispatchEvent(new CustomEvent("TRACELENS_EXTENSION_EVENT", {detail}));
+  const positiveIds = (values) => [...new Set((Array.isArray(values) ? values : [])
+    .map(Number)
+    .filter((value) => Number.isInteger(value) && value > 0))];
 
   chrome.runtime.sendMessage({type: "WEB_CONNECT", config}, (response) => {
     if (chrome.runtime.lastError || !response?.ok) {
@@ -19,14 +23,15 @@
     }
     document.documentElement.dataset.tracelensExtension = "connected";
     document.documentElement.dataset.tracelensExtensionUser = response.userEmail || userEmail;
-    publish({type: "CONNECTION", connected: true, userEmail: response.userEmail || userEmail});
+    document.documentElement.dataset.tracelensExtensionVersion = extensionVersion;
+    publish({type: "CONNECTION", connected: true, userEmail: response.userEmail || userEmail, extensionVersion});
     if (deletionPage) installPurchaseDeletionBridge();
   });
 
   window.addEventListener("TRACELENS_WEB_COMMAND", (event) => {
     const detail = event.detail || {};
     if (detail.type === "PING") {
-      publish({type: "CONNECTION", connected: true, userEmail});
+      publish({type: "CONNECTION", connected: true, userEmail, extensionVersion});
       return;
     }
     if (detail.type !== "START_SCAN") return;
@@ -71,9 +76,15 @@
     }
   }
 
-  function storeDeletionStatus(message, kind, result) {
+  function storeDeletionStatus(message, kind, result, label) {
     try {
-      sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY, JSON.stringify({message, kind, result: result || null, savedAt: Date.now()}));
+      sessionStorage.setItem(DELETE_RESULT_STORAGE_KEY, JSON.stringify({
+        message,
+        kind,
+        result: result || null,
+        label: label || null,
+        savedAt: Date.now(),
+      }));
     } catch {}
   }
 
@@ -81,9 +92,89 @@
     try { sessionStorage.removeItem(DELETE_RESULT_STORAGE_KEY); } catch {}
   }
 
+  function renderedActivityIds() {
+    return new Set([...document.querySelectorAll('.delete-activity-row[data-activity-id]')]
+      .map((row) => Number(row.dataset.activityId || 0))
+      .filter((value) => Number.isInteger(value) && value > 0));
+  }
+
+  function labelForResult(result, fallback = "") {
+    if (fallback) return fallback;
+    return result?.platform === "youtube_live_chat" ? "실시간 채팅" : "댓글";
+  }
+
+  function normalizeSyncResult(result) {
+    result = result || {ok: false};
+    const resolved = Number(result.deleted || 0) + Number(result.alreadyMissing || 0);
+    const confirmedActivityIds = positiveIds(result.deletedActivityIds || []);
+    if (resolved > 0 && confirmedActivityIds.length >= resolved && (result.synced === false || result.warning)) {
+      return {...result, synced: true, warning: null};
+    }
+    return result;
+  }
+
+  function buildFinalDeletionStatus(rawResult, label) {
+    const result = normalizeSyncResult(rawResult);
+    const deleted = Number(result?.deleted || 0);
+    const alreadyMissing = Number(result?.alreadyMissing || 0);
+    const failed = Number(result?.failed || 0);
+    const resolved = deleted + alreadyMissing;
+    const firstFailure = Array.isArray(result?.failures) ? result.failures[0]?.reason : "";
+    const syncWarning = result?.warning || (resolved > 0 && result?.synced === false ? "TraceLens 목록 동기화에 실패했습니다." : "");
+
+    if (failed > 0) {
+      const deletedText = deleted > 0 ? `삭제 확인 ${deleted}개, ` : "";
+      const missingText = alreadyMissing > 0 ? `이미 삭제됨 ${alreadyMissing}개, ` : "";
+      const summary = `${label} ${deletedText}${missingText}실패 ${failed}개`;
+      const reason = firstFailure || result?.error || `일부 ${label}이 Google 내 활동에 남아 있습니다.`;
+      const syncText = syncWarning ? ` · ${syncWarning}` : "";
+      return {message: `${summary} · ${reason}${syncText}`, kind: "error", result};
+    }
+    if (resolved > 0 && syncWarning) {
+      return {
+        message: `${label} 삭제 확인 ${deleted}개, 이미 삭제됨 ${alreadyMissing}개 · Google 내 활동 상태는 확인했지만 ${syncWarning}`,
+        kind: "error",
+        result,
+      };
+    }
+    if (resolved > 0) {
+      return {
+        message: `${label} 삭제 확인 ${deleted}개, 이미 삭제됨 ${alreadyMissing}개 · 해당 항목을 TraceLens 목록에서도 제거했습니다.`,
+        kind: "success",
+        result,
+      };
+    }
+    return {message: `${label} 삭제 결과를 확인하지 못했습니다.`, kind: "error", result};
+  }
+
+  function reconcileStoredDeletionStatus(stored) {
+    const result = stored?.result;
+    const requestedActivityIds = positiveIds(result?.requestedActivityIds || []);
+    const resolved = Number(result?.deleted || 0) + Number(result?.alreadyMissing || 0);
+    if (!result || !requestedActivityIds.length || resolved <= 0) return stored;
+    if (result.synced !== false && !result.warning) return stored;
+
+    const currentIds = renderedActivityIds();
+    const absentCount = requestedActivityIds.filter((id) => !currentIds.has(id)).length;
+    if (absentCount < resolved) return stored;
+
+    const reconciledResult = {
+      ...result,
+      synced: true,
+      warning: null,
+      serverRowsReconciled: true,
+    };
+    const label = labelForResult(reconciledResult, stored.label || "");
+    const final = buildFinalDeletionStatus(reconciledResult, label);
+    const reconciled = {...stored, ...final, label, savedAt: Date.now()};
+    storeDeletionStatus(final.message, final.kind, final.result, label);
+    return reconciled;
+  }
+
   function restoreStoredDeletionStatus() {
-    const stored = readStoredDeletionStatus();
-    if (!stored) return false;
+    const original = readStoredDeletionStatus();
+    if (!original) return false;
+    const stored = reconcileStoredDeletionStatus(original);
     updateDeletionStatus(`마지막 삭제 결과 · ${stored.message}`, stored.kind || "");
     return true;
   }
@@ -96,7 +187,8 @@
       row.dataset.tracelensYoutubeTargetId = `youtube-activity-${row.dataset.activityId || index + 1}`;
     });
     if (!restoreStoredDeletionStatus()) {
-      updateDeletionStatus("확장 프로그램 연결됨 · YouTube 댓글 또는 실시간 채팅을 최대 100개까지 선택할 수 있습니다.", "success");
+      const versionText = extensionVersion ? ` v${extensionVersion}` : "";
+      updateDeletionStatus(`확장 프로그램${versionText} 연결됨 · YouTube 댓글 또는 실시간 채팅을 최대 100개까지 선택할 수 있습니다.`, "success");
     }
     window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_READY"));
     window.addEventListener("TRACELENS_DELETE_REQUEST", (event) => {
@@ -157,17 +249,19 @@
     const label = liveChat ? "실시간 채팅" : "댓글";
     const platformKey = liveChat ? "youtube_live_chat" : "youtube";
     const targets = rows.map(rowTarget);
+    const requestedActivityIds = positiveIds(targets.map((target) => target.activityId));
     const confirmed = confirm(`선택한 YouTube ${label} ${rows.length}개를 실제로 삭제합니다.\n\n이미 삭제된 항목은 TraceLens 목록에서 정리됩니다. 계속하시겠습니까?`);
     if (!confirmed) return;
     clearStoredDeletionStatus();
     setDeletionControlsDisabled(true, label);
     updateDeletionStatus(`전체 ${label} 기록에서 대상을 찾은 뒤 삭제 또는 이미 삭제된 상태를 확인합니다. 작업 창을 닫거나 이동하지 마세요.`);
     chrome.runtime.sendMessage({type: "DELETE_PLATFORM_ITEMS", platform: platformKey, targets, config}, (response) => {
+      const context = {label, requestedActivityIds};
       if (chrome.runtime.lastError) {
-        finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message}, {label});
+        finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message}, context);
         return;
       }
-      finishDeletion(response || {ok: false, platform: platformKey, error: "삭제 결과를 받지 못했습니다."}, {label});
+      finishDeletion(response || {ok: false, platform: platformKey, error: "삭제 결과를 받지 못했습니다."}, context);
     });
   }
 
@@ -195,53 +289,21 @@
     status.classList.toggle("success", kind === "success");
   }
 
-  function showFinalDeletionStatus(message, kind, result) {
-    storeDeletionStatus(message, kind, result);
+  function showFinalDeletionStatus(message, kind, result, label) {
+    storeDeletionStatus(message, kind, result, label);
     updateDeletionStatus(message, kind);
   }
 
-  function finishDeletion(result, context = {}) {
-    result = result || {ok: false};
-    const liveChat = result?.platform === "youtube_live_chat";
-    const label = context.label || (liveChat ? "실시간 채팅" : "댓글");
-    const deleted = Number(result?.deleted || 0);
-    const alreadyMissing = Number(result?.alreadyMissing || 0);
-    const failed = Number(result?.failed || 0);
-    const resolved = deleted + alreadyMissing;
-    const confirmedActivityIds = new Set((result?.deletedActivityIds || [])
-      .map(Number)
-      .filter((value) => Number.isInteger(value) && value > 0));
-    const syncConfirmedByIds = resolved > 0 && confirmedActivityIds.size >= resolved;
-    if (syncConfirmedByIds && (result.synced === false || result.warning)) {
-      result = {...result, synced: true, warning: null};
-    }
-    const firstFailure = Array.isArray(result?.failures) ? result.failures[0]?.reason : "";
-    const syncWarning = result?.warning || (resolved > 0 && result?.synced === false ? "TraceLens 목록 동기화에 실패했습니다." : "");
-
-    if (failed > 0) {
-      const deletedText = deleted > 0 ? `삭제 확인 ${deleted}개, ` : "";
-      const missingText = alreadyMissing > 0 ? `이미 삭제됨 ${alreadyMissing}개, ` : "";
-      const summary = `${label} ${deletedText}${missingText}실패 ${failed}개`;
-      const reason = firstFailure || result?.error || `일부 ${label}이 Google 내 활동에 남아 있습니다.`;
-      const syncText = syncWarning ? ` · ${syncWarning}` : "";
-      showFinalDeletionStatus(`${summary} · ${reason}${syncText}`, "error", result);
-    } else if (resolved > 0 && syncWarning) {
-      showFinalDeletionStatus(
-        `${label} 삭제 확인 ${deleted}개, 이미 삭제됨 ${alreadyMissing}개 · Google 내 활동 상태는 확인했지만 ${syncWarning}`,
-        "error",
-        result,
-      );
-    } else if (resolved > 0) {
-      showFinalDeletionStatus(
-        `${label} 삭제 확인 ${deleted}개, 이미 삭제됨 ${alreadyMissing}개 · 해당 항목을 TraceLens 목록에서도 제거했습니다.`,
-        "success",
-        result,
-      );
-    } else {
-      showFinalDeletionStatus(`${label} 삭제 결과를 확인하지 못했습니다.`, "error", result);
-    }
-
-    window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: result || {ok: false}}));
+  function finishDeletion(rawResult, context = {}) {
+    const requestedActivityIds = positiveIds(context.requestedActivityIds || []);
+    const initialResult = {
+      ...(rawResult || {ok: false}),
+      requestedActivityIds,
+    };
+    const label = labelForResult(initialResult, context.label || "");
+    const final = buildFinalDeletionStatus(initialResult, label);
+    showFinalDeletionStatus(final.message, final.kind, final.result, label);
+    window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: final.result || {ok: false}}));
     setTimeout(() => location.reload(), 1800);
   }
 })();
