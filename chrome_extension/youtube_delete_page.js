@@ -13,6 +13,7 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
   const itemLabel = activityKind === "live_chat" ? "실시간 채팅" : "댓글";
   const batchSize = Math.max(1, Math.min(20, Number(options.batchSize) || 20));
   const batchPauseMs = Math.max(250, Number(options.batchPauseMs) || 500);
+  const maxClickAttempts = 3;
 
   const validPage = () => location.hostname === "myactivity.google.com"
     && new URL(location.href).searchParams.get("page") === expectedPage;
@@ -316,7 +317,7 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
     };
 
     const clickConfirmIfPresent = async () => {
-      const deadline = Date.now() + 1400;
+      const deadline = Date.now() + 1600;
       while (Date.now() < deadline) {
         for (const dialog of [...document.querySelectorAll("[role='dialog'],dialog,[aria-modal='true']")].filter(isVisible)) {
           const confirm = [...dialog.querySelectorAll("button,[role='button']")].filter(isVisible).find((button) => {
@@ -332,30 +333,51 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
 
     banner.textContent = `대상을 찾았습니다. 아래쪽 ${itemLabel}부터 삭제를 요청합니다.`;
     for (const target of pending) {
-      const current = await restoreAndFind(target);
-      if (!current) { failed.push({id:target.id,reason:`저장한 위치에서 대상 ${itemLabel}을 다시 찾지 못했습니다.`}); continue; }
-      current.wrapper.scrollIntoView({block:"center",behavior:"auto"});
-      await sleep(160);
-      const refreshed = findCurrent(target) || current;
-      const button = refreshed.button || deleteButtonFor(refreshed.wrapper);
-      if (!button) { failed.push({id:target.id,reason:`${itemLabel} 카드의 X 삭제 버튼을 찾지 못했습니다.`}); continue; }
-      try {
-        button.focus?.({preventScroll:true});
-        button.click();
-        attemptedIds.push(target.id);
-        let removed = await waitRemoved(target, refreshed, 1200);
-        if (!removed) {
-          const confirmed = await clickConfirmIfPresent();
-          if (confirmed) removed = await waitRemoved(target, refreshed, 2400);
+      let removed = false;
+      let lastReason = `X 삭제 버튼을 눌렀지만 ${itemLabel} 카드가 Google 내 활동에서 사라지지 않았습니다.`;
+
+      for (let attempt = 1; attempt <= maxClickAttempts && !removed; attempt += 1) {
+        const current = await restoreAndFind(target);
+        if (!current) {
+          if (attempt > 1 && !findCurrent(target)) {
+            removed = true;
+            break;
+          }
+          lastReason = `저장한 위치에서 대상 ${itemLabel}을 다시 찾지 못했습니다.`;
+          break;
         }
-        if (removed) clickedIds.push(target.id);
-        else failed.push({id:target.id,reason:`X 삭제 버튼을 눌렀지만 ${itemLabel} 카드가 Google 내 활동에서 사라지지 않았습니다.`});
-      } catch (error) {
-        failed.push({id:target.id,reason:error.message || String(error)});
+
+        current.wrapper.scrollIntoView({block:"center",behavior:"auto"});
+        await sleep(180 + attempt * 80);
+        const refreshed = findCurrent(target) || current;
+        const button = refreshed.button || deleteButtonFor(refreshed.wrapper);
+        if (!button) {
+          lastReason = `${itemLabel} 카드의 X 삭제 버튼을 찾지 못했습니다.`;
+          break;
+        }
+
+        try {
+          button.focus?.({preventScroll:true});
+          button.click();
+          if (!attemptedIds.includes(target.id)) attemptedIds.push(target.id);
+          removed = await waitRemoved(target, refreshed, 1200 + attempt * 500);
+          if (!removed) {
+            const confirmed = await clickConfirmIfPresent();
+            if (confirmed) removed = await waitRemoved(target, refreshed, 2200 + attempt * 700);
+          }
+          if (!removed && attempt < maxClickAttempts) await sleep(400 + attempt * 250);
+        } catch (error) {
+          lastReason = error.message || String(error);
+          if (attempt < maxClickAttempts) await sleep(400 + attempt * 250);
+        }
       }
+
+      if (removed) clickedIds.push(target.id);
+      else failed.push({id:target.id,reason:lastReason});
+
       batchClicks += 1;
       if (batchClicks >= batchSize) { await sleep(batchPauseMs); batchClicks = 0; }
-      else await sleep(180);
+      else await sleep(220);
     }
 
     banner.textContent = attemptedIds.length
@@ -369,7 +391,7 @@ globalThis.traceLensDeleteYouTubeTargetsInPage = async function(targets, options
       unmatchedIds,
       scannedUnique: scanned.size,
       scanComplete,
-      discoveryComplete: unmatchedIds.length === 0,
+      discoveryComplete: scanComplete,
       progress: {found:discovered.size,clicked:clickedIds.length,attempted:attemptedIds.length,unmatched:unmatchedIds.length,failed:failed.length},
     };
   } finally {
