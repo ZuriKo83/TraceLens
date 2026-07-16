@@ -9,11 +9,11 @@ def read(name: str) -> str:
 
 def test_manifest_has_required_hosts_and_current_version() -> None:
     manifest = json.loads(read("manifest.json"))
-    assert manifest["version"] == "1.2.8"
+    assert manifest["version"] == "1.2.9"
     assert "https://www.threads.com/*" in manifest["host_permissions"]
     assert "https://www.instagram.com/*" in manifest["host_permissions"]
     assert "https://github.com/*" not in manifest["host_permissions"]
-    assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
+    assert manifest["content_scripts"][0]["js"] == ["content_script.js", "delete_result_reconciler.js"]
     assert set(manifest["permissions"]) == {"activeTab", "storage", "tabs", "scripting"}
 
 
@@ -31,6 +31,16 @@ def test_content_script_connects_from_logged_in_dashboard() -> None:
     assert 'meta[name="tracelens-extension-token"]' in content
     assert 'type: "WEB_CONNECT"' in content
     assert "tracelensExtension" in content
+
+
+def test_delete_result_reconciler_only_clears_false_sync_warning() -> None:
+    content = read("delete_result_reconciler.js")
+    assert 'const STORAGE_KEY = "tracelens:last-delete-result:v7"' in content
+    assert "deletedActivityIds" in content
+    assert "removedIds.size < resolved" in content
+    assert "synced: true" in content
+    assert "warning: null" in content
+    assert "TraceLens 목록 동기화에 실패했습니다." in content
 
 
 def test_background_has_threads_and_bearer_import() -> None:
