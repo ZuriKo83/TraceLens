@@ -9,7 +9,7 @@ def read(name: str) -> str:
 
 def test_manifest_has_required_hosts_and_current_version() -> None:
     manifest = json.loads(read("manifest.json"))
-    assert manifest["version"] == "1.3.3"
+    assert manifest["version"] == "1.3.4"
     assert "https://www.threads.com/*" in manifest["host_permissions"]
     assert "https://www.instagram.com/*" in manifest["host_permissions"]
     assert "https://github.com/*" not in manifest["host_permissions"]
@@ -31,15 +31,20 @@ def test_content_script_connects_from_logged_in_dashboard() -> None:
     assert 'meta[name="tracelens-extension-token"]' in content
     assert 'type: "WEB_CONNECT"' in content
     assert "tracelensExtension" in content
+    assert "chrome.runtime.getManifest" in content
+    assert "tracelensExtensionVersion" in content
 
 
 def test_obsolete_delete_result_reconciler_is_removed() -> None:
     root = Path(__file__).resolve().parents[1]
     assert not (root / "chrome_extension" / "delete_result_reconciler.js").exists()
     content = read("content_script.js")
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v9"' in content
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v10"' in content
     assert "removeConfirmedRows" not in content
     assert "reconcileAlreadyMissing" not in content
+    assert "reconcileStoredDeletionStatus" in content
+    assert "renderedActivityIds" in content
+    assert "serverRowsReconciled" in content
 
 
 def test_background_has_threads_and_bearer_import() -> None:
