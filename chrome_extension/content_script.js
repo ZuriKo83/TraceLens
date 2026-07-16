@@ -1,6 +1,6 @@
 (() => {
   const MAX_YOUTUBE_DELETE_SELECTION = 100;
-  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v4";
+  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v5";
   const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
   const serverUrl = document.querySelector('meta[name="tracelens-server-url"]')?.content?.trim() || location.origin;
@@ -117,8 +117,10 @@
     const locator = metadata.deletion_locator && typeof metadata.deletion_locator === "object" ? metadata.deletion_locator : {};
     const visibleTitle = row.querySelector("h3")?.textContent?.trim() || "";
     const visibleContent = row.querySelector("p")?.textContent?.trim() || "";
+    const activityId = Number(row.dataset.activityId || 0);
     return {
       id: row.dataset.tracelensYoutubeTargetId || `youtube-activity-${row.dataset.activityId || "unknown"}`,
+      activityId: Number.isInteger(activityId) && activityId > 0 ? activityId : null,
       title: visibleTitle || locator.title || "",
       content: visibleContent || locator.content || "",
       sourceUrl: row.querySelector("a.delete-source")?.href || locator.source_url || "",
@@ -154,11 +156,11 @@
     const liveChat = activityKind === "live_chat";
     const label = liveChat ? "실시간 채팅" : "댓글";
     const platformKey = liveChat ? "youtube_live_chat" : "youtube";
-    const confirmed = confirm(`선택한 YouTube ${label} ${rows.length}개에 삭제를 요청합니다.\n\nYouTube 실제 화면 반영에는 시간이 걸릴 수 있으며 되돌릴 수 없습니다. 계속하시겠습니까?`);
+    const confirmed = confirm(`선택한 YouTube ${label} ${rows.length}개를 실제로 삭제합니다.\n\n삭제 후 되돌릴 수 없습니다. 계속하시겠습니까?`);
     if (!confirmed) return;
     clearStoredDeletionStatus();
     setDeletionControlsDisabled(true, label);
-    updateDeletionStatus(`전체 ${label} 기록에서 대상을 찾은 뒤 삭제를 요청합니다. 작업 창을 닫거나 이동하지 마세요.`);
+    updateDeletionStatus(`전체 ${label} 기록에서 대상을 찾은 뒤 삭제합니다. 작업 창을 닫거나 이동하지 마세요.`);
     chrome.runtime.sendMessage({type: "DELETE_PLATFORM_ITEMS", platform: platformKey, targets: rows.map(rowTarget), config}, (response) => {
       if (chrome.runtime.lastError) {
         finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message}, {label});
@@ -177,7 +179,7 @@
     if (!button) return;
     if (disabled) {
       button.dataset.running = "1";
-      button.textContent = `${label} 삭제 요청 중…`;
+      button.textContent = `${label} 삭제 진행 중…`;
     } else {
       delete button.dataset.running;
       button.textContent = "선택 항목 삭제";
@@ -200,29 +202,38 @@
   function finishDeletion(result, context = {}) {
     const liveChat = result?.platform === "youtube_live_chat";
     const label = context.label || (liveChat ? "실시간 채팅" : "댓글");
-    const pending = Number(result?.pending || 0);
+    const deleted = Number(result?.deleted || 0);
     const alreadyMissing = Number(result?.alreadyMissing || 0);
     const failed = Number(result?.failed || 0);
     const firstFailure = Array.isArray(result?.failures) ? result.failures[0]?.reason : "";
+    const syncWarning = result?.warning || (deleted > 0 && result?.synced === false ? "TraceLens 목록 동기화에 실패했습니다." : "");
 
-    if (failed > 0 || (!result?.ok && pending === 0 && alreadyMissing === 0)) {
-      const summary = `${label} 삭제 요청 ${pending}개, Google 내 활동에 이미 없음 ${alreadyMissing}개, 확인 실패 ${failed}개`;
-      const reason = firstFailure || result?.error || `삭제 대상이나 Google ${label} 삭제 버튼을 확인하지 못했습니다.`;
-      showFinalDeletionStatus(`${summary} · ${reason}`, "error", result);
-    } else if (pending > 0) {
+    if (failed > 0) {
+      const missingText = alreadyMissing > 0 ? `, 기존에 없음 ${alreadyMissing}개` : "";
+      const summary = `${label} 삭제 확인 ${deleted}개, 실패 ${failed}개${missingText}`;
+      const reason = firstFailure || result?.error || `일부 ${label}이 Google 내 활동에 남아 있습니다.`;
+      const syncText = syncWarning ? ` · ${syncWarning}` : "";
+      showFinalDeletionStatus(`${summary} · ${reason}${syncText}`, "error", result);
+    } else if (deleted > 0 && syncWarning) {
       showFinalDeletionStatus(
-        `${label} 삭제 요청 ${pending}개가 접수됐습니다. YouTube 실제 댓글 반영을 기다리는 중이며, 반영 전까지 TraceLens 목록을 유지합니다.`,
-        "",
+        `${label} 삭제 확인 ${deleted}개 · Google 내 활동에서는 삭제됐지만 ${syncWarning}`,
+        "error",
+        result,
+      );
+    } else if (deleted > 0) {
+      showFinalDeletionStatus(
+        `${label} 삭제 확인 ${deleted}개 · 삭제 확인된 항목을 TraceLens 목록에서도 제거했습니다.`,
+        "success",
         result,
       );
     } else if (alreadyMissing > 0) {
       showFinalDeletionStatus(
-        `${label} ${alreadyMissing}개는 Google 내 활동에 이미 없습니다. YouTube 실제 댓글 삭제 여부는 확인되지 않았습니다.`,
+        `${label} ${alreadyMissing}개는 Google 내 활동에 이미 없습니다. 삭제 버튼을 누르지 않았습니다.`,
         "",
         result,
       );
     } else {
-      showFinalDeletionStatus(`${label} 삭제 요청 결과를 확인하지 못했습니다.`, "error", result);
+      showFinalDeletionStatus(`${label} 삭제 결과를 확인하지 못했습니다.`, "error", result);
     }
 
     window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: result || {ok: false}}));
