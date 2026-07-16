@@ -1,10 +1,12 @@
 (() => {
   const MAX_YOUTUBE_DELETE_SELECTION = 100;
-  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v11";
+  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v12";
   const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
   const extensionVersion = chrome.runtime.getManifest?.().version || "";
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
-  const serverUrl = document.querySelector('meta[name="tracelens-server-url"]')?.content?.trim() || location.origin;
+  // 삭제 API는 현재 로그인한 TraceLens 사이트와 동일한 origin으로만 호출한다.
+  // PUBLIC_BASE_URL 기본값(127.0.0.1)이 브라우저에 전달되어 동기화가 실패하는 것을 막는다.
+  const serverUrl = location.origin;
   const userEmail = document.querySelector('meta[name="tracelens-user-email"]')?.content?.trim() || "";
   if (!token) return;
 
@@ -114,6 +116,15 @@
     return result;
   }
 
+  function creditSummary(result) {
+    const charged = Number(result?.charged || 0);
+    const balance = Number(result?.balance);
+    if (charged <= 0) return "";
+    return Number.isFinite(balance)
+      ? ` · 삭제권 ${charged}개 차감, 잔여 ${balance}개`
+      : ` · 삭제권 ${charged}개 차감`;
+  }
+
   function buildFinalDeletionStatus(rawResult, label) {
     const result = normalizeSyncResult(rawResult);
     const deleted = Number(result?.deleted || 0);
@@ -122,6 +133,7 @@
     const resolved = deleted + alreadyMissing;
     const firstFailure = Array.isArray(result?.failures) ? result.failures[0]?.reason : "";
     const syncWarning = result?.warning || (resolved > 0 && result?.synced === false ? "TraceLens 목록 동기화에 실패했습니다." : "");
+    const chargedText = creditSummary(result);
 
     if (failed > 0) {
       const deletedText = deleted > 0 ? `삭제 확인 ${deleted}개, ` : "";
@@ -129,18 +141,18 @@
       const summary = `${label} ${deletedText}${missingText}실패 ${failed}개`;
       const reason = firstFailure || result?.error || `일부 ${label}이 Google 내 활동에 남아 있습니다.`;
       const syncText = syncWarning ? ` · ${syncWarning}` : "";
-      return {message: `${summary} · ${reason}${syncText}`, kind: "error", result};
+      return {message: `${summary} · ${reason}${syncText}${chargedText}`, kind: "error", result};
     }
     if (resolved > 0 && syncWarning) {
       return {
-        message: `${label} 삭제 확인 ${deleted}개, 이미 삭제됨 ${alreadyMissing}개 · Google 내 활동 상태는 확인했지만 ${syncWarning}`,
+        message: `${label} 삭제 확인 ${deleted}개, 이미 삭제됨 ${alreadyMissing}개 · Google 내 활동 상태는 확인했지만 ${syncWarning}${chargedText}`,
         kind: "error",
         result,
       };
     }
     if (resolved > 0) {
       return {
-        message: `${label} 삭제 확인 ${deleted}개, 이미 삭제됨 ${alreadyMissing}개 · 해당 항목을 TraceLens 목록에서도 제거했습니다.`,
+        message: `${label} 삭제 확인 ${deleted}개, 이미 삭제됨 ${alreadyMissing}개 · 해당 항목을 TraceLens 목록에서도 제거했습니다.${chargedText}`,
         kind: "success",
         result,
       };
@@ -195,7 +207,7 @@
     window.addEventListener("TRACELENS_DELETE_REQUEST", (event) => {
       const detail = event.detail || {};
       if (detail.platform !== "youtube" || !["comment", "live_chat"].includes(detail.activityType)) return;
-      startYouTubeDeletion(detail.activityType);
+      void startYouTubeDeletion(detail.activityType);
     });
   }
 
@@ -226,7 +238,39 @@
     };
   }
 
-  function startYouTubeDeletion(requestedKind) {
+  async function postDeleteApi(path, body) {
+    let response;
+    try {
+      response = await fetch(`${serverUrl}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        cache: "no-store",
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      throw new Error(`${serverUrl}${path} 요청 실패: ${error.message || String(error)}`);
+    }
+    let payload = null;
+    try { payload = await response.json(); } catch {}
+    if (!response.ok || payload?.ok === false) {
+      const detail = payload?.detail || payload?.error || response.statusText || "응답 본문 없음";
+      throw new Error(`HTTP ${response.status}: ${detail}`);
+    }
+    return payload || {};
+  }
+
+  async function checkDeleteCreditBalance(count) {
+    const payload = await postDeleteApi("/api/delete-credits/check-balance", {requested_count: count});
+    if (!payload.enough) {
+      throw new Error(`삭제권이 부족합니다. 필요 ${count}개, 보유 ${Number(payload.balance || 0)}개입니다.`);
+    }
+    return payload;
+  }
+
+  async function startYouTubeDeletion(requestedKind) {
     const rows = selectedDeletionRows();
     if (!rows.length) {
       updateDeletionStatus("삭제할 YouTube 항목을 선택하세요.", "error");
@@ -252,10 +296,23 @@
     const targets = rows.map(rowTarget);
     const requestedActivityIds = positiveIds(targets.map((target) => target.activityId));
     const targetActivityIds = Object.fromEntries(targets.map((target) => [target.id, target.activityId]));
-    const confirmed = confirm(`선택한 YouTube ${label} ${rows.length}개를 실제로 삭제합니다.\n\n이미 삭제된 항목은 TraceLens 목록에서 정리됩니다. 계속하시겠습니까?`);
-    if (!confirmed) return;
-    clearStoredDeletionStatus();
+
     setDeletionControlsDisabled(true, label);
+    updateDeletionStatus(`삭제권 ${rows.length}개를 확인합니다.`);
+    try {
+      await checkDeleteCreditBalance(rows.length);
+    } catch (error) {
+      setDeletionControlsDisabled(false, label);
+      updateDeletionStatus(error.message || String(error), "error");
+      return;
+    }
+
+    const confirmed = confirm(`선택한 YouTube ${label} ${rows.length}개를 실제로 삭제합니다.\n\n실제 삭제가 확인된 항목만 삭제권이 차감됩니다. 계속하시겠습니까?`);
+    if (!confirmed) {
+      setDeletionControlsDisabled(false, label);
+      return;
+    }
+    clearStoredDeletionStatus();
     updateDeletionStatus(`전체 ${label} 기록에서 대상을 찾은 뒤 삭제 또는 이미 삭제된 상태를 확인합니다. 작업 창을 닫거나 이동하지 마세요.`);
     chrome.runtime.sendMessage({type: "DELETE_PLATFORM_ITEMS", platform: platformKey, targets, config}, (response) => {
       const context = {label, requestedActivityIds, targetActivityIds, activityKind};
@@ -267,36 +324,34 @@
     });
   }
 
-  async function requestConfirmedRows(activityIds, activityKind) {
-    const response = await fetch(`${String(serverUrl || "").replace(/\/+$/, "")}/api/delete-credits/confirm-deleted`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
-      body: JSON.stringify({activity_ids: activityIds, activity_kind: activityKind}),
+  async function requestConfirmedRows(activityIds, chargeActivityIds, activityKind) {
+    const payload = await postDeleteApi("/api/delete-credits/confirm-deleted", {
+      activity_ids: activityIds,
+      activity_kind: activityKind,
+      charge_activity_ids: chargeActivityIds,
     });
-    let payload = null;
-    try { payload = await response.json(); } catch {}
-    if (!response.ok || payload?.ok === false) {
-      throw new Error(payload?.detail || payload?.error || `TraceLens 목록 동기화 실패 (${response.status})`);
-    }
-    const returnedIds = positiveIds([...(payload?.deleted_ids || []), ...(payload?.resolved_ids || [])]);
-    if (!returnedIds.length && Number(payload?.deleted || 0) >= activityIds.length) return activityIds;
-    return returnedIds;
+    const returnedIds = positiveIds([...(payload.deleted_ids || []), ...(payload.resolved_ids || [])]);
+    return {
+      resolvedIds: returnedIds.length || Number(payload.deleted || 0) < activityIds.length ? returnedIds : activityIds,
+      chargedIds: positiveIds(payload.charged_activity_ids || []),
+      charged: Number(payload.charged || 0),
+      balance: Number(payload.balance),
+      raw: payload,
+    };
   }
 
   async function syncResolvedActivities(rawResult, context) {
     const result = {...(rawResult || {ok: false})};
-    const resolvedTargetIds = [...new Set([
-      ...(result.deletedIds || []),
-      ...(result.alreadyMissingIds || []),
-    ])];
+    const deletedTargetIds = [...new Set(result.deletedIds || [])];
+    const alreadyMissingTargetIds = [...new Set(result.alreadyMissingIds || [])];
+    const resolvedTargetIds = [...new Set([...deletedTargetIds, ...alreadyMissingTargetIds])];
     const mappedIds = resolvedTargetIds.map((targetId) => context.targetActivityIds?.[targetId]);
     const activityIds = positiveIds([...(result.deletedActivityIds || []), ...mappedIds]);
+    const chargeActivityIds = positiveIds(deletedTargetIds.map((targetId) => context.targetActivityIds?.[targetId]));
+    const chargeSet = new Set(chargeActivityIds);
     const expected = Number(result.deleted || 0) + Number(result.alreadyMissing || 0);
 
-    if (expected <= 0) return {...result, synced: true, warning: null};
+    if (expected <= 0) return {...result, synced: true, warning: null, charged: 0};
     if (activityIds.length < expected) {
       return {
         ...result,
@@ -307,11 +362,25 @@
     }
 
     const resolvedIds = new Set();
+    const chargedIds = new Set();
     const attempts = [];
+    let balance = null;
+
+    const mergePayload = (payload, requestedIds, round) => {
+      payload.resolvedIds.forEach((id) => resolvedIds.add(id));
+      payload.chargedIds.forEach((id) => chargedIds.add(id));
+      if (Number.isFinite(payload.balance)) balance = payload.balance;
+      attempts.push({
+        round,
+        requested_ids: requestedIds,
+        resolved_ids: payload.resolvedIds,
+        charged_ids: payload.chargedIds,
+      });
+    };
+
     try {
-      const firstIds = await requestConfirmedRows(activityIds, context.activityKind);
-      firstIds.forEach((id) => resolvedIds.add(id));
-      attempts.push({round: 1, requested_ids: activityIds, resolved_ids: firstIds});
+      const first = await requestConfirmedRows(activityIds, chargeActivityIds, context.activityKind);
+      mergePayload(first, activityIds, 1);
     } catch (error) {
       attempts.push({round: 1, requested_ids: activityIds, resolved_ids: [], error: error.message || String(error)});
     }
@@ -322,9 +391,8 @@
       await sleep(900);
       for (const id of missingIds) {
         try {
-          const retriedIds = await requestConfirmedRows([id], context.activityKind);
-          retriedIds.forEach((value) => resolvedIds.add(value));
-          attempts.push({round, requested_ids: [id], resolved_ids: retriedIds});
+          const retried = await requestConfirmedRows([id], chargeSet.has(id) ? [id] : [], context.activityKind);
+          mergePayload(retried, [id], round);
         } catch (error) {
           attempts.push({round, requested_ids: [id], resolved_ids: [], error: error.message || String(error)});
         }
@@ -333,11 +401,17 @@
 
     const finalIds = activityIds.filter((id) => resolvedIds.has(id));
     const synced = finalIds.length === activityIds.length;
+    const firstError = attempts.find((attempt) => attempt.error)?.error || "";
     return {
       ...result,
       synced,
-      warning: synced ? null : `TraceLens 목록 동기화 ${finalIds.length}/${activityIds.length}개 완료`,
+      warning: synced
+        ? null
+        : `TraceLens 목록 동기화 ${finalIds.length}/${activityIds.length}개 완료${firstError ? ` · ${firstError}` : ""}`,
       deletedActivityIds: finalIds,
+      charged: chargedIds.size,
+      chargedActivityIds: [...chargedIds],
+      balance,
       syncAttempts: attempts,
     };
   }
@@ -377,7 +451,7 @@
       ...(rawResult || {ok: false}),
       requestedActivityIds,
     };
-    updateDeletionStatus("Google 삭제 확인이 끝났습니다. TraceLens 목록을 직접 동기화합니다.");
+    updateDeletionStatus("Google 삭제 확인이 끝났습니다. TraceLens 목록과 삭제권을 동기화합니다.");
     const syncedResult = await syncResolvedActivities(engineResult, context);
     const label = labelForResult(syncedResult, context.label || "");
     const final = buildFinalDeletionStatus(syncedResult, label);
