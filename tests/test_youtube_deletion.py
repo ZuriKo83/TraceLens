@@ -12,7 +12,7 @@ def read(path: Path) -> str:
 def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-    assert manifest["version"] == "1.3.4"
+    assert manifest["version"] == "1.3.5"
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
@@ -46,8 +46,10 @@ def test_comment_and_live_chat_adapters_share_page_functions_and_confirm_rows() 
     assert "activityId" in adapter
     assert "maxTargets: 100" in adapter
     assert "batchSize: 20" in adapter
-    assert "batchPauseMs: 650" in adapter
-    assert "verificationDelayMs: 2500" in adapter
+    assert "batchPauseMs: 800" in adapter
+    assert "verificationDelayMs: 7000" in adapter
+    assert "const sleep = (ms) => new Promise" in adapter
+    assert "await sleep(2500)" in adapter
     assert "retry: true" in adapter
     assert "deferArchiveSync" not in adapter
 
