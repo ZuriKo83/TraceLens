@@ -1,6 +1,6 @@
 (() => {
   const MAX_YOUTUBE_DELETE_SELECTION = 100;
-  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v10";
+  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v11";
   const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
   const extensionVersion = chrome.runtime.getManifest?.().version || "";
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
@@ -11,6 +11,7 @@
   const config = {serverUrl, collectorToken: token, userEmail};
   const deletionPage = location.pathname === "/delete-credits/purchase";
   const publish = (detail) => window.dispatchEvent(new CustomEvent("TRACELENS_EXTENSION_EVENT", {detail}));
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const positiveIds = (values) => [...new Set((Array.isArray(values) ? values : [])
     .map(Number)
     .filter((value) => Number.isInteger(value) && value > 0))];
@@ -250,19 +251,95 @@
     const platformKey = liveChat ? "youtube_live_chat" : "youtube";
     const targets = rows.map(rowTarget);
     const requestedActivityIds = positiveIds(targets.map((target) => target.activityId));
+    const targetActivityIds = Object.fromEntries(targets.map((target) => [target.id, target.activityId]));
     const confirmed = confirm(`선택한 YouTube ${label} ${rows.length}개를 실제로 삭제합니다.\n\n이미 삭제된 항목은 TraceLens 목록에서 정리됩니다. 계속하시겠습니까?`);
     if (!confirmed) return;
     clearStoredDeletionStatus();
     setDeletionControlsDisabled(true, label);
     updateDeletionStatus(`전체 ${label} 기록에서 대상을 찾은 뒤 삭제 또는 이미 삭제된 상태를 확인합니다. 작업 창을 닫거나 이동하지 마세요.`);
     chrome.runtime.sendMessage({type: "DELETE_PLATFORM_ITEMS", platform: platformKey, targets, config}, (response) => {
-      const context = {label, requestedActivityIds};
+      const context = {label, requestedActivityIds, targetActivityIds, activityKind};
       if (chrome.runtime.lastError) {
-        finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message}, context);
+        void finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message}, context);
         return;
       }
-      finishDeletion(response || {ok: false, platform: platformKey, error: "삭제 결과를 받지 못했습니다."}, context);
+      void finishDeletion(response || {ok: false, platform: platformKey, error: "삭제 결과를 받지 못했습니다."}, context);
     });
+  }
+
+  async function requestConfirmedRows(activityIds, activityKind) {
+    const response = await fetch(`${String(serverUrl || "").replace(/\/+$/, "")}/api/delete-credits/confirm-deleted`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({activity_ids: activityIds, activity_kind: activityKind}),
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch {}
+    if (!response.ok || payload?.ok === false) {
+      throw new Error(payload?.detail || payload?.error || `TraceLens 목록 동기화 실패 (${response.status})`);
+    }
+    const returnedIds = positiveIds([...(payload?.deleted_ids || []), ...(payload?.resolved_ids || [])]);
+    if (!returnedIds.length && Number(payload?.deleted || 0) >= activityIds.length) return activityIds;
+    return returnedIds;
+  }
+
+  async function syncResolvedActivities(rawResult, context) {
+    const result = {...(rawResult || {ok: false})};
+    const resolvedTargetIds = [...new Set([
+      ...(result.deletedIds || []),
+      ...(result.alreadyMissingIds || []),
+    ])];
+    const mappedIds = resolvedTargetIds.map((targetId) => context.targetActivityIds?.[targetId]);
+    const activityIds = positiveIds([...(result.deletedActivityIds || []), ...mappedIds]);
+    const expected = Number(result.deleted || 0) + Number(result.alreadyMissing || 0);
+
+    if (expected <= 0) return {...result, synced: true, warning: null};
+    if (activityIds.length < expected) {
+      return {
+        ...result,
+        synced: false,
+        warning: `TraceLens 활동 ID가 ${expected - activityIds.length}개 부족해 목록 동기화를 완료하지 못했습니다.`,
+        deletedActivityIds: activityIds,
+      };
+    }
+
+    const resolvedIds = new Set();
+    const attempts = [];
+    try {
+      const firstIds = await requestConfirmedRows(activityIds, context.activityKind);
+      firstIds.forEach((id) => resolvedIds.add(id));
+      attempts.push({round: 1, requested_ids: activityIds, resolved_ids: firstIds});
+    } catch (error) {
+      attempts.push({round: 1, requested_ids: activityIds, resolved_ids: [], error: error.message || String(error)});
+    }
+
+    for (let round = 2; round <= 3; round += 1) {
+      const missingIds = activityIds.filter((id) => !resolvedIds.has(id));
+      if (!missingIds.length) break;
+      await sleep(900);
+      for (const id of missingIds) {
+        try {
+          const retriedIds = await requestConfirmedRows([id], context.activityKind);
+          retriedIds.forEach((value) => resolvedIds.add(value));
+          attempts.push({round, requested_ids: [id], resolved_ids: retriedIds});
+        } catch (error) {
+          attempts.push({round, requested_ids: [id], resolved_ids: [], error: error.message || String(error)});
+        }
+      }
+    }
+
+    const finalIds = activityIds.filter((id) => resolvedIds.has(id));
+    const synced = finalIds.length === activityIds.length;
+    return {
+      ...result,
+      synced,
+      warning: synced ? null : `TraceLens 목록 동기화 ${finalIds.length}/${activityIds.length}개 완료`,
+      deletedActivityIds: finalIds,
+      syncAttempts: attempts,
+    };
   }
 
   function setDeletionControlsDisabled(disabled, label = "항목") {
@@ -294,14 +371,16 @@
     updateDeletionStatus(message, kind);
   }
 
-  function finishDeletion(rawResult, context = {}) {
+  async function finishDeletion(rawResult, context = {}) {
     const requestedActivityIds = positiveIds(context.requestedActivityIds || []);
-    const initialResult = {
+    const engineResult = {
       ...(rawResult || {ok: false}),
       requestedActivityIds,
     };
-    const label = labelForResult(initialResult, context.label || "");
-    const final = buildFinalDeletionStatus(initialResult, label);
+    updateDeletionStatus("Google 삭제 확인이 끝났습니다. TraceLens 목록을 직접 동기화합니다.");
+    const syncedResult = await syncResolvedActivities(engineResult, context);
+    const label = labelForResult(syncedResult, context.label || "");
+    const final = buildFinalDeletionStatus(syncedResult, label);
     showFinalDeletionStatus(final.message, final.kind, final.result, label);
     window.dispatchEvent(new CustomEvent("TRACELENS_DELETE_FINISHED", {detail: final.result || {ok: false}}));
     setTimeout(() => location.reload(), 1800);
