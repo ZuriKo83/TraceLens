@@ -79,6 +79,38 @@
     }
   }
 
+  function positiveIds(values) {
+    return [...new Set((Array.isArray(values) ? values : [])
+      .map(Number)
+      .filter((value) => Number.isInteger(value) && value > 0))];
+  }
+
+  function normalizeConfirmedPayload(payload, activityIds) {
+    const requestedIds = positiveIds(activityIds);
+    const returnedIds = positiveIds([
+      ...(payload?.deleted_ids || []),
+      ...(payload?.resolved_ids || []),
+    ]);
+    const returnedSet = new Set(returnedIds);
+    const idsCoverRequest = requestedIds.length > 0 && requestedIds.every((id) => returnedSet.has(id));
+    const notDeletedIds = positiveIds(payload?.not_deleted_ids || []);
+    const deletedCount = Number(payload?.deleted || 0);
+    const requestedCount = Number(payload?.requested || 0);
+    const countConfirmsAll = payload?.ok === true
+      && notDeletedIds.length === 0
+      && (deletedCount >= requestedIds.length || requestedCount === requestedIds.length);
+    const resolvedIds = idsCoverRequest
+      ? returnedIds
+      : (countConfirmsAll ? requestedIds : returnedIds);
+
+    return {
+      ...(payload || {}),
+      deleted: resolvedIds.length || deletedCount,
+      deleted_ids: resolvedIds,
+      resolved_ids: resolvedIds,
+    };
+  }
+
   async function confirmDeletedTargets(targets, config, activityKind) {
     const activityIds = [...new Set((targets || [])
       .map((target) => Number(target?.activityId || 0))
@@ -104,7 +136,7 @@
     if (!response.ok || payload?.ok === false) {
       throw new Error(payload?.detail || payload?.error || `TraceLens 삭제 목록 동기화 실패 (${response.status})`);
     }
-    return payload;
+    return normalizeConfirmedPayload(payload, activityIds);
   }
 
   function registerYouTubeAdapter({key, kind, label, page, taskUrl}) {
