@@ -14,7 +14,7 @@ def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
 
-    assert manifest["version"] == "1.2.6"
+    assert manifest["version"] == "1.2.7"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_activity_verify_page.js" in worker
@@ -35,7 +35,7 @@ def test_engine_uses_separate_task_window_and_hidden_verification() -> None:
     assert "closeTaskWindow" in engine
 
 
-def test_comment_and_live_chat_adapters_share_page_functions_and_defer_sync() -> None:
+def test_comment_and_live_chat_adapters_share_page_functions_and_confirm_rows() -> None:
     adapter = read(EXTENSION / "youtube_deletion_adapter.js")
 
     assert 'key: "youtube"' in adapter
@@ -44,9 +44,13 @@ def test_comment_and_live_chat_adapters_share_page_functions_and_defer_sync() ->
     assert 'page: "youtube_live_chat"' in adapter
     assert "deletePageFunction: traceLensDeleteYouTubeTargetsInPage" in adapter
     assert "verifyPageFunction: traceLensVerifyYouTubeActivityTargetsInPage" in adapter
-    assert "deferArchiveSync: true" in adapter
+    assert "confirmDeletedTargets(targets, config)" in adapter
+    assert 'fetch(`${server}/api/delete-credits/confirm-deleted`' in adapter
+    assert '"Authorization": `Bearer ${token}`' in adapter
+    assert "activityId" in adapter
     assert "maxTargets: 100" in adapter
     assert "batchSize: 20" in adapter
+    assert "deferArchiveSync" not in adapter
 
 
 def test_adapter_does_not_trust_google_activity_token_as_comment_id() -> None:
@@ -56,6 +60,7 @@ def test_adapter_does_not_trust_google_activity_token_as_comment_id() -> None:
     assert "comment_id: urlCommentId || null" in adapter
     assert "activity_token: null" in adapter
     assert "legacy_activity_token" in adapter
+    assert "title = clean(raw?.title || originalLocator.title)" in adapter
 
 
 def test_deleter_handles_legacy_and_current_google_activity_cards() -> None:
@@ -92,7 +97,7 @@ def test_deleter_falls_back_to_content_when_only_one_side_has_comment_id() -> No
     assert "best.value < 170" in deleter
 
 
-def test_deleter_scrolls_actual_container_and_never_marks_unmatched_as_missing() -> None:
+def test_deleter_scrolls_actual_container_and_never_marks_unmatched_as_deleted() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
 
     assert "pickScrollRoot" in deleter
@@ -119,30 +124,44 @@ def test_verifier_uses_same_robust_matching_rules() -> None:
     assert "snapshot_complete:complete" in verifier
 
 
-def test_engine_returns_pending_instead_of_false_deleted_success() -> None:
+def test_engine_finalizes_verified_deletions_and_preserves_failures() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
 
-    assert "const pendingIds = []" in engine
-    assert "pendingIds.push(target.id)" in engine
-    assert "deleted: 0" in engine
-    assert "pending: pendingIds.length" in engine
-    assert "deferArchiveSync" in engine
-    assert "YouTube 실제 반영 전까지 TraceLens 보관함 기록을 유지합니다." in engine
+    assert "const verifiedDeletedIds = []" in engine
+    assert "verifiedDeletedIds.push(target.id)" in engine
+    assert "const verifiedDeletedTargets" in engine
+    assert 'typeof adapter.confirmDeletedTargets === "function"' in engine
+    assert "adapter.confirmDeletedTargets(verifiedDeletedTargets, config)" in engine
+    assert "deleted: verifiedDeletedIds.length" in engine
+    assert "failed: failures.length" in engine
+    assert "pending: 0" in engine
+    assert "삭제 확인된 ${verifiedDeletedTargets.length}개만 TraceLens 목록에서 제거합니다." in engine
+    assert "Google 내 활동 삭제 확인 ${verifiedDeletedIds.length}개, 실패 ${failures.length}개입니다." in engine
 
 
-def test_purchase_page_prefers_visible_title_and_content() -> None:
+def test_purchase_page_sends_activity_id_and_shows_partial_success() -> None:
     content = read(EXTENSION / "content_script.js")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
+    delete_credits = read(ROOT / "app" / "delete_credits.py")
 
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v4"' in content
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v5"' in content
     assert "const visibleTitle" in content
     assert "const visibleContent" in content
+    assert "activityId:" in content
     assert "title: visibleTitle || locator.title" in content
     assert "content: visibleContent || locator.content" in content
-    assert "reconcileWithServerList" not in content
-    assert "반영 전까지 TraceLens 목록을 유지합니다." in content
+    assert "삭제 확인 ${deleted}개, 실패 ${failed}개" in content
+    assert "삭제 확인된 항목을 TraceLens 목록에서도 제거했습니다." in content
+    assert "setTimeout(() => location.reload(), 1800)" in content
     assert 'data-kind="comment"' in purchase
     assert 'data-kind="live_chat"' in purchase
+
+    assert '@router.post("/api/delete-credits/confirm-deleted")' in delete_credits
+    assert "user: User = Depends(collector_user)" in delete_credits
+    assert "Activity.user_id == user.id" in delete_credits
+    assert 'Activity.platform == "youtube"' in delete_credits
+    assert "youtube_activity_kind(row) == activity_kind" in delete_credits
+    assert "db.delete(row)" in delete_credits
 
 
 def test_youtube_collector_displays_completed_empty_scope_as_no_records() -> None:
