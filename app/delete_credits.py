@@ -186,27 +186,36 @@ def confirm_deleted_activities(
     if not activity_ids or len(activity_ids) > 100:
         raise HTTPException(400, "삭제 확인 행은 1개 이상 100개 이하이어야 합니다.")
 
+    # 선택된 행 ID는 삭제 페이지가 현재 사용자 보관함에서 직접 생성한 값이다.
+    # Google 삭제 확인이 끝난 뒤에는 상태값이나 구형 kind 메타데이터가 달라도
+    # 해당 사용자의 YouTube 댓글 행이면 모두 정리한다.
     rows = list(db.scalars(
         select(Activity).where(
             Activity.id.in_(activity_ids),
             Activity.user_id == user.id,
             Activity.platform == "youtube",
             Activity.activity_type == "comment",
-            Activity.status.in_(["visible", "missing_once"]),
         )
     ))
-    matched = [row for row in rows if youtube_activity_kind(row) == activity_kind]
-    deleted_ids = sorted(row.id for row in matched)
-    for row in matched:
+    existing_ids = {row.id for row in rows}
+    deleted_ids = sorted(existing_ids)
+    already_absent_ids = sorted(set(activity_ids) - existing_ids)
+    kind_mismatch_ids = sorted(row.id for row in rows if youtube_activity_kind(row) != activity_kind)
+
+    for row in rows:
         db.delete(row)
     db.commit()
 
+    # 이미 DB에서 사라진 ID도 최종 상태는 정리 완료이므로 resolved로 반환한다.
     return {
         "ok": True,
         "requested": len(activity_ids),
         "deleted": len(deleted_ids),
         "deleted_ids": deleted_ids,
-        "not_deleted_ids": sorted(set(activity_ids) - set(deleted_ids)),
+        "already_absent_ids": already_absent_ids,
+        "resolved_ids": activity_ids,
+        "not_deleted_ids": [],
+        "kind_mismatch_ids": kind_mismatch_ids,
     }
 
 
