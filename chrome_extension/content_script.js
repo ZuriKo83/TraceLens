@@ -1,6 +1,6 @@
 (() => {
   const MAX_YOUTUBE_DELETE_SELECTION = 100;
-  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v8";
+  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v9";
   const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
   const serverUrl = document.querySelector('meta[name="tracelens-server-url"]')?.content?.trim() || location.origin;
@@ -208,6 +208,13 @@
     const alreadyMissing = Number(result?.alreadyMissing || 0);
     const failed = Number(result?.failed || 0);
     const resolved = deleted + alreadyMissing;
+    const confirmedActivityIds = new Set((result?.deletedActivityIds || [])
+      .map(Number)
+      .filter((value) => Number.isInteger(value) && value > 0));
+    const syncConfirmedByIds = resolved > 0 && confirmedActivityIds.size >= resolved;
+    if (syncConfirmedByIds && (result.synced === false || result.warning)) {
+      result = {...result, synced: true, warning: null};
+    }
     const firstFailure = Array.isArray(result?.failures) ? result.failures[0]?.reason : "";
     const syncWarning = result?.warning || (resolved > 0 && result?.synced === false ? "TraceLens 목록 동기화에 실패했습니다." : "");
 
