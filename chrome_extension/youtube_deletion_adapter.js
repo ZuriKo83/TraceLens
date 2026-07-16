@@ -37,7 +37,7 @@
         const originalLocator = raw?.locator && typeof raw.locator === "object" ? raw.locator : {};
         const rawSourceUrl = raw?.sourceUrl || raw?.source_url || originalLocator.source_url || "";
         const urlCommentId = clean(parseUrl(rawSourceUrl)?.searchParams.get("lc"));
-        const title = clean(originalLocator.title || raw?.title);
+        const title = clean(raw?.title || originalLocator.title);
         const content = clean(raw?.content || originalLocator.content);
         const sourceUrl = canonicalYouTubeUrl(rawSourceUrl);
         if (!title && !content && !sourceUrl && !urlCommentId) continue;
@@ -45,8 +45,7 @@
         if (seen.has(id)) continue;
         seen.add(id);
 
-        // Google data-token은 항상 실제 댓글 ID가 아니므로 정확 ID로 사용하지 않는다.
-        // URL의 lc 값만 신뢰하고, 기존 토큰은 진단용으로만 보존한다.
+        const parsedActivityId = Number(raw?.activityId || raw?.activity_id || 0);
         const locator = {
           ...originalLocator,
           comment_id: urlCommentId || null,
@@ -55,6 +54,7 @@
         };
         output.push({
           id,
+          activityId: Number.isInteger(parsedActivityId) && parsedActivityId > 0 ? parsedActivityId : null,
           activityKind,
           title,
           content,
@@ -79,23 +79,32 @@
     }
   }
 
-  function makeSyncFromVerification(label) {
-    return async function syncFromVerification(verification, config) {
-      const extraction = verification?.extraction;
-      const complete = verification?.complete === true && extraction?.status === "success" && extraction?.snapshot_complete === true;
-      if (!complete) {
-        return {synced: false, lines: [`YouTube ${label} verification snapshot was incomplete.`], raw: {verification}};
-      }
-      const response = await postExtraction(config, extraction);
-      const synced = response?.ok !== false;
-      const found = Number(response?.found ?? extraction.items?.length ?? 0);
-      const imported = Number(response?.imported ?? 0);
-      return {
-        synced,
-        lines: [synced ? `✓ YouTube ${label}: ${found}개 확인, ${imported}개 신규` : `✕ YouTube ${label}: TraceLens 보관함 동기화 실패`],
-        raw: {verification, response},
-      };
-    };
+  async function confirmDeletedTargets(targets, config, activityKind) {
+    const activityIds = [...new Set((targets || [])
+      .map((target) => Number(target?.activityId || 0))
+      .filter((value) => Number.isInteger(value) && value > 0))];
+    if (!activityIds.length) {
+      return {ok: false, deleted: 0, deleted_ids: [], error: "TraceLens 활동 ID를 확인하지 못했습니다."};
+    }
+
+    const server = String(config?.serverUrl || "").replace(/\/+$/, "");
+    const token = String(config?.collectorToken || "");
+    if (!server || !token) throw new Error("TraceLens 서버 연결 정보가 없습니다.");
+
+    const response = await fetch(`${server}/api/delete-credits/confirm-deleted`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({activity_ids: activityIds, activity_kind: activityKind}),
+    });
+    let payload = null;
+    try { payload = await response.json(); } catch {}
+    if (!response.ok || payload?.ok === false) {
+      throw new Error(payload?.detail || payload?.error || `TraceLens 삭제 목록 동기화 실패 (${response.status})`);
+    }
+    return payload;
   }
 
   function registerYouTubeAdapter({key, kind, label, page, taskUrl}) {
@@ -108,17 +117,14 @@
       batchPauseMs: 500,
       verificationDelayMs: 1800,
       retry: false,
-      // Google 내 활동 카드가 사라져도 YouTube 실제 댓글 반영에는 시간이 걸릴 수 있다.
-      // 삭제 직후 전체 스냅샷으로 서버 기록을 지우지 않고 다음 정상 조회까지 유지한다.
-      deferArchiveSync: true,
       normalizeTargets: makeNormalizeTargets(kind),
       isTaskUrl(value) { return taskUrlMatches(value, page); },
       deletePageFunction: traceLensDeleteYouTubeTargetsInPage,
       verifyPageFunction: traceLensVerifyYouTubeActivityTargetsInPage,
-      syncFromVerification: makeSyncFromVerification(label),
+      confirmDeletedTargets(targets, config) { return confirmDeletedTargets(targets, config, kind); },
       openingMessage: `Google 내 활동의 YouTube ${label} 페이지를 앞에 여는 중입니다.`,
       discoveryMessage(count) { return `${count}개 ${label}을 동일한 공통 삭제 로직으로 찾아 아래쪽부터 처리합니다.`; },
-      syncError: `${label} 처리는 확인했지만 TraceLens 보관함 동기화에 실패했습니다.`,
+      syncError: `${label} 삭제는 확인했지만 TraceLens 목록 동기화에 실패했습니다.`,
     });
   }
 
