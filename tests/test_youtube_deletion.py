@@ -113,12 +113,11 @@ def test_verifier_uses_same_robust_matching_rules() -> None:
     assert "snapshot_complete:complete" in verifier
 
 
-def test_engine_removes_deleted_and_already_missing_rows_but_keeps_failures() -> None:
+def test_engine_removes_deleted_rows_and_preserves_failures() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
     assert "const verifiedDeletedIds = []" in engine
     assert "const alreadyMissingIds = []" in engine
     assert "verifiedDeletedIds.push(target.id)" in engine
-    assert "alreadyMissingIds.push(target.id)" in engine
     assert "const absentIds = new Set([...verifiedDeletedIds, ...alreadyMissingIds])" in engine
     assert "const absentTargets" in engine
     assert "adapter.confirmDeletedTargets(absentTargets, config)" in engine
@@ -129,16 +128,20 @@ def test_engine_removes_deleted_and_already_missing_rows_but_keeps_failures() ->
     assert "삭제됐거나 이미 없는 ${absentTargets.length}개만 TraceLens 목록에서 제거합니다." in engine
 
 
-def test_purchase_page_sends_activity_id_and_reports_partial_result() -> None:
+def test_purchase_page_reconciles_already_missing_selected_rows() -> None:
     content = read(EXTENSION / "content_script.js")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
     delete_credits = read(ROOT / "app" / "delete_credits.py")
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v6"' in content
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v7"' in content
     assert "const visibleTitle" in content
     assert "const visibleContent" in content
     assert "activityId:" in content
     assert "title: visibleTitle || locator.title" in content
     assert "content: visibleContent || locator.content" in content
+    assert "removeConfirmedRows" in content
+    assert "reconcileAlreadyMissing" in content
+    assert "verificationComplete !== true" in content
+    assert "삭제 버튼 클릭 기록이 없어 삭제 여부를 확정할 수 없습니다." in content
     assert "이미 삭제됨 ${alreadyMissing}개" in content
     assert "실패 ${failed}개" in content
     assert "해당 항목을 TraceLens 목록에서도 제거했습니다." in content
