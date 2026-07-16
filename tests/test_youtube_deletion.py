@@ -12,7 +12,7 @@ def read(path: Path) -> str:
 def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-    assert manifest["version"] == "1.3.6"
+    assert manifest["version"] == "1.3.7"
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
@@ -33,7 +33,7 @@ def test_engine_uses_separate_task_window_and_hidden_verification() -> None:
     assert "closeTaskWindow" in engine
 
 
-def test_comment_and_live_chat_adapters_share_page_functions_and_confirm_rows() -> None:
+def test_comment_and_live_chat_adapters_share_page_functions() -> None:
     adapter = read(EXTENSION / "youtube_deletion_adapter.js")
     assert 'key: "youtube"' in adapter
     assert 'key: "youtube_live_chat"' in adapter
@@ -41,37 +41,25 @@ def test_comment_and_live_chat_adapters_share_page_functions_and_confirm_rows() 
     assert 'page: "youtube_live_chat"' in adapter
     assert "deletePageFunction: traceLensDeleteYouTubeTargetsInPage" in adapter
     assert "verifyPageFunction: traceLensVerifyYouTubeActivityTargetsInPage" in adapter
-    assert "confirmDeletedTargets(targets, config)" in adapter
-    assert "/api/delete-credits/confirm-deleted" in adapter
+    assert "confirmDeletedTargets(targets)" in adapter
     assert "activityId" in adapter
     assert "maxTargets: 100" in adapter
     assert "batchSize: 20" in adapter
     assert "batchPauseMs: 800" in adapter
     assert "verificationDelayMs: 7000" in adapter
-    assert "const sleep = (ms) => new Promise" in adapter
-    assert "await sleep(2500)" in adapter
     assert "retry: true" in adapter
-    assert "deferArchiveSync" not in adapter
 
 
-def test_adapter_normalizes_and_retries_missing_sync_ids() -> None:
+def test_adapter_only_returns_verified_activity_ids_and_does_not_call_server() -> None:
     adapter = read(EXTENSION / "youtube_deletion_adapter.js")
-    assert "normalizeConfirmedPayload" in adapter
-    assert "payload?.deleted_ids" in adapter
-    assert "payload?.resolved_ids" in adapter
-    assert "notDeletedIds.length === 0" in adapter
-    assert "deletedCount >= requestedIds.length" in adapter
-    assert "requestedCount === requestedIds.length" in adapter
-    assert "countConfirmsAll ? requestedIds : returnedIds" in adapter
-    assert "deleted_ids: resolvedIds" in adapter
-    assert "resolved_ids: resolvedIds" in adapter
-    assert "requestConfirmedIds" in adapter
+    assert "deferConfirmedTargets" in adapter
     assert "idFallback" in adapter
-    assert "for (let round = 2; round <= 3; round += 1)" in adapter
-    assert "const missingIds = activityIds.filter((id) => !resolved.has(id))" in adapter
-    assert "requestConfirmedIds([id], config, activityKind)" in adapter
-    assert "not_deleted_ids: notDeletedIds" in adapter
-    assert "sync_attempts: attempts" in adapter
+    assert "deferred_to_page: true" in adapter
+    assert "deleted_ids: activityIds" in adapter
+    assert "resolved_ids: activityIds" in adapter
+    assert "/api/delete-credits/confirm-deleted" not in adapter
+    assert "fetch(" not in adapter
+    assert "requestConfirmedIds" not in adapter
 
 
 def test_adapter_does_not_trust_google_activity_token_as_comment_id() -> None:
@@ -143,7 +131,7 @@ def test_verifier_uses_same_robust_matching_rules() -> None:
     assert "snapshot_complete:complete" in verifier
 
 
-def test_engine_retries_remaining_items_and_removes_resolved_rows() -> None:
+def test_engine_returns_resolved_target_and_activity_ids() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
     assert "const retryTargets = targets.filter" in engine
     assert "adapter.retry !== false" in engine
@@ -155,34 +143,32 @@ def test_engine_retries_remaining_items_and_removes_resolved_rows() -> None:
     assert "const absentIds = new Set([...verifiedDeletedIds, ...alreadyMissingIds])" in engine
     assert "const absentTargets" in engine
     assert "adapter.confirmDeletedTargets(absentTargets, config)" in engine
-    assert "deleted: verifiedDeletedIds.length" in engine
-    assert "alreadyMissing: alreadyMissingIds.length" in engine
-    assert "failed: failures.length" in engine
-    assert "pending: 0" in engine
-    assert "삭제됐거나 이미 없는 ${absentTargets.length}개만 TraceLens 목록에서 제거합니다." in engine
+    assert "deletedIds: verifiedDeletedIds" in engine
+    assert "deletedActivityIds: sync.raw?.deleted_ids || []" in engine
+    assert "alreadyMissingIds" in engine
 
 
-def test_purchase_page_reconciles_sync_from_refreshed_server_rows() -> None:
+def test_purchase_page_performs_server_sync_directly_and_retries_missing_ids() -> None:
     content = read(EXTENSION / "content_script.js")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
     delete_credits = read(ROOT / "app" / "delete_credits.py")
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v10"' in content
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v11"' in content
     assert "chrome.runtime.getManifest" in content
     assert "tracelensExtensionVersion" in content
     assert "const visibleTitle" in content
     assert "const visibleContent" in content
     assert "activityId:" in content
-    assert "title: visibleTitle || locator.title" in content
-    assert "content: visibleContent || locator.content" in content
-    assert "removeConfirmedRows" not in content
-    assert "reconcileAlreadyMissing" not in content
-    assert "requestedActivityIds" in content
-    assert "renderedActivityIds" in content
-    assert "reconcileStoredDeletionStatus" in content
-    assert "absentCount < resolved" in content
-    assert "serverRowsReconciled: true" in content
-    assert "normalizeSyncResult" in content
-    assert "해당 항목을 TraceLens 목록에서도 제거했습니다." in content
+    assert "targetActivityIds" in content
+    assert "requestConfirmedRows" in content
+    assert "syncResolvedActivities" in content
+    assert "/api/delete-credits/confirm-deleted" in content
+    assert '"Authorization": `Bearer ${token}`' in content
+    assert "resolvedTargetIds" in content
+    assert "result.deletedIds" in content
+    assert "result.alreadyMissingIds" in content
+    assert "for (let round = 2; round <= 3; round += 1)" in content
+    assert "requestConfirmedRows([id], context.activityKind)" in content
+    assert "TraceLens 목록을 직접 동기화합니다." in content
     assert "setTimeout(() => location.reload(), 1800)" in content
     assert not (EXTENSION / "delete_result_reconciler.js").exists()
     assert 'data-kind="comment"' in purchase
@@ -194,8 +180,6 @@ def test_purchase_page_reconciles_sync_from_refreshed_server_rows() -> None:
     assert 'Activity.activity_type == "comment"' in delete_credits
     assert '"deleted_ids": activity_ids' in delete_credits
     assert '"resolved_ids": activity_ids' in delete_credits
-    assert '"physically_deleted_ids": physically_deleted_ids' in delete_credits
-    assert '"already_absent_ids": already_absent_ids' in delete_credits
     assert "db.delete(row)" in delete_credits
 
 
