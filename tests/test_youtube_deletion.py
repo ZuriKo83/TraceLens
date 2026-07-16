@@ -12,7 +12,8 @@ def read(path: Path) -> str:
 def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-    assert manifest["version"] == "1.2.8"
+    assert manifest["version"] == "1.2.9"
+    assert manifest["content_scripts"][0]["js"] == ["content_script.js", "delete_result_reconciler.js"]
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_activity_verify_page.js" in worker
@@ -130,6 +131,7 @@ def test_engine_removes_deleted_rows_and_preserves_failures() -> None:
 
 def test_purchase_page_reconciles_already_missing_selected_rows() -> None:
     content = read(EXTENSION / "content_script.js")
+    reconciler = read(EXTENSION / "delete_result_reconciler.js")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
     delete_credits = read(ROOT / "app" / "delete_credits.py")
     assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v7"' in content
@@ -146,6 +148,11 @@ def test_purchase_page_reconciles_already_missing_selected_rows() -> None:
     assert "실패 ${failed}개" in content
     assert "해당 항목을 TraceLens 목록에서도 제거했습니다." in content
     assert "setTimeout(() => location.reload(), 1800)" in content
+    assert "deletedActivityIds" in reconciler
+    assert "removedIds.size < resolved" in reconciler
+    assert "synced: true" in reconciler
+    assert "warning: null" in reconciler
+    assert "TraceLens 목록 동기화에 실패했습니다." in reconciler
     assert 'data-kind="comment"' in purchase
     assert 'data-kind="live_chat"' in purchase
     assert '@router.post("/api/delete-credits/confirm-deleted")' in delete_credits
