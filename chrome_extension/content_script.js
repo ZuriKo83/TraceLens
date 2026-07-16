@@ -1,6 +1,6 @@
 (() => {
   const MAX_YOUTUBE_DELETE_SELECTION = 100;
-  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v7";
+  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v8";
   const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
   const serverUrl = document.querySelector('meta[name="tracelens-server-url"]')?.content?.trim() || location.origin;
@@ -133,29 +133,6 @@
     };
   }
 
-  async function removeConfirmedRows(targets, activityKind) {
-    const activityIds = [...new Set((targets || [])
-      .map((target) => Number(target?.activityId || 0))
-      .filter((value) => Number.isInteger(value) && value > 0))];
-    if (!activityIds.length) return {ok: false, deleted: 0, deleted_ids: []};
-
-    const server = String(config.serverUrl || "").replace(/\/+$/, "");
-    const response = await fetch(`${server}/api/delete-credits/confirm-deleted`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${config.collectorToken}`,
-      },
-      body: JSON.stringify({activity_ids: activityIds, activity_kind: activityKind}),
-    });
-    let payload = null;
-    try { payload = await response.json(); } catch {}
-    if (!response.ok || payload?.ok === false) {
-      throw new Error(payload?.detail || payload?.error || `TraceLens 목록 동기화 실패 (${response.status})`);
-    }
-    return payload;
-  }
-
   function startYouTubeDeletion(requestedKind) {
     const rows = selectedDeletionRows();
     if (!rows.length) {
@@ -187,10 +164,10 @@
     updateDeletionStatus(`전체 ${label} 기록에서 대상을 찾은 뒤 삭제 또는 이미 삭제된 상태를 확인합니다. 작업 창을 닫거나 이동하지 마세요.`);
     chrome.runtime.sendMessage({type: "DELETE_PLATFORM_ITEMS", platform: platformKey, targets, config}, (response) => {
       if (chrome.runtime.lastError) {
-        finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message}, {label, activityKind, targets});
+        finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message}, {label});
         return;
       }
-      finishDeletion(response || {ok: false, platform: platformKey, error: "삭제 결과를 받지 못했습니다."}, {label, activityKind, targets});
+      finishDeletion(response || {ok: false, platform: platformKey, error: "삭제 결과를 받지 못했습니다."}, {label});
     });
   }
 
@@ -223,47 +200,8 @@
     updateDeletionStatus(message, kind);
   }
 
-  async function reconcileAlreadyMissing(result, context) {
-    if (result?.verificationComplete !== true || !Array.isArray(result?.failures)) return result;
-    const inferredFailures = result.failures.filter((entry) =>
-      String(entry?.reason || "").includes("삭제 버튼 클릭 기록이 없어 삭제 여부를 확정할 수 없습니다.")
-    );
-    if (!inferredFailures.length) return result;
-
-    const inferredIds = new Set(inferredFailures.map((entry) => entry.id));
-    const targets = (context.targets || []).filter((target) => inferredIds.has(target.id));
-    if (!targets.length) return result;
-
-    const sync = await removeConfirmedRows(targets, context.activityKind);
-    const requestedActivityIds = new Set(targets.map((target) => Number(target.activityId || 0)).filter((value) => value > 0));
-    const removedActivityIds = new Set((sync.deleted_ids || []).map(Number));
-    if (![...requestedActivityIds].every((id) => removedActivityIds.has(id))) {
-      throw new Error(`이미 삭제된 항목 목록 정리에 실패했습니다. ${sync.deleted || 0}/${requestedActivityIds.size}개 처리`);
-    }
-
-    const remainingFailures = result.failures.filter((entry) => !inferredIds.has(entry.id));
-    return {
-      ...result,
-      ok: remainingFailures.length === 0,
-      alreadyMissing: Number(result.alreadyMissing || 0) + targets.length,
-      alreadyMissingIds: [...(result.alreadyMissingIds || []), ...targets.map((target) => target.id)],
-      failed: remainingFailures.length,
-      failures: remainingFailures,
-      synced: result.synced !== false || targets.length > 0,
-      warning: null,
-      error: remainingFailures[0]?.reason || null,
-      deletedActivityIds: [...new Set([...(result.deletedActivityIds || []), ...(sync.deleted_ids || [])])],
-    };
-  }
-
-  async function finishDeletion(rawResult, context = {}) {
-    let result = rawResult || {ok: false};
-    try {
-      result = await reconcileAlreadyMissing(result, context);
-    } catch (error) {
-      result = {...result, warning: error.message || String(error), synced: false};
-    }
-
+  function finishDeletion(result, context = {}) {
+    result = result || {ok: false};
     const liveChat = result?.platform === "youtube_live_chat";
     const label = context.label || (liveChat ? "실시간 채팅" : "댓글");
     const deleted = Number(result?.deleted || 0);
