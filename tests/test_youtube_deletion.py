@@ -12,8 +12,8 @@ def read(path: Path) -> str:
 def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-    assert manifest["version"] == "1.3.0"
-    assert manifest["content_scripts"][0]["js"] == ["content_script.js", "delete_result_reconciler.js"]
+    assert manifest["version"] == "1.3.1"
+    assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_activity_verify_page.js" in worker
@@ -92,7 +92,7 @@ def test_deleter_falls_back_to_content_when_only_one_side_has_comment_id() -> No
     assert "best.value < 170" in deleter
 
 
-def test_deleter_scrolls_actual_container_and_tracks_attempts() -> None:
+def test_deleter_scrolls_actual_container_and_retries_each_item() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
     assert "pickScrollRoot" in deleter
     assert 'document.querySelectorAll("body *")' in deleter
@@ -100,9 +100,13 @@ def test_deleter_scrolls_actual_container_and_tracks_attempts() -> None:
     assert "step < 1800" in deleter
     assert "root.scrollTop = next" in deleter
     assert "scanComplete" in deleter
-    assert "discoveryComplete: unmatchedIds.length === 0" in deleter
-    assert "attemptedIds.push(target.id)" in deleter
+    assert "discoveryComplete: scanComplete" in deleter
+    assert "const maxClickAttempts = 3" in deleter
+    assert "attempt <= maxClickAttempts" in deleter
+    assert "if (!attemptedIds.includes(target.id)) attemptedIds.push(target.id)" in deleter
     assert "clickConfirmIfPresent" in deleter
+    assert "1200 + attempt * 500" in deleter
+    assert "2200 + attempt * 700" in deleter
 
 
 def test_verifier_uses_same_robust_matching_rules() -> None:
@@ -136,30 +140,23 @@ def test_engine_retries_remaining_items_and_removes_resolved_rows() -> None:
     assert "삭제됐거나 이미 없는 ${absentTargets.length}개만 TraceLens 목록에서 제거합니다." in engine
 
 
-def test_purchase_page_reconciles_already_missing_selected_rows() -> None:
+def test_purchase_page_uses_engine_as_only_sync_authority() -> None:
     content = read(EXTENSION / "content_script.js")
-    reconciler = read(EXTENSION / "delete_result_reconciler.js")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
     delete_credits = read(ROOT / "app" / "delete_credits.py")
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v7"' in content
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v8"' in content
     assert "const visibleTitle" in content
     assert "const visibleContent" in content
     assert "activityId:" in content
     assert "title: visibleTitle || locator.title" in content
     assert "content: visibleContent || locator.content" in content
-    assert "removeConfirmedRows" in content
-    assert "reconcileAlreadyMissing" in content
-    assert "verificationComplete !== true" in content
-    assert "삭제 버튼 클릭 기록이 없어 삭제 여부를 확정할 수 없습니다." in content
+    assert "removeConfirmedRows" not in content
+    assert "reconcileAlreadyMissing" not in content
     assert "이미 삭제됨 ${alreadyMissing}개" in content
     assert "실패 ${failed}개" in content
     assert "해당 항목을 TraceLens 목록에서도 제거했습니다." in content
     assert "setTimeout(() => location.reload(), 1800)" in content
-    assert "deletedActivityIds" in reconciler
-    assert "removedIds.size < resolved" in reconciler
-    assert "synced: true" in reconciler
-    assert "warning: null" in reconciler
-    assert "TraceLens 목록 동기화에 실패했습니다." in reconciler
+    assert not (EXTENSION / "delete_result_reconciler.js").exists()
     assert 'data-kind="comment"' in purchase
     assert 'data-kind="live_chat"' in purchase
     assert '@router.post("/api/delete-credits/confirm-deleted")' in delete_credits
@@ -196,3 +193,4 @@ def test_replaced_duplicate_youtube_files_are_removed() -> None:
     assert not (EXTENSION / "youtube_verify_page.js").exists()
     assert not (EXTENSION / "youtube_live_chat_delete_page.js").exists()
     assert not (EXTENSION / "youtube_live_chat_verify_page.js").exists()
+    assert not (EXTENSION / "delete_result_reconciler.js").exists()
