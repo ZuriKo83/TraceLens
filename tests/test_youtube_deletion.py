@@ -12,7 +12,7 @@ def read(path: Path) -> str:
 def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-    assert manifest["version"] == "1.3.7"
+    assert manifest["version"] == "1.3.8"
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
@@ -148,38 +148,41 @@ def test_engine_returns_resolved_target_and_activity_ids() -> None:
     assert "alreadyMissingIds" in engine
 
 
-def test_purchase_page_performs_server_sync_directly_and_retries_missing_ids() -> None:
+def test_purchase_page_performs_same_origin_sync_and_charges_only_verified_deletes() -> None:
     content = read(EXTENSION / "content_script.js")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
     delete_credits = read(ROOT / "app" / "delete_credits.py")
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v11"' in content
-    assert "chrome.runtime.getManifest" in content
-    assert "tracelensExtensionVersion" in content
-    assert "const visibleTitle" in content
-    assert "const visibleContent" in content
-    assert "activityId:" in content
+
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v12"' in content
+    assert "const serverUrl = location.origin" in content
+    assert "checkDeleteCreditBalance" in content
+    assert "/api/delete-credits/check-balance" in content
     assert "targetActivityIds" in content
     assert "requestConfirmedRows" in content
     assert "syncResolvedActivities" in content
     assert "/api/delete-credits/confirm-deleted" in content
-    assert '"Authorization": `Bearer ${token}`' in content
-    assert "resolvedTargetIds" in content
-    assert "result.deletedIds" in content
-    assert "result.alreadyMissingIds" in content
-    assert "for (let round = 2; round <= 3; round += 1)" in content
-    assert "requestConfirmedRows([id], context.activityKind)" in content
-    assert "TraceLens 목록을 직접 동기화합니다." in content
+    assert "charge_activity_ids: chargeActivityIds" in content
+    assert "const deletedTargetIds" in content
+    assert "const chargeActivityIds" in content
+    assert "chargeSet.has(id) ? [id] : []" in content
+    assert "HTTP ${response.status}" in content
+    assert "삭제권 ${charged}개 차감" in content
     assert "setTimeout(() => location.reload(), 1800)" in content
     assert not (EXTENSION / "delete_result_reconciler.js").exists()
+
     assert 'data-kind="comment"' in purchase
     assert 'data-kind="live_chat"' in purchase
+    assert '@router.post("/api/delete-credits/check-balance")' in delete_credits
     assert '@router.post("/api/delete-credits/confirm-deleted")' in delete_credits
-    assert "user: User = Depends(collector_user)" in delete_credits
-    assert "Activity.user_id == user.id" in delete_credits
-    assert 'Activity.platform == "youtube"' in delete_credits
-    assert 'Activity.activity_type == "comment"' in delete_credits
-    assert '"deleted_ids": activity_ids' in delete_credits
-    assert '"resolved_ids": activity_ids' in delete_credits
+    assert "class DeleteCreditUsage(Base)" in delete_credits
+    assert 'UniqueConstraint("user_id", "activity_id"' in delete_credits
+    assert "charge_activity_ids" in delete_credits
+    assert "newly_charged_ids" in delete_credits
+    assert "wallet.balance -= len(newly_charged_ids)" in delete_credits
+    assert 'amount=-len(newly_charged_ids)' in delete_credits
+    assert 'reason="YouTube 삭제 실행 차감"' in delete_credits
+    assert '"charged": len(newly_charged_ids)' in delete_credits
+    assert '"balance": int(wallet.balance)' in delete_credits
     assert "db.delete(row)" in delete_credits
 
 
