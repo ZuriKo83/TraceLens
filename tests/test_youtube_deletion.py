@@ -12,7 +12,7 @@ def read(path: Path) -> str:
 def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-    assert manifest["version"] == "1.3.1"
+    assert manifest["version"] == "1.3.2"
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
@@ -50,6 +50,19 @@ def test_comment_and_live_chat_adapters_share_page_functions_and_confirm_rows() 
     assert "verificationDelayMs: 2500" in adapter
     assert "retry: true" in adapter
     assert "deferArchiveSync" not in adapter
+
+
+def test_adapter_normalizes_current_and_legacy_sync_responses() -> None:
+    adapter = read(EXTENSION / "youtube_deletion_adapter.js")
+    assert "normalizeConfirmedPayload" in adapter
+    assert "payload?.deleted_ids" in adapter
+    assert "payload?.resolved_ids" in adapter
+    assert "notDeletedIds.length === 0" in adapter
+    assert "deletedCount >= requestedIds.length" in adapter
+    assert "requestedCount === requestedIds.length" in adapter
+    assert "countConfirmsAll ? requestedIds : returnedIds" in adapter
+    assert "deleted_ids: resolvedIds" in adapter
+    assert "resolved_ids: resolvedIds" in adapter
 
 
 def test_adapter_does_not_trust_google_activity_token_as_comment_id() -> None:
