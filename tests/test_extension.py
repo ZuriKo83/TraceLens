@@ -9,7 +9,7 @@ def read(name: str) -> str:
 
 def test_manifest_has_required_hosts_and_current_version() -> None:
     manifest = json.loads(read("manifest.json"))
-    assert manifest["version"] == "1.3.7"
+    assert manifest["version"] == "1.3.8"
     assert "https://www.threads.com/*" in manifest["host_permissions"]
     assert "https://www.instagram.com/*" in manifest["host_permissions"]
     assert "https://github.com/*" not in manifest["host_permissions"]
@@ -35,15 +35,21 @@ def test_content_script_connects_from_logged_in_dashboard() -> None:
     assert "tracelensExtensionVersion" in content
 
 
-def test_delete_page_owns_server_sync_and_old_reconciler_is_removed() -> None:
+def test_delete_page_uses_current_origin_and_owns_credit_sync() -> None:
     root = Path(__file__).resolve().parents[1]
     assert not (root / "chrome_extension" / "delete_result_reconciler.js").exists()
     content = read("content_script.js")
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v11"' in content
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v12"' in content
+    assert "const serverUrl = location.origin" in content
+    assert "checkDeleteCreditBalance" in content
+    assert "/api/delete-credits/check-balance" in content
     assert "requestConfirmedRows" in content
     assert "syncResolvedActivities" in content
     assert "/api/delete-credits/confirm-deleted" in content
+    assert "charge_activity_ids" in content
     assert "targetActivityIds" in content
+    assert "HTTP ${response.status}" in content
+    assert "삭제권 ${charged}개 차감" in content
     assert "removeConfirmedRows" not in content
     assert "reconcileAlreadyMissing" not in content
     assert "reconcileStoredDeletionStatus" in content
