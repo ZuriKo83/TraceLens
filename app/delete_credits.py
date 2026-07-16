@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.config import get_settings
 from app.db import Base, get_db
+from app.dependencies import collector_user
 from app.models import Activity, CollectorToken, User, utcnow
 from app.supported_sites import ACTIVITY_TYPE_LABELS, PLATFORM_LABELS, VISIBLE_ACTIVITY_TYPES
 
@@ -38,6 +41,11 @@ class DeleteCreditLedger(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class ConfirmDeletedActivities(BaseModel):
+    activity_ids: list[int] = Field(min_length=1, max_length=100)
+    activity_kind: str = "comment"
 
 
 def csrf_token(request: Request) -> str:
@@ -110,6 +118,17 @@ def issue_collector_token(db: Session, user: User) -> str:
     return raw
 
 
+def youtube_activity_kind(activity: Activity) -> str:
+    try:
+        metadata = json.loads(activity.metadata_json or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        metadata = {}
+    explicit = str(metadata.get("youtube_activity_kind") or "").strip().lower()
+    if explicit == "live_chat" or str(activity.content or "").lstrip().startswith("[실시간 채팅]"):
+        return "live_chat"
+    return "comment"
+
+
 @router.get("/delete-credits/purchase", response_class=HTMLResponse)
 def purchase_page(request: Request, db: Session = Depends(get_db)):
     user = require_user(request, db, "/delete-credits/purchase")
@@ -151,6 +170,44 @@ def purchase_page(request: Request, db: Session = Depends(get_db)):
             "extension_user_email": user.email,
         },
     )
+
+
+@router.post("/api/delete-credits/confirm-deleted")
+def confirm_deleted_activities(
+    payload: ConfirmDeletedActivities,
+    user: User = Depends(collector_user),
+    db: Session = Depends(get_db),
+):
+    activity_kind = payload.activity_kind.strip().lower()
+    if activity_kind not in {"comment", "live_chat"}:
+        raise HTTPException(400, "지원하지 않는 YouTube 활동 유형입니다.")
+
+    activity_ids = sorted({int(value) for value in payload.activity_ids if int(value) > 0})
+    if not activity_ids or len(activity_ids) > 100:
+        raise HTTPException(400, "삭제 확인 행은 1개 이상 100개 이하이어야 합니다.")
+
+    rows = list(db.scalars(
+        select(Activity).where(
+            Activity.id.in_(activity_ids),
+            Activity.user_id == user.id,
+            Activity.platform == "youtube",
+            Activity.activity_type == "comment",
+            Activity.status.in_(["visible", "missing_once"]),
+        )
+    ))
+    matched = [row for row in rows if youtube_activity_kind(row) == activity_kind]
+    deleted_ids = sorted(row.id for row in matched)
+    for row in matched:
+        db.delete(row)
+    db.commit()
+
+    return {
+        "ok": True,
+        "requested": len(activity_ids),
+        "deleted": len(deleted_ids),
+        "deleted_ids": deleted_ids,
+        "not_deleted_ids": sorted(set(activity_ids) - set(deleted_ids)),
+    }
 
 
 @router.get("/admin/delete-credits", response_class=HTMLResponse)
