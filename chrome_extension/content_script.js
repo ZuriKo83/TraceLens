@@ -1,6 +1,6 @@
 (() => {
   const MAX_YOUTUBE_DELETE_SELECTION = 100;
-  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v5";
+  const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v6";
   const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
   const serverUrl = document.querySelector('meta[name="tracelens-server-url"]')?.content?.trim() || location.origin;
@@ -156,11 +156,11 @@
     const liveChat = activityKind === "live_chat";
     const label = liveChat ? "실시간 채팅" : "댓글";
     const platformKey = liveChat ? "youtube_live_chat" : "youtube";
-    const confirmed = confirm(`선택한 YouTube ${label} ${rows.length}개를 실제로 삭제합니다.\n\n삭제 후 되돌릴 수 없습니다. 계속하시겠습니까?`);
+    const confirmed = confirm(`선택한 YouTube ${label} ${rows.length}개를 실제로 삭제합니다.\n\n이미 삭제된 항목은 TraceLens 목록에서 정리됩니다. 계속하시겠습니까?`);
     if (!confirmed) return;
     clearStoredDeletionStatus();
     setDeletionControlsDisabled(true, label);
-    updateDeletionStatus(`전체 ${label} 기록에서 대상을 찾은 뒤 삭제합니다. 작업 창을 닫거나 이동하지 마세요.`);
+    updateDeletionStatus(`전체 ${label} 기록에서 대상을 찾은 뒤 삭제 또는 이미 삭제된 상태를 확인합니다. 작업 창을 닫거나 이동하지 마세요.`);
     chrome.runtime.sendMessage({type: "DELETE_PLATFORM_ITEMS", platform: platformKey, targets: rows.map(rowTarget), config}, (response) => {
       if (chrome.runtime.lastError) {
         finishDeletion({ok: false, platform: platformKey, error: chrome.runtime.lastError.message}, {label});
@@ -205,31 +205,27 @@
     const deleted = Number(result?.deleted || 0);
     const alreadyMissing = Number(result?.alreadyMissing || 0);
     const failed = Number(result?.failed || 0);
+    const resolved = deleted + alreadyMissing;
     const firstFailure = Array.isArray(result?.failures) ? result.failures[0]?.reason : "";
-    const syncWarning = result?.warning || (deleted > 0 && result?.synced === false ? "TraceLens 목록 동기화에 실패했습니다." : "");
+    const syncWarning = result?.warning || (resolved > 0 && result?.synced === false ? "TraceLens 목록 동기화에 실패했습니다." : "");
 
     if (failed > 0) {
-      const missingText = alreadyMissing > 0 ? `, 기존에 없음 ${alreadyMissing}개` : "";
-      const summary = `${label} 삭제 확인 ${deleted}개, 실패 ${failed}개${missingText}`;
+      const deletedText = deleted > 0 ? `삭제 확인 ${deleted}개, ` : "";
+      const missingText = alreadyMissing > 0 ? `이미 삭제됨 ${alreadyMissing}개, ` : "";
+      const summary = `${label} ${deletedText}${missingText}실패 ${failed}개`;
       const reason = firstFailure || result?.error || `일부 ${label}이 Google 내 활동에 남아 있습니다.`;
       const syncText = syncWarning ? ` · ${syncWarning}` : "";
       showFinalDeletionStatus(`${summary} · ${reason}${syncText}`, "error", result);
-    } else if (deleted > 0 && syncWarning) {
+    } else if (resolved > 0 && syncWarning) {
       showFinalDeletionStatus(
-        `${label} 삭제 확인 ${deleted}개 · Google 내 활동에서는 삭제됐지만 ${syncWarning}`,
+        `${label} 삭제 확인 ${deleted}개, 이미 삭제됨 ${alreadyMissing}개 · Google 내 활동 상태는 확인했지만 ${syncWarning}`,
         "error",
         result,
       );
-    } else if (deleted > 0) {
+    } else if (resolved > 0) {
       showFinalDeletionStatus(
-        `${label} 삭제 확인 ${deleted}개 · 삭제 확인된 항목을 TraceLens 목록에서도 제거했습니다.`,
+        `${label} 삭제 확인 ${deleted}개, 이미 삭제됨 ${alreadyMissing}개 · 해당 항목을 TraceLens 목록에서도 제거했습니다.`,
         "success",
-        result,
-      );
-    } else if (alreadyMissing > 0) {
-      showFinalDeletionStatus(
-        `${label} ${alreadyMissing}개는 Google 내 활동에 이미 없습니다. 삭제 버튼을 누르지 않았습니다.`,
-        "",
         result,
       );
     } else {
