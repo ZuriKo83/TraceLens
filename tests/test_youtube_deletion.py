@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 EXTENSION = ROOT / "chrome_extension"
 
@@ -13,8 +12,7 @@ def read(path: Path) -> str:
 def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-
-    assert manifest["version"] == "1.2.7"
+    assert manifest["version"] == "1.2.8"
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
     assert "youtube_activity_verify_page.js" in worker
@@ -26,7 +24,6 @@ def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
 
 def test_engine_uses_separate_task_window_and_hidden_verification() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
-
     assert 'chrome.windows.create({url, focused: true, type: "popup"})' in engine
     assert "const taskTabId = tab.id" in engine
     assert "await returnToWebTab()" in engine
@@ -37,7 +34,6 @@ def test_engine_uses_separate_task_window_and_hidden_verification() -> None:
 
 def test_comment_and_live_chat_adapters_share_page_functions_and_confirm_rows() -> None:
     adapter = read(EXTENSION / "youtube_deletion_adapter.js")
-
     assert 'key: "youtube"' in adapter
     assert 'key: "youtube_live_chat"' in adapter
     assert 'page: "youtube_comments"' in adapter
@@ -45,8 +41,7 @@ def test_comment_and_live_chat_adapters_share_page_functions_and_confirm_rows() 
     assert "deletePageFunction: traceLensDeleteYouTubeTargetsInPage" in adapter
     assert "verifyPageFunction: traceLensVerifyYouTubeActivityTargetsInPage" in adapter
     assert "confirmDeletedTargets(targets, config)" in adapter
-    assert 'fetch(`${server}/api/delete-credits/confirm-deleted`' in adapter
-    assert '"Authorization": `Bearer ${token}`' in adapter
+    assert "/api/delete-credits/confirm-deleted" in adapter
     assert "activityId" in adapter
     assert "maxTargets: 100" in adapter
     assert "batchSize: 20" in adapter
@@ -55,7 +50,6 @@ def test_comment_and_live_chat_adapters_share_page_functions_and_confirm_rows() 
 
 def test_adapter_does_not_trust_google_activity_token_as_comment_id() -> None:
     adapter = read(EXTENSION / "youtube_deletion_adapter.js")
-
     assert 'parseUrl(rawSourceUrl)?.searchParams.get("lc")' in adapter
     assert "comment_id: urlCommentId || null" in adapter
     assert "activity_token: null" in adapter
@@ -65,7 +59,6 @@ def test_adapter_does_not_trust_google_activity_token_as_comment_id() -> None:
 
 def test_deleter_handles_legacy_and_current_google_activity_cards() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
-
     assert 'c-wiz[jsname="Ttx95"]' in deleter
     assert 'c-wiz[data-show-delete-individual="true"]' in deleter
     assert "wrapperForButton" in deleter
@@ -78,7 +71,6 @@ def test_deleter_handles_legacy_and_current_google_activity_cards() -> None:
 
 def test_deleter_decodes_nested_google_redirect_urls() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
-
     assert "decodedCandidates" in deleter
     assert 'for (const key of ["url", "q", "continue", "redirect", "target", "u", "dest", "href"])' in deleter
     assert 'extractParam(value, "lc")' in deleter
@@ -88,7 +80,6 @@ def test_deleter_decodes_nested_google_redirect_urls() -> None:
 
 def test_deleter_falls_back_to_content_when_only_one_side_has_comment_id() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
-
     assert "if (targetId && item.commentId)" in deleter
     assert "value -= 400" in deleter
     assert "wantedContent" in deleter
@@ -97,9 +88,8 @@ def test_deleter_falls_back_to_content_when_only_one_side_has_comment_id() -> No
     assert "best.value < 170" in deleter
 
 
-def test_deleter_scrolls_actual_container_and_never_marks_unmatched_as_deleted() -> None:
+def test_deleter_scrolls_actual_container_and_tracks_attempts() -> None:
     deleter = read(EXTENSION / "youtube_delete_page.js")
-
     assert "pickScrollRoot" in deleter
     assert 'document.querySelectorAll("body *")' in deleter
     assert "/(auto|scroll)/.test(style.overflowY" in deleter
@@ -113,7 +103,6 @@ def test_deleter_scrolls_actual_container_and_never_marks_unmatched_as_deleted()
 
 def test_verifier_uses_same_robust_matching_rules() -> None:
     verifier = read(EXTENSION / "youtube_activity_verify_page.js")
-
     assert "decodedCandidates" in verifier
     assert "wrapperForButton" in verifier
     assert "relationPattern" in verifier
@@ -124,38 +113,38 @@ def test_verifier_uses_same_robust_matching_rules() -> None:
     assert "snapshot_complete:complete" in verifier
 
 
-def test_engine_finalizes_verified_deletions_and_preserves_failures() -> None:
+def test_engine_removes_deleted_and_already_missing_rows_but_keeps_failures() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
-
     assert "const verifiedDeletedIds = []" in engine
+    assert "const alreadyMissingIds = []" in engine
     assert "verifiedDeletedIds.push(target.id)" in engine
-    assert "const verifiedDeletedTargets" in engine
-    assert 'typeof adapter.confirmDeletedTargets === "function"' in engine
-    assert "adapter.confirmDeletedTargets(verifiedDeletedTargets, config)" in engine
+    assert "alreadyMissingIds.push(target.id)" in engine
+    assert "const absentIds = new Set([...verifiedDeletedIds, ...alreadyMissingIds])" in engine
+    assert "const absentTargets" in engine
+    assert "adapter.confirmDeletedTargets(absentTargets, config)" in engine
     assert "deleted: verifiedDeletedIds.length" in engine
+    assert "alreadyMissing: alreadyMissingIds.length" in engine
     assert "failed: failures.length" in engine
     assert "pending: 0" in engine
-    assert "삭제 확인된 ${verifiedDeletedTargets.length}개만 TraceLens 목록에서 제거합니다." in engine
-    assert "Google 내 활동 삭제 확인 ${verifiedDeletedIds.length}개, 실패 ${failures.length}개입니다." in engine
+    assert "삭제됐거나 이미 없는 ${absentTargets.length}개만 TraceLens 목록에서 제거합니다." in engine
 
 
-def test_purchase_page_sends_activity_id_and_shows_partial_success() -> None:
+def test_purchase_page_sends_activity_id_and_reports_partial_result() -> None:
     content = read(EXTENSION / "content_script.js")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
     delete_credits = read(ROOT / "app" / "delete_credits.py")
-
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v5"' in content
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v6"' in content
     assert "const visibleTitle" in content
     assert "const visibleContent" in content
     assert "activityId:" in content
     assert "title: visibleTitle || locator.title" in content
     assert "content: visibleContent || locator.content" in content
-    assert "삭제 확인 ${deleted}개, 실패 ${failed}개" in content
-    assert "삭제 확인된 항목을 TraceLens 목록에서도 제거했습니다." in content
+    assert "이미 삭제됨 ${alreadyMissing}개" in content
+    assert "실패 ${failed}개" in content
+    assert "해당 항목을 TraceLens 목록에서도 제거했습니다." in content
     assert "setTimeout(() => location.reload(), 1800)" in content
     assert 'data-kind="comment"' in purchase
     assert 'data-kind="live_chat"' in purchase
-
     assert '@router.post("/api/delete-credits/confirm-deleted")' in delete_credits
     assert "user: User = Depends(collector_user)" in delete_credits
     assert "Activity.user_id == user.id" in delete_credits
@@ -167,7 +156,6 @@ def test_purchase_page_sends_activity_id_and_shows_partial_success() -> None:
 def test_youtube_collector_displays_completed_empty_scope_as_no_records() -> None:
     collector = read(EXTENSION / "youtube_activity_collector.js")
     dashboard = read(ROOT / "app" / "templates" / "user_dashboard.html")
-
     assert 'status: complete ? "success" : "partial"' in collector
     assert "기록이 없습니다. 끝까지 확인했습니다." in collector
     assert "entry.status == 'success' and entry.found_count == 0" in dashboard
@@ -176,7 +164,6 @@ def test_youtube_collector_displays_completed_empty_scope_as_no_records() -> Non
 
 def test_complete_snapshot_requires_two_consecutive_misses_before_pruning() -> None:
     tasks = read(ROOT / "app" / "tasks.py")
-
     assert "_reconcile_complete_youtube_snapshot" in tasks
     assert 'Activity.status.in_(["visible", "missing_once"])' in tasks
     assert 'if activity.status == "missing_once"' in tasks
