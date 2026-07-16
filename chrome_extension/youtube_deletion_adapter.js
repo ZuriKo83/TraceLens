@@ -2,6 +2,7 @@
   const COMMENT_TASK_URL = "https://myactivity.google.com/page?hl=ko&utm_medium=web&utm_source=youtube&page=youtube_comments";
   const LIVE_CHAT_TASK_URL = "https://myactivity.google.com/page?hl=ko&utm_medium=web&utm_source=youtube&page=youtube_live_chat";
   const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   function parseUrl(value) {
     try { return value ? new URL(value, "https://www.youtube.com") : null; } catch { return null; }
@@ -136,7 +137,11 @@
     if (!response.ok || payload?.ok === false) {
       throw new Error(payload?.detail || payload?.error || `TraceLens 삭제 목록 동기화 실패 (${response.status})`);
     }
-    return normalizeConfirmedPayload(payload, activityIds);
+
+    const normalized = normalizeConfirmedPayload(payload, activityIds);
+    // Google 작업창을 서버 동기화 직후 닫지 않고 마지막 네트워크 반영 시간을 보장한다.
+    await sleep(2500);
+    return normalized;
   }
 
   function registerYouTubeAdapter({key, kind, label, page, taskUrl}) {
@@ -146,8 +151,8 @@
       taskUrl,
       maxTargets: 100,
       batchSize: 20,
-      batchPauseMs: 650,
-      verificationDelayMs: 2500,
+      batchPauseMs: 800,
+      verificationDelayMs: 7000,
       retry: true,
       normalizeTargets: makeNormalizeTargets(kind),
       isTaskUrl(value) { return taskUrlMatches(value, page); },
