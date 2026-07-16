@@ -46,7 +46,8 @@
         if (seen.has(id)) continue;
         seen.add(id);
 
-        const parsedActivityId = Number(raw?.activityId || raw?.activity_id || 0);
+        const idFallback = Number(id.match(/youtube-activity-(\d+)$/)?.[1] || 0);
+        const parsedActivityId = Number(raw?.activityId || raw?.activity_id || idFallback || 0);
         const locator = {
           ...originalLocator,
           comment_id: urlCommentId || null,
@@ -112,14 +113,7 @@
     };
   }
 
-  async function confirmDeletedTargets(targets, config, activityKind) {
-    const activityIds = [...new Set((targets || [])
-      .map((target) => Number(target?.activityId || 0))
-      .filter((value) => Number.isInteger(value) && value > 0))];
-    if (!activityIds.length) {
-      return {ok: false, deleted: 0, deleted_ids: [], error: "TraceLens 활동 ID를 확인하지 못했습니다."};
-    }
-
+  async function requestConfirmedIds(activityIds, config, activityKind) {
     const server = String(config?.serverUrl || "").replace(/\/+$/, "");
     const token = String(config?.collectorToken || "");
     if (!server || !token) throw new Error("TraceLens 서버 연결 정보가 없습니다.");
@@ -137,11 +131,63 @@
     if (!response.ok || payload?.ok === false) {
       throw new Error(payload?.detail || payload?.error || `TraceLens 삭제 목록 동기화 실패 (${response.status})`);
     }
+    return normalizeConfirmedPayload(payload, activityIds);
+  }
 
-    const normalized = normalizeConfirmedPayload(payload, activityIds);
-    // Google 작업창을 서버 동기화 직후 닫지 않고 마지막 네트워크 반영 시간을 보장한다.
+  async function confirmDeletedTargets(targets, config, activityKind) {
+    const activityIds = positiveIds((targets || []).map((target) => {
+      const fallback = String(target?.id || "").match(/youtube-activity-(\d+)$/)?.[1];
+      return target?.activityId || fallback || 0;
+    }));
+    if (!activityIds.length) {
+      return {ok: false, deleted: 0, deleted_ids: [], not_deleted_ids: [], error: "TraceLens 활동 ID를 확인하지 못했습니다."};
+    }
+
+    const resolved = new Set();
+    const attempts = [];
+
+    const mergeResponse = (payload, requestedIds, round) => {
+      const responseIds = positiveIds([
+        ...(payload?.deleted_ids || []),
+        ...(payload?.resolved_ids || []),
+      ]);
+      responseIds.forEach((id) => resolved.add(id));
+      attempts.push({round, requested_ids: requestedIds, resolved_ids: responseIds});
+    };
+
+    const first = await requestConfirmedIds(activityIds, config, activityKind);
+    mergeResponse(first, activityIds, 1);
+
+    // 1차 응답에서 빠진 ID는 묶어서 다시 보내지 않고 하나씩 재요청한다.
+    // 특정 행 하나가 문제여도 나머지 성공 행의 동기화가 막히지 않는다.
+    for (let round = 2; round <= 3; round += 1) {
+      const missingIds = activityIds.filter((id) => !resolved.has(id));
+      if (!missingIds.length) break;
+      await sleep(1200);
+      for (const id of missingIds) {
+        try {
+          const retried = await requestConfirmedIds([id], config, activityKind);
+          mergeResponse(retried, [id], round);
+        } catch (error) {
+          attempts.push({round, requested_ids: [id], resolved_ids: [], error: error.message || String(error)});
+        }
+      }
+    }
+
+    const resolvedIds = activityIds.filter((id) => resolved.has(id));
+    const notDeletedIds = activityIds.filter((id) => !resolved.has(id));
+
+    // 마지막 Google 삭제 네트워크 반영과 TraceLens DB commit이 끝난 뒤 작업창을 닫는다.
     await sleep(2500);
-    return normalized;
+    return {
+      ok: notDeletedIds.length === 0,
+      requested: activityIds.length,
+      deleted: resolvedIds.length,
+      deleted_ids: resolvedIds,
+      resolved_ids: resolvedIds,
+      not_deleted_ids: notDeletedIds,
+      sync_attempts: attempts,
+    };
   }
 
   function registerYouTubeAdapter({key, kind, label, page, taskUrl}) {
