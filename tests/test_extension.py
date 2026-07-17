@@ -2,9 +2,12 @@ import json
 from pathlib import Path
 
 
+ROOT = Path(__file__).resolve().parents[1]
+EXTENSION = ROOT / "chrome_extension"
+
+
 def read(name: str) -> str:
-    root = Path(__file__).resolve().parents[1]
-    return (root / "chrome_extension" / name).read_text(encoding="utf-8")
+    return (EXTENSION / name).read_text(encoding="utf-8")
 
 
 def test_manifest_has_required_hosts_and_current_version() -> None:
@@ -36,11 +39,13 @@ def test_content_script_connects_from_logged_in_dashboard() -> None:
 
 
 def test_delete_page_uses_current_origin_and_owns_credit_sync() -> None:
-    root = Path(__file__).resolve().parents[1]
-    assert not (root / "chrome_extension" / "delete_result_reconciler.js").exists()
+    assert not (EXTENSION / "delete_result_reconciler.js").exists()
     content = read("content_script.js")
     assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v12"' in content
     assert "const serverUrl = location.origin" in content
+    assert 'form[action="/logout"] input[name="csrf"]' in content
+    assert '"X-CSRF-Token": csrfToken' in content
+    assert 'credentials: "same-origin"' in content
     assert "checkDeleteCreditBalance" in content
     assert "/api/delete-credits/check-balance" in content
     assert "requestConfirmedRows" in content
@@ -57,6 +62,16 @@ def test_delete_page_uses_current_origin_and_owns_credit_sync() -> None:
     assert "serverRowsReconciled" in content
 
 
+def test_delete_api_paths_are_dispatched_to_account_tools_app() -> None:
+    middleware = (ROOT / "app" / "redis_session.py").read_text(encoding="utf-8")
+    assert '"/delete-credits/purchase"' in middleware
+    assert '"/api/delete-credits/check-balance"' in middleware
+    assert '"/api/delete-credits/confirm-deleted"' in middleware
+    assert "account_tools_app.include_router(delete_credits_router)" in middleware
+    assert "elif path in ACCOUNT_TOOL_PATHS:" in middleware
+    assert "target_app = account_tools_app" in middleware
+
+
 def test_background_has_threads_and_bearer_import() -> None:
     background = read("background.js")
     assert 'threads_posts' in background
@@ -67,9 +82,8 @@ def test_background_has_threads_and_bearer_import() -> None:
 
 
 def test_web_bridge_is_present() -> None:
-    root = Path(__file__).resolve().parents[1]
-    content = (root / "chrome_extension" / "content_script.js").read_text(encoding="utf-8")
-    background = (root / "chrome_extension" / "background.js").read_text(encoding="utf-8")
+    content = read("content_script.js")
+    background = read("background.js")
     assert "TRACELENS_WEB_COMMAND" in content
     assert "START_SCAN" in content
     assert "resolveCollectorConfig" in background
@@ -101,8 +115,7 @@ def test_tracelens_brand_and_icons() -> None:
     assert manifest["name"] == "TraceLens"
     assert manifest["action"]["default_title"] == "TraceLens"
     assert manifest["icons"]["128"] == "icons/icon128.png"
-    root = Path(__file__).resolve().parents[1]
-    assert (root / "chrome_extension" / "icons" / "icon128.png").exists()
+    assert (EXTENSION / "icons" / "icon128.png").exists()
 
 
 def test_public_domain_is_connected() -> None:
