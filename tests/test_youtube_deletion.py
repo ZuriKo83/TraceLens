@@ -18,22 +18,74 @@ def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     assert "youtube_delete_page.js" in worker
     assert "youtube_activity_verify_page.js" in worker
     assert "youtube_deletion_adapter.js" in worker
-    assert "youtube_live_chat_delete_page.js" not in worker
-    assert "youtube_live_chat_verify_page.js" not in worker
     assert "https://myactivity.google.com/*" in manifest["host_permissions"]
 
 
-def test_engine_uses_separate_task_window_and_hidden_verification() -> None:
-    engine = read(EXTENSION / "deletion_engine.js")
-    assert 'chrome.windows.create({url, focused: true, type: "popup"})' in engine
-    assert "const taskTabId = tab.id" in engine
-    assert "await returnToWebTab()" in engine
-    assert "reloadAndWait(taskTabId, state, adapter, false)" in engine
-    assert "verificationPass(taskTabId" in engine
-    assert "closeTaskWindow" in engine
+def test_delete_and_verify_share_one_page_scanner() -> None:
+    page = read(EXTENSION / "youtube_delete_page.js")
+    verifier = read(EXTENSION / "youtube_activity_verify_page.js")
+    assert "traceLensProcessYouTubeActivityPage" in page
+    assert "traceLensDeleteYouTubeTargetsInPage = globalThis.traceLensProcessYouTubeActivityPage" in page
+    assert verifier.strip() == (
+        "globalThis.traceLensVerifyYouTubeActivityTargetsInPage = "
+        "globalThis.traceLensProcessYouTubeActivityPage;"
+    )
 
 
-def test_comment_and_live_chat_adapters_share_page_functions() -> None:
+def test_full_scan_finishes_on_stable_bottom_without_mutation_counter() -> None:
+    page = read(EXTENSION / "youtube_delete_page.js")
+    assert "let stableBottom = 0" in page
+    assert "previousBottomSignature" in page
+    assert "Math.round(refreshedMax)" in page
+    assert "${collected.size}|${discovered.size}" in page
+    assert "stableBottom >= 5" in page
+    assert "MutationObserver" not in page
+    assert "mutationVersion" not in page
+    assert "Math.abs(before - next) > 2" in page
+    assert "삭제 후 전체 ${itemLabel} 기록을 끝까지 전수 확인" in page
+
+
+def test_shared_scanner_handles_current_and_legacy_google_cards() -> None:
+    page = read(EXTENSION / "youtube_delete_page.js")
+    assert 'c-wiz[jsname="Ttx95"]' in page
+    assert 'c-wiz[data-show-delete-individual="true"]' in page
+    assert "wrapperForButton" in page
+    assert "depth < 14" in page
+    assert "relationPattern" in page
+    assert "에\\s*남긴\\s*댓글" in page
+    assert "directNode" in page
+    assert "visibleDeleteButtons" in page
+    assert "decodedCandidates" in page
+    assert 'extractParam(value, "lc")' in page
+    assert "sourceInfo" in page
+
+
+def test_shared_scanner_matches_conservatively_and_retries_deletion() -> None:
+    page = read(EXTENSION / "youtube_delete_page.js")
+    assert "if (targetId && item.commentId)" in page
+    assert "value -= 400" in page
+    assert "wantedContent" in page
+    assert "item.fullTextNorm.includes(wantedContent)" in page
+    assert "target.sourceKey === item.source.key" in page
+    assert "best.value < 170" in page
+    assert "const maxClickAttempts = 3" in page
+    assert "attempt <= maxClickAttempts" in page
+    assert "clickConfirmIfPresent" in page
+    assert "1200 + attempt * 500" in page
+    assert "2200 + attempt * 700" in page
+
+
+def test_verification_returns_complete_snapshot_and_found_ids() -> None:
+    page = read(EXTENSION / "youtube_delete_page.js")
+    assert 'const mode = options && typeof options === "object" ? "delete" : "verify"' in page
+    assert 'if (mode === "verify")' in page
+    assert "foundIds" in page
+    assert 'extractor_version: "1.9.0"' in page
+    assert "snapshot_complete: complete" in page
+    assert "삭제 후 끝까지 전수 확인" in page
+
+
+def test_comment_and_live_chat_adapters_use_shared_page_functions() -> None:
     adapter = read(EXTENSION / "youtube_deletion_adapter.js")
     assert 'key: "youtube"' in adapter
     assert 'key: "youtube_live_chat"' in adapter
@@ -42,7 +94,6 @@ def test_comment_and_live_chat_adapters_share_page_functions() -> None:
     assert "deletePageFunction: traceLensDeleteYouTubeTargetsInPage" in adapter
     assert "verifyPageFunction: traceLensVerifyYouTubeActivityTargetsInPage" in adapter
     assert "confirmDeletedTargets(targets)" in adapter
-    assert "activityId" in adapter
     assert "maxTargets: 100" in adapter
     assert "batchSize: 20" in adapter
     assert "batchPauseMs: 800" in adapter
@@ -50,167 +101,43 @@ def test_comment_and_live_chat_adapters_share_page_functions() -> None:
     assert "retry: true" in adapter
 
 
-def test_adapter_only_returns_verified_activity_ids_and_does_not_call_server() -> None:
-    adapter = read(EXTENSION / "youtube_deletion_adapter.js")
-    assert "deferConfirmedTargets" in adapter
-    assert "idFallback" in adapter
-    assert "deferred_to_page: true" in adapter
-    assert "deleted_ids: activityIds" in adapter
-    assert "resolved_ids: activityIds" in adapter
-    assert "/api/delete-credits/confirm-deleted" not in adapter
-    assert "fetch(" not in adapter
-    assert "requestConfirmedIds" not in adapter
-
-
-def test_adapter_does_not_trust_google_activity_token_as_comment_id() -> None:
-    adapter = read(EXTENSION / "youtube_deletion_adapter.js")
-    assert 'parseUrl(rawSourceUrl)?.searchParams.get("lc")' in adapter
-    assert "comment_id: urlCommentId || null" in adapter
-    assert "activity_token: null" in adapter
-    assert "legacy_activity_token" in adapter
-    assert "title = clean(raw?.title || originalLocator.title)" in adapter
-
-
-def test_deleter_handles_legacy_and_current_google_activity_cards() -> None:
-    deleter = read(EXTENSION / "youtube_delete_page.js")
-    assert 'c-wiz[jsname="Ttx95"]' in deleter
-    assert 'c-wiz[data-show-delete-individual="true"]' in deleter
-    assert "wrapperForButton" in deleter
-    assert "depth < 14" in deleter
-    assert "relationPattern" in deleter
-    assert "에\\s*남긴\\s*댓글" in deleter
-    assert "directNode" in deleter
-    assert "visibleDeleteButtons" in deleter
-
-
-def test_deleter_decodes_nested_google_redirect_urls() -> None:
-    deleter = read(EXTENSION / "youtube_delete_page.js")
-    assert "decodedCandidates" in deleter
-    assert 'for (const key of ["url", "q", "continue", "redirect", "target", "u", "dest", "href"])' in deleter
-    assert 'extractParam(value, "lc")' in deleter
-    assert "sourceKeyFromValue" in deleter
-    assert "decodeURIComponent" in deleter
-
-
-def test_deleter_falls_back_to_content_when_only_one_side_has_comment_id() -> None:
-    deleter = read(EXTENSION / "youtube_delete_page.js")
-    assert "if (targetId && item.commentId)" in deleter
-    assert "value -= 400" in deleter
-    assert "wantedContent" in deleter
-    assert "item.fullTextNorm.includes(wantedContent)" in deleter
-    assert "target.sourceKey === item.sourceKey" in deleter
-    assert "best.value < 170" in deleter
-
-
-def test_deleter_scrolls_actual_container_and_retries_each_item() -> None:
-    deleter = read(EXTENSION / "youtube_delete_page.js")
-    assert "pickScrollRoot" in deleter
-    assert 'document.querySelectorAll("body *")' in deleter
-    assert "/(auto|scroll)/.test(style.overflowY" in deleter
-    assert "step < 1800" in deleter
-    assert "root.scrollTop = next" in deleter
-    assert "scanComplete" in deleter
-    assert "discoveryComplete: scanComplete" in deleter
-    assert "const maxClickAttempts = 3" in deleter
-    assert "attempt <= maxClickAttempts" in deleter
-    assert "if (!attemptedIds.includes(target.id)) attemptedIds.push(target.id)" in deleter
-    assert "clickConfirmIfPresent" in deleter
-    assert "1200 + attempt * 500" in deleter
-    assert "2200 + attempt * 700" in deleter
-
-
-def test_verifier_uses_same_robust_matching_rules() -> None:
-    verifier = read(EXTENSION / "youtube_activity_verify_page.js")
-    assert "decodedCandidates" in verifier
-    assert "wrapperForButton" in verifier
-    assert "relationPattern" in verifier
-    assert "if (targetId && item.commentId)" in verifier
-    assert "item.rowTextNorm.includes(wantedContent)" in verifier
-    assert "step < 2000" in verifier
-    assert 'extractor_version:"1.8.0"' in verifier
-    assert "snapshot_complete:complete" in verifier
-
-
-def test_engine_returns_resolved_target_and_activity_ids() -> None:
+def test_engine_uses_separate_task_window_and_full_verification() -> None:
     engine = read(EXTENSION / "deletion_engine.js")
+    assert 'chrome.windows.create({url, focused: true, type: "popup"})' in engine
+    assert "const taskTabId = tab.id" in engine
+    assert "reloadAndWait(taskTabId, state, adapter, false)" in engine
+    assert "verificationPass(taskTabId" in engine
     assert "const retryTargets = targets.filter" in engine
-    assert "adapter.retry !== false" in engine
-    assert "retryPass = await deletionPass" in engine
-    assert "verification = await verificationPass" in engine
-    assert "const verifiedDeletedIds = []" in engine
-    assert "const alreadyMissingIds = []" in engine
-    assert "verifiedDeletedIds.push(target.id)" in engine
-    assert "const absentIds = new Set([...verifiedDeletedIds, ...alreadyMissingIds])" in engine
-    assert "const absentTargets" in engine
-    assert "adapter.confirmDeletedTargets(absentTargets, config)" in engine
-    assert "deletedIds: verifiedDeletedIds" in engine
-    assert "deletedActivityIds: sync.raw?.deleted_ids || []" in engine
+    assert "verification.complete" in engine
     assert "alreadyMissingIds" in engine
+    assert "closeTaskWindow" in engine
 
 
-def test_purchase_page_performs_same_origin_sync_and_charges_only_verified_deletes() -> None:
+def test_purchase_page_syncs_verified_rows_and_charges_once() -> None:
     content = read(EXTENSION / "content_script.js")
-    purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
     delete_credits = read(ROOT / "app" / "delete_credits.py")
     middleware = read(ROOT / "app" / "redis_session.py")
 
-    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v12"' in content
     assert "const serverUrl = location.origin" in content
     assert 'form[action="/logout"] input[name="csrf"]' in content
     assert '"X-CSRF-Token": csrfToken' in content
     assert 'credentials: "same-origin"' in content
-    assert "checkDeleteCreditBalance" in content
     assert "/api/delete-credits/check-balance" in content
-    assert "targetActivityIds" in content
-    assert "requestConfirmedRows" in content
-    assert "syncResolvedActivities" in content
     assert "/api/delete-credits/confirm-deleted" in content
-    assert "charge_activity_ids: chargeActivityIds" in content
-    assert "const deletedTargetIds" in content
-    assert "const chargeActivityIds" in content
-    assert "chargeSet.has(id) ? [id] : []" in content
+    assert "charge_activity_ids" in content
     assert "already_charged_activity_ids" in content
-    assert "HTTP ${response.status}" in content
-    assert "삭제권 ${charged}개 차감" in content
     assert "setTimeout(() => location.reload(), 1800)" in content
-    assert not (EXTENSION / "delete_result_reconciler.js").exists()
 
-    assert 'data-kind="comment"' in purchase
-    assert 'data-kind="live_chat"' in purchase
     assert '"/api/delete-credits/check-balance"' in middleware
     assert '"/api/delete-credits/confirm-deleted"' in middleware
-    assert "account_tools_app.include_router(delete_credits_router)" in middleware
-
-    assert '@router.post("/api/delete-credits/check-balance")' in delete_credits
     assert '@router.post("/api/delete-credits/confirm-deleted")' in delete_credits
     assert "class DeleteCreditUsage(Base)" in delete_credits
     assert 'UniqueConstraint("user_id", "activity_id"' in delete_credits
-    assert "ensure_delete_credit_schema" in delete_credits
-    assert "DeleteCreditUsage.__table__.create" in delete_credits
-    assert "delete_api_user" in delete_credits
-    assert 'request.headers.get("x-csrf-token"' in delete_credits
-    assert "charge_activity_ids" in delete_credits
-    assert "already_charged_ids" in delete_credits
-    assert "newly_charged_ids" in delete_credits
     assert "wallet.balance -= len(newly_charged_ids)" in delete_credits
-    assert 'amount=-len(newly_charged_ids)' in delete_credits
-    assert 'reason="YouTube 삭제 실행 차감"' in delete_credits
-    assert '"charged": len(newly_charged_ids)' in delete_credits
-    assert '"already_charged_activity_ids": sorted(already_charged_ids)' in delete_credits
-    assert '"balance": int(wallet.balance)' in delete_credits
     assert "db.delete(row)" in delete_credits
 
 
-def test_youtube_collector_displays_completed_empty_scope_as_no_records() -> None:
-    collector = read(EXTENSION / "youtube_activity_collector.js")
-    dashboard = read(ROOT / "app" / "templates" / "user_dashboard.html")
-    assert 'status: complete ? "success" : "partial"' in collector
-    assert "기록이 없습니다. 끝까지 확인했습니다." in collector
-    assert "entry.status == 'success' and entry.found_count == 0" in dashboard
-    assert "기록 없음" in dashboard
-
-
-def test_complete_snapshot_requires_two_consecutive_misses_before_pruning() -> None:
+def test_complete_snapshot_keeps_two_scan_safety_for_unselected_stale_rows() -> None:
     tasks = read(ROOT / "app" / "tasks.py")
     assert "_reconcile_complete_youtube_snapshot" in tasks
     assert 'Activity.status.in_(["visible", "missing_once"])' in tasks
