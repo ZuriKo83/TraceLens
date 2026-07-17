@@ -2,7 +2,7 @@
 {% block title %}삭제권 발급·회수 관리 · {{ app_name }}{% endblock %}
 {% block head_extra %}
 <style>
-.admin-credit-grid{display:grid;grid-template-columns:minmax(300px,420px) minmax(0,1fr);gap:20px}.admin-credit-card{padding:22px;border:1px solid #dfe5f3;border-radius:18px;background:#fff}.admin-credit-card h2{margin-top:0}.grant-form{display:grid;gap:12px}.grant-form label{display:grid;gap:6px;font-weight:700}.grant-form input,.grant-form textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #d0d5dd;border-radius:10px;font:inherit}.form-help{margin:-4px 0 0;color:#667085;font-size:.9rem}.quick-amounts{display:flex;gap:8px;flex-wrap:wrap}.quick-amounts button{padding:8px 12px;border:1px solid #d0d5dd;border-radius:999px;background:#fff;cursor:pointer}.quick-amounts button[data-amount^="-"]{border-color:#fda29b;color:#b42318}.admin-message{margin-bottom:16px;padding:12px 14px;border-radius:10px;background:#ecfdf3;color:#067647}.admin-error{background:#fef3f2;color:#b42318}.user-result{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #eef1f6}.ledger-table{width:100%;border-collapse:collapse}.ledger-table th,.ledger-table td{padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:left;font-size:.93rem}.credit-positive{color:#067647;font-weight:700}.credit-negative{color:#b42318;font-weight:700}.muted-cell{color:#667085}@media(max-width:900px){.admin-credit-grid{grid-template-columns:1fr}.ledger-table{display:block;overflow-x:auto}}
+.admin-credit-grid{display:grid;grid-template-columns:minmax(300px,420px) minmax(0,1fr);gap:20px}.admin-credit-card{padding:22px;border:1px solid #dfe5f3;border-radius:18px;background:#fff}.admin-credit-card h2{margin-top:0}.grant-form{display:grid;gap:12px}.grant-form label{display:grid;gap:6px;font-weight:700}.grant-form input,.grant-form textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #d0d5dd;border-radius:10px;font:inherit}.form-help{margin:-4px 0 0;color:#667085;font-size:.9rem}.quick-amount-groups{display:grid;gap:8px}.quick-amounts{display:flex;gap:8px;flex-wrap:wrap}.quick-amounts button{padding:8px 12px;border:1px solid #d0d5dd;border-radius:999px;background:#fff;cursor:pointer}.quick-amounts.negative button{border-color:#fda29b;color:#b42318}.admin-message{margin-bottom:16px;padding:12px 14px;border-radius:10px;background:#ecfdf3;color:#067647}.admin-error{background:#fef3f2;color:#b42318}.user-result{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #eef1f6}.ledger-table{width:100%;border-collapse:collapse}.ledger-table th,.ledger-table td{padding:11px 8px;border-bottom:1px solid #eef1f6;text-align:left;font-size:.93rem}.credit-positive{color:#067647;font-weight:700}.credit-negative{color:#b42318;font-weight:700}.muted-cell{color:#667085}@media(max-width:900px){.admin-credit-grid{grid-template-columns:1fr}.ledger-table{display:block;overflow-x:auto}}
 </style>
 {% endblock %}
 {% block content %}
@@ -17,18 +17,22 @@
 <div class="admin-credit-grid">
   <section class="admin-credit-card">
     <h2>삭제권 조정</h2>
-    <form id="credit-adjustment-form" class="grant-form" method="post" action="/admin/delete-credits/adjust">
+    <form id="credit-adjustment-form" class="grant-form" method="post" action="/admin/delete-credits/grant">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <label>가입 이메일<input type="email" name="email" value="{{ q }}" placeholder="user@example.com" required></label>
       <label>조정 수량<input id="credit-amount" type="number" name="amount" min="-100000" max="100000" value="10" required></label>
       <p class="form-help">예: 50 입력 시 50개 발급, -50 입력 시 50개 회수</p>
-      <div class="quick-amounts">
-        <button type="button" data-amount="10">+10개</button>
-        <button type="button" data-amount="50">+50개</button>
-        <button type="button" data-amount="100">+100개</button>
-        <button type="button" data-amount="-10">-10개</button>
-        <button type="button" data-amount="-50">-50개</button>
-        <button type="button" data-amount="-100">-100개</button>
+      <div class="quick-amount-groups">
+        <div class="quick-amounts positive">
+          <button type="button" data-amount="10">+10개</button>
+          <button type="button" data-amount="50">+50개</button>
+          <button type="button" data-amount="100">+100개</button>
+        </div>
+        <div class="quick-amounts negative">
+          <button type="button" data-amount="-10">-10개</button>
+          <button type="button" data-amount="-50">-50개</button>
+          <button type="button" data-amount="-100">-100개</button>
+        </div>
       </div>
       <label>메모<textarea name="note" rows="4" placeholder="입금자명, 결제 금액, 회수 사유, 확인 내용 등"></textarea></label>
       <button class="button primary" type="submit">삭제권 반영</button>
