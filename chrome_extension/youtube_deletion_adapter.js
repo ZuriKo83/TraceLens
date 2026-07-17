@@ -126,7 +126,7 @@
       normalizeTargets: makeNormalizeTargets(kind),
       isTaskUrl(value) { return taskUrlMatches(value, page); },
       deletePageFunction: traceLensDeleteYouTubeTargetsInPage,
-      verifyPageFunction: traceLensVerifyYouTubeActivityTargetsInPage,
+      verifyPageFunction: traceLensProcessYouTubeActivityPage,
       confirmDeletedTargets(targets) { return deferConfirmedTargets(targets); },
       openingMessage: `Google 내 활동의 YouTube ${label} 페이지를 앞에 여는 중입니다.`,
       discoveryMessage(count) { return `${count}개 ${label}을 동일한 공통 삭제 로직으로 찾아 아래쪽부터 처리합니다.`; },
