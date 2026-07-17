@@ -9,12 +9,14 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
+def test_resilient_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-    assert manifest["version"] == "1.4.0"
+    assert manifest["version"] == "1.4.1"
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
-    assert "deletion_engine.js" in worker
+    assert "deletion_engine_resilient.js" in worker
+    assert '"deletion_engine.js"' not in worker
+    assert not (EXTENSION / "deletion_engine.js").exists()
     assert "youtube_delete_page.js" in worker
     assert "youtube_activity_verify_page.js" in worker
     assert "youtube_deletion_adapter.js" in worker
@@ -113,16 +115,21 @@ def test_comment_and_live_chat_adapters_use_shared_page_functions() -> None:
     assert "retry: true" in adapter
 
 
-def test_engine_uses_separate_task_window_and_full_verification() -> None:
-    engine = read(EXTENSION / "deletion_engine.js")
-    assert 'chrome.windows.create({url, focused: true, type: "popup"})' in engine
-    assert "const taskTabId = tab.id" in engine
-    assert "reloadAndWait(taskTabId, state, adapter, false)" in engine
-    assert "verificationPass(taskTabId" in engine
-    assert "const retryTargets = targets.filter" in engine
-    assert "verification.complete" in engine
-    assert "alreadyMissingIds" in engine
-    assert "closeTaskWindow" in engine
+def test_engine_recovers_when_user_closes_task_window() -> None:
+    engine = read(EXTENSION / "deletion_engine_resilient.js")
+    assert 'chrome.windows.create({url, focused, type: "popup"})' in engine
+    assert "const maxAttempts = 4" in engine
+    assert "chrome.tabs.onRemoved.addListener" in engine
+    assert "chrome.windows.onRemoved.addListener" in engine
+    assert "chrome.tabs.onUpdated.addListener" in engine
+    assert "삭제 작업은 취소되지 않으며 자동으로 다시 엽니다." in engine
+    assert "ensureSurface" in engine
+    assert "stage = async" in engine
+    assert "작업 창을 자동 복구합니다" in engine
+    assert "deletePass" in engine
+    assert "verifyPass" in engine
+    assert "taskWindowRecoveries" in engine
+    assert "삭제·전수 확인·동기화가 끝나 작업 창을 닫습니다." in engine
 
 
 def test_purchase_page_syncs_verified_rows_and_charges_once() -> None:
@@ -159,6 +166,7 @@ def test_complete_snapshot_keeps_two_scan_safety_for_unselected_stale_rows() -> 
 
 
 def test_replaced_duplicate_youtube_files_are_removed() -> None:
+    assert not (EXTENSION / "deletion_engine.js").exists()
     assert not (EXTENSION / "youtube_verify_page.js").exists()
     assert not (EXTENSION / "youtube_live_chat_delete_page.js").exists()
     assert not (EXTENSION / "youtube_live_chat_verify_page.js").exists()
