@@ -30,7 +30,7 @@ def adjusted_delete_credit_balance(current_balance: int, amount: int) -> int:
     return adjusted
 
 
-@router.post("/admin/delete-credits/adjust")
+@router.post("/admin/delete-credits/grant")
 def admin_adjust_delete_credits(
     request: Request,
     email: str = Form(...),
