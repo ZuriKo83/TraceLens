@@ -1,1 +1,0 @@
-globalThis.traceLensVerifyYouTubeActivityTargetsInPage = globalThis.traceLensProcessYouTubeActivityPage;
