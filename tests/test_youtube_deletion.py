@@ -12,7 +12,7 @@ def read(path: Path) -> str:
 def test_resilient_deletion_engine_and_shared_youtube_scanner_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-    assert manifest["version"] == "1.4.2"
+    assert manifest["version"] == "1.1.0"
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
     assert "deletion_engine_resilient.js" in worker
     assert '"deletion_engine.js"' not in worker
