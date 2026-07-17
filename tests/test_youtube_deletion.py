@@ -152,9 +152,13 @@ def test_purchase_page_performs_same_origin_sync_and_charges_only_verified_delet
     content = read(EXTENSION / "content_script.js")
     purchase = read(ROOT / "app" / "templates" / "delete_credit_purchase.html")
     delete_credits = read(ROOT / "app" / "delete_credits.py")
+    middleware = read(ROOT / "app" / "redis_session.py")
 
     assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v12"' in content
     assert "const serverUrl = location.origin" in content
+    assert 'form[action="/logout"] input[name="csrf"]' in content
+    assert '"X-CSRF-Token": csrfToken' in content
+    assert 'credentials: "same-origin"' in content
     assert "checkDeleteCreditBalance" in content
     assert "/api/delete-credits/check-balance" in content
     assert "targetActivityIds" in content
@@ -165,6 +169,7 @@ def test_purchase_page_performs_same_origin_sync_and_charges_only_verified_delet
     assert "const deletedTargetIds" in content
     assert "const chargeActivityIds" in content
     assert "chargeSet.has(id) ? [id] : []" in content
+    assert "already_charged_activity_ids" in content
     assert "HTTP ${response.status}" in content
     assert "삭제권 ${charged}개 차감" in content
     assert "setTimeout(() => location.reload(), 1800)" in content
@@ -172,16 +177,26 @@ def test_purchase_page_performs_same_origin_sync_and_charges_only_verified_delet
 
     assert 'data-kind="comment"' in purchase
     assert 'data-kind="live_chat"' in purchase
+    assert '"/api/delete-credits/check-balance"' in middleware
+    assert '"/api/delete-credits/confirm-deleted"' in middleware
+    assert "account_tools_app.include_router(delete_credits_router)" in middleware
+
     assert '@router.post("/api/delete-credits/check-balance")' in delete_credits
     assert '@router.post("/api/delete-credits/confirm-deleted")' in delete_credits
     assert "class DeleteCreditUsage(Base)" in delete_credits
     assert 'UniqueConstraint("user_id", "activity_id"' in delete_credits
+    assert "ensure_delete_credit_schema" in delete_credits
+    assert "DeleteCreditUsage.__table__.create" in delete_credits
+    assert "delete_api_user" in delete_credits
+    assert 'request.headers.get("x-csrf-token"' in delete_credits
     assert "charge_activity_ids" in delete_credits
+    assert "already_charged_ids" in delete_credits
     assert "newly_charged_ids" in delete_credits
     assert "wallet.balance -= len(newly_charged_ids)" in delete_credits
     assert 'amount=-len(newly_charged_ids)' in delete_credits
     assert 'reason="YouTube 삭제 실행 차감"' in delete_credits
     assert '"charged": len(newly_charged_ids)' in delete_credits
+    assert '"already_charged_activity_ids": sorted(already_charged_ids)' in delete_credits
     assert '"balance": int(wallet.balance)' in delete_credits
     assert "db.delete(row)" in delete_credits
 
