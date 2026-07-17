@@ -48,8 +48,10 @@
       locator: {},
     };
 
+    // Google 내 활동 카드는 최상위 문서에 있다. iframe까지 실행하면 같은 카드의
+    // 일부 DOM 결과가 합쳐져 조회 개수와 서버 인정 개수가 달라질 수 있다.
     const results = await chrome.scripting.executeScript({
-      target: {tabId, allFrames: true},
+      target: {tabId},
       func: scanner,
       args: [[probeTarget], null],
     });
