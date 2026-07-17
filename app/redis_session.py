@@ -24,6 +24,7 @@ from app.community_admin import router as community_admin_router
 from app.community_ops import router as community_ops_router
 from app.community_models import CommunityUserRestriction
 from app.db import engine
+from app.delete_credit_adjustment import router as delete_credit_adjustment_router
 from app.delete_credits import router as delete_credits_router
 from app.donate import router as donate_router
 from app.models import User, utcnow
@@ -40,6 +41,7 @@ account_tools_app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 account_tools_app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 account_tools_app.include_router(account_admin_router)
 account_tools_app.include_router(donate_router)
+account_tools_app.include_router(delete_credit_adjustment_router)
 account_tools_app.include_router(delete_credits_router)
 
 PUBLIC_APPROVED_SIGNUP_PATH = "/account/admin-approved-signup"
