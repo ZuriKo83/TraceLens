@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TraceLens",
-  "version": "1.4.2",
+  "version": "1.1.0",
   "description": "내가 작성한 게시글과 댓글을 여러 사이트에서 찾아 정리하고 YouTube 조회·삭제·검증을 하나의 공통 스캐너로 처리합니다.",
   "minimum_chrome_version": "109",
   "permissions": [
