@@ -21,6 +21,7 @@ class CollectorImport(BaseModel):
     source_url: str | None = Field(default=None, max_length=4000)
     status: str = Field(default="success", pattern=r"^(success|partial|login_required|error)$")
     scan_scope: str = Field(default="default", min_length=1, max_length=80, pattern=r"^[a-z0-9_-]+$")
+    snapshot_complete: bool = False
     message: str = Field(default="", max_length=2000)
     items: list[CollectorItem] = Field(default_factory=list)
 

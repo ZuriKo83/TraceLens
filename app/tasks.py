@@ -61,7 +61,14 @@ def _fingerprint(platform: str, item, *, omit_youtube_source: bool = False) -> s
             source_key = "" if omit_youtube_source else _youtube_source_key(item.source_url, metadata)
             normalized = f"youtube|{activity_type}|{source_key}|{title}|{content}"
     else:
-        normalized = "|".join([platform, activity_type, (item.source_url or "").strip(), title, content, item.external_id.strip()])
+        normalized = "|".join([
+            platform,
+            activity_type,
+            (item.source_url or "").strip(),
+            title,
+            content,
+            item.external_id.strip(),
+        ])
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
@@ -128,6 +135,63 @@ def _verified_self_activity(platform: str, item) -> bool:
     return True
 
 
+def _youtube_activity_kind(activity: Activity) -> str:
+    metadata = _load_metadata(activity.metadata_json)
+    kind = str(metadata.get("youtube_activity_kind") or "").strip().lower()
+    if kind:
+        return kind
+    title = (activity.content or "").lstrip()
+    return "live_chat" if title.startswith("[실시간 채팅]") else "comment"
+
+
+def _reconcile_complete_youtube_snapshot(
+    db: Session,
+    *,
+    user_id: int,
+    payload: CollectorImport,
+    account: str | None,
+    snapshot_fingerprints: set[str],
+) -> tuple[int, int]:
+    """Mark a missing YouTube row once, and delete only after a second complete miss.
+
+    Google My Activity is virtualized and a single scrape can omit valid rows. Requiring
+    two consecutive complete snapshots prevents one parser miss from being reported as
+    a successful deletion or from immediately erasing the TraceLens archive row.
+    """
+    if payload.platform != "youtube" or payload.status != "success" or not payload.snapshot_complete:
+        return 0, 0
+    if payload.scan_scope not in {"comment", "live_chat"}:
+        return 0, 0
+
+    stmt = select(Activity).where(
+        Activity.user_id == user_id,
+        Activity.platform == "youtube",
+        Activity.status.in_(["visible", "missing_once"]),
+    )
+    if account is None:
+        stmt = stmt.where(Activity.account_label.is_(None))
+    else:
+        stmt = stmt.where(Activity.account_label == account)
+
+    marked = removed = 0
+    for activity in db.scalars(stmt):
+        if _youtube_activity_kind(activity) != payload.scan_scope:
+            continue
+        fingerprint = (activity.content_fingerprint or "").strip()
+        if not fingerprint:
+            continue
+        if fingerprint in snapshot_fingerprints:
+            activity.status = "visible"
+            continue
+        if activity.status == "missing_once":
+            db.delete(activity)
+            removed += 1
+        else:
+            activity.status = "missing_once"
+            marked += 1
+    return marked, removed
+
+
 def process_collector_import(payload_data: dict, user_id: int) -> dict:
     payload = CollectorImport.model_validate(payload_data)
     with Session(engine) as db:
@@ -151,9 +215,10 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             accepted.append(item)
 
         prepared = [(item, _fingerprint_candidates(payload.platform, item), item.external_id[:500]) for item in accepted]
+        snapshot_fingerprints = {fingerprint for _, candidates, _ in prepared for fingerprint in candidates}
         by_ext, by_fp = {}, {}
         if prepared:
-            fps = list({fp for _, candidates, _ in prepared for fp in candidates})
+            fps = list(snapshot_fingerprints)
             exts = list({ext for _, _, ext in prepared})
             rows = list(db.scalars(select(Activity).where(
                 Activity.user_id == user.id,
@@ -188,6 +253,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 existing.occurred_at = item.occurred_at
                 existing.metadata_json = json.dumps(metadata, ensure_ascii=False, default=str)
                 existing.status = "visible"
+                existing.delete_mode = "none"
                 existing.collector_email = user.email
                 existing.account_label = item_account
                 existing.content_fingerprint = primary_fp
@@ -211,9 +277,21 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
                 ))
                 imported += 1
 
+        pending_recheck, pruned = _reconcile_complete_youtube_snapshot(
+            db,
+            user_id=user.id,
+            payload=payload,
+            account=account,
+            snapshot_fingerprints=snapshot_fingerprints,
+        )
+
         message = payload.message
         if payload.items and not accepted:
             message = "본인이 작성한 게시글·댓글·질문·답변으로 확인되지 않은 기록은 제외했습니다."
+        if pending_recheck:
+            message = f"{message} 이번 조회에서 보이지 않은 기존 기록 {pending_recheck}개는 다음 완전 조회까지 유지합니다.".strip()
+        if pruned:
+            message = f"{message} 두 번 연속 완전 조회에서 보이지 않은 기존 기록 {pruned}개를 보관함에서 제거했습니다.".strip()
         db.add(ScanLog(
             user_id=user.id,
             platform=payload.platform,
@@ -234,6 +312,8 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             "found": len(accepted),
             "imported": imported,
             "updated": updated,
+            "pending_recheck": pending_recheck,
+            "pruned": pruned,
             "ignored": len(payload.items) - len(accepted),
             "account_label": account,
             "user": user.email,

@@ -53,6 +53,8 @@ ACCOUNT_TOOL_PATHS = {
     "/admin/delete-credits",
     "/admin/delete-credits/grant",
     "/delete-credits/purchase",
+    "/api/delete-credits/check-balance",
+    "/api/delete-credits/confirm-deleted",
     "/donate",
     "/donate/qr",
     PUBLIC_APPROVED_SIGNUP_PATH,

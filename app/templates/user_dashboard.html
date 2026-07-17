@@ -75,7 +75,9 @@
           <span class="scan-status status-{{ group.status }}">{{ group.status_label }}</span>
         </div>
         <div class="scan-group-counts">
-          {% for entry in group.entries %}<span><b>{{ entry.scope_label }}</b> {{ entry.found_count }}</span>{% endfor %}
+          {% for entry in group.entries %}
+          <span><b>{% if entry.scope == 'live_chat' %}실시간 채팅{% else %}{{ entry.scope_label }}{% endif %}</b> {% if entry.status == 'success' and entry.found_count == 0 %}없음{% else %}{{ entry.found_count }}{% endif %}</span>
+          {% endfor %}
         </div>
         <time>{{ group.latest_at.strftime('%Y-%m-%d %H:%M') }}</time>
         <span class="disclosure-arrow" aria-hidden="true">⌄</span>
@@ -83,8 +85,12 @@
       <div class="scan-group-details">
         {% for entry in group.entries %}
         <div class="scan-scope-row">
-          <div><b>{{ entry.scope_label }}</b><span class="scan-status status-{{ entry.status }}">{{ entry.status_label }}</span></div>
+          <div><b>{% if entry.scope == 'live_chat' %}실시간 채팅{% else %}{{ entry.scope_label }}{% endif %}</b><span class="scan-status status-{{ entry.status }}">{{ entry.status_label }}</span></div>
+          {% if entry.status == 'success' and entry.found_count == 0 %}
+          <div class="scan-count"><b>기록 없음</b></div>
+          {% else %}
           <div class="scan-count"><b>{{ entry.found_count }}</b>개 확인 <span>·</span> <b>{{ entry.imported_count }}</b>개 신규</div>
+          {% endif %}
           {% if entry.message %}<p>{{ entry.message }}</p>{% endif %}
         </div>
         {% endfor %}

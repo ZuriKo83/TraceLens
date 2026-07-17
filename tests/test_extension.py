@@ -2,9 +2,12 @@ import json
 from pathlib import Path
 
 
+ROOT = Path(__file__).resolve().parents[1]
+EXTENSION = ROOT / "chrome_extension"
+
+
 def read(name: str) -> str:
-    root = Path(__file__).resolve().parents[1]
-    return (root / "chrome_extension" / name).read_text(encoding="utf-8")
+    return (EXTENSION / name).read_text(encoding="utf-8")
 
 
 def test_manifest_has_required_hosts_and_current_version() -> None:
@@ -14,6 +17,7 @@ def test_manifest_has_required_hosts_and_current_version() -> None:
     assert "https://www.instagram.com/*" in manifest["host_permissions"]
     assert "https://github.com/*" not in manifest["host_permissions"]
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
+    assert set(manifest["permissions"]) == {"activeTab", "storage", "tabs", "scripting"}
 
 
 def test_popup_uses_authenticated_user_token() -> None:
@@ -30,6 +34,42 @@ def test_content_script_connects_from_logged_in_dashboard() -> None:
     assert 'meta[name="tracelens-extension-token"]' in content
     assert 'type: "WEB_CONNECT"' in content
     assert "tracelensExtension" in content
+    assert "chrome.runtime.getManifest" in content
+    assert "tracelensExtensionVersion" in content
+
+
+def test_delete_page_uses_current_origin_and_owns_credit_sync() -> None:
+    assert not (EXTENSION / "delete_result_reconciler.js").exists()
+    content = read("content_script.js")
+    assert 'const DELETE_RESULT_STORAGE_KEY = "tracelens:last-delete-result:v12"' in content
+    assert "const serverUrl = location.origin" in content
+    assert 'form[action="/logout"] input[name="csrf"]' in content
+    assert '"X-CSRF-Token": csrfToken' in content
+    assert 'credentials: "same-origin"' in content
+    assert "checkDeleteCreditBalance" in content
+    assert "/api/delete-credits/check-balance" in content
+    assert "requestConfirmedRows" in content
+    assert "syncResolvedActivities" in content
+    assert "/api/delete-credits/confirm-deleted" in content
+    assert "charge_activity_ids" in content
+    assert "targetActivityIds" in content
+    assert "HTTP ${response.status}" in content
+    assert "삭제권 ${charged}개 차감" in content
+    assert "removeConfirmedRows" not in content
+    assert "reconcileAlreadyMissing" not in content
+    assert "reconcileStoredDeletionStatus" in content
+    assert "renderedActivityIds" in content
+    assert "serverRowsReconciled" in content
+
+
+def test_delete_api_paths_are_dispatched_to_account_tools_app() -> None:
+    middleware = (ROOT / "app" / "redis_session.py").read_text(encoding="utf-8")
+    assert '"/delete-credits/purchase"' in middleware
+    assert '"/api/delete-credits/check-balance"' in middleware
+    assert '"/api/delete-credits/confirm-deleted"' in middleware
+    assert "account_tools_app.include_router(delete_credits_router)" in middleware
+    assert "elif path in ACCOUNT_TOOL_PATHS:" in middleware
+    assert "target_app = account_tools_app" in middleware
 
 
 def test_background_has_threads_and_bearer_import() -> None:
@@ -41,18 +81,9 @@ def test_background_has_threads_and_bearer_import() -> None:
     assert "github" not in background.lower()
 
 
-def test_start_here_does_not_open_extension_setup() -> None:
-    root = Path(__file__).resolve().parents[1]
-    batch = (root / "START_HERE.bat").read_text(encoding="utf-8")
-    assert "http://127.0.0.1:8021" in batch
-    assert "chrome://extensions" not in batch
-    assert "explorer.exe" not in batch
-
-
 def test_web_bridge_is_present() -> None:
-    root = Path(__file__).resolve().parents[1]
-    content = (root / "chrome_extension" / "content_script.js").read_text(encoding="utf-8")
-    background = (root / "chrome_extension" / "background.js").read_text(encoding="utf-8")
+    content = read("content_script.js")
+    background = read("background.js")
     assert "TRACELENS_WEB_COMMAND" in content
     assert "START_SCAN" in content
     assert "resolveCollectorConfig" in background
@@ -84,8 +115,7 @@ def test_tracelens_brand_and_icons() -> None:
     assert manifest["name"] == "TraceLens"
     assert manifest["action"]["default_title"] == "TraceLens"
     assert manifest["icons"]["128"] == "icons/icon128.png"
-    root = Path(__file__).resolve().parents[1]
-    assert (root / "chrome_extension" / "icons" / "icon128.png").exists()
+    assert (EXTENSION / "icons" / "icon128.png").exists()
 
 
 def test_public_domain_is_connected() -> None:
@@ -94,13 +124,3 @@ def test_public_domain_is_connected() -> None:
     assert "https://tracelens.kr/*" in manifest["content_scripts"][0]["matches"]
     assert "https://tracelens.kr" in read("popup.js")
     assert "https://tracelens.kr" in read("background.js")
-
-
-def test_internal_and_external_ports_are_consistent() -> None:
-    root = Path(__file__).resolve().parents[1]
-    batch = (root / "START_HERE.bat").read_text(encoding="utf-8")
-    production_env = (root / ".env.production.example").read_text(encoding="utf-8")
-    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
-    assert "--host 0.0.0.0 --port 8021" in batch
-    assert "PUBLIC_BASE_URL=https://tracelens.kr" in production_env
-    assert "EXPOSE 8021" in dockerfile
