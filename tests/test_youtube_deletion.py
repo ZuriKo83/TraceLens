@@ -9,31 +9,29 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_resilient_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
+def test_resilient_deletion_engine_and_shared_youtube_scanner_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-    assert manifest["version"] == "1.4.1"
+    assert manifest["version"] == "1.4.2"
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
     assert "deletion_engine_resilient.js" in worker
     assert '"deletion_engine.js"' not in worker
     assert not (EXTENSION / "deletion_engine.js").exists()
     assert "youtube_delete_page.js" in worker
-    assert "youtube_activity_verify_page.js" in worker
+    assert "youtube_activity_collector.js" in worker
+    assert "youtube_activity_verify_page.js" not in worker
     assert "youtube_deletion_adapter.js" in worker
     assert "https://myactivity.google.com/*" in manifest["host_permissions"]
 
 
 def test_collection_delete_and_verify_share_one_page_scanner() -> None:
     page = read(EXTENSION / "youtube_delete_page.js")
-    verifier = read(EXTENSION / "youtube_activity_verify_page.js")
     collector = read(EXTENSION / "youtube_activity_collector.js")
+    adapter = read(EXTENSION / "youtube_deletion_adapter.js")
     assert "traceLensProcessYouTubeActivityPage" in page
     assert "traceLensDeleteYouTubeTargetsInPage = globalThis.traceLensProcessYouTubeActivityPage" in page
-    assert verifier.strip() == (
-        "globalThis.traceLensVerifyYouTubeActivityTargetsInPage = "
-        "globalThis.traceLensProcessYouTubeActivityPage;"
-    )
     assert "globalThis.traceLensProcessYouTubeActivityPage" in collector
+    assert "verifyPageFunction: traceLensProcessYouTubeActivityPage" in adapter
     assert "func: scanner" in collector
     assert "target: {tabId}" in collector
     assert "allFrames" not in collector
@@ -106,7 +104,7 @@ def test_comment_and_live_chat_adapters_use_shared_page_functions() -> None:
     assert 'page: "youtube_comments"' in adapter
     assert 'page: "youtube_live_chat"' in adapter
     assert "deletePageFunction: traceLensDeleteYouTubeTargetsInPage" in adapter
-    assert "verifyPageFunction: traceLensVerifyYouTubeActivityTargetsInPage" in adapter
+    assert "verifyPageFunction: traceLensProcessYouTubeActivityPage" in adapter
     assert "confirmDeletedTargets(targets)" in adapter
     assert "maxTargets: 100" in adapter
     assert "batchSize: 20" in adapter
@@ -167,6 +165,7 @@ def test_complete_snapshot_keeps_two_scan_safety_for_unselected_stale_rows() -> 
 
 def test_replaced_duplicate_youtube_files_are_removed() -> None:
     assert not (EXTENSION / "deletion_engine.js").exists()
+    assert not (EXTENSION / "youtube_activity_verify_page.js").exists()
     assert not (EXTENSION / "youtube_verify_page.js").exists()
     assert not (EXTENSION / "youtube_live_chat_delete_page.js").exists()
     assert not (EXTENSION / "youtube_live_chat_verify_page.js").exists()
