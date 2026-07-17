@@ -4,6 +4,7 @@
   const DELETE_RESULT_MAX_AGE_MS = 30 * 60 * 1000;
   const extensionVersion = chrome.runtime.getManifest?.().version || "";
   const token = document.querySelector('meta[name="tracelens-extension-token"]')?.content?.trim();
+  const csrfToken = document.querySelector('form[action="/logout"] input[name="csrf"]')?.value?.trim() || "";
   // 삭제 API는 현재 로그인한 TraceLens 사이트와 동일한 origin으로만 호출한다.
   // PUBLIC_BASE_URL 기본값(127.0.0.1)이 브라우저에 전달되어 동기화가 실패하는 것을 막는다.
   const serverUrl = location.origin;
@@ -246,7 +247,9 @@
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
+          "X-CSRF-Token": csrfToken,
         },
+        credentials: "same-origin",
         cache: "no-store",
         body: JSON.stringify(body),
       });
@@ -333,7 +336,10 @@
     const returnedIds = positiveIds([...(payload.deleted_ids || []), ...(payload.resolved_ids || [])]);
     return {
       resolvedIds: returnedIds.length || Number(payload.deleted || 0) < activityIds.length ? returnedIds : activityIds,
-      chargedIds: positiveIds(payload.charged_activity_ids || []),
+      chargedIds: positiveIds([
+        ...(payload.charged_activity_ids || []),
+        ...(payload.already_charged_activity_ids || []),
+      ]),
       charged: Number(payload.charged || 0),
       balance: Number(payload.balance),
       raw: payload,
