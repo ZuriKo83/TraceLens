@@ -12,7 +12,7 @@ def read(path: Path) -> str:
 def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
-    assert manifest["version"] == "1.3.9"
+    assert manifest["version"] == "1.4.0"
     assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
     assert "deletion_engine.js" in worker
     assert "youtube_delete_page.js" in worker
@@ -21,15 +21,25 @@ def test_reusable_deletion_engine_and_shared_youtube_pages_are_loaded() -> None:
     assert "https://myactivity.google.com/*" in manifest["host_permissions"]
 
 
-def test_delete_and_verify_share_one_page_scanner() -> None:
+def test_collection_delete_and_verify_share_one_page_scanner() -> None:
     page = read(EXTENSION / "youtube_delete_page.js")
     verifier = read(EXTENSION / "youtube_activity_verify_page.js")
+    collector = read(EXTENSION / "youtube_activity_collector.js")
     assert "traceLensProcessYouTubeActivityPage" in page
     assert "traceLensDeleteYouTubeTargetsInPage = globalThis.traceLensProcessYouTubeActivityPage" in page
     assert verifier.strip() == (
         "globalThis.traceLensVerifyYouTubeActivityTargetsInPage = "
         "globalThis.traceLensProcessYouTubeActivityPage;"
     )
+    assert "globalThis.traceLensProcessYouTubeActivityPage" in collector
+    assert "func: scanner" in collector
+    assert "entry.result?.extraction || entry.result" in collector
+    assert "payload.snapshot_complete === true" in collector
+    assert 'extractor_version: "2.0.0-shared"' in collector
+    assert "collectYouTubeActivityPageV2" not in collector
+    assert "MutationObserver" not in collector
+    assert "rowForButton" not in collector
+    assert "parseRow" not in collector
 
 
 def test_full_scan_finishes_on_stable_bottom_without_mutation_counter() -> None:
