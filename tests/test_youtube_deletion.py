@@ -33,6 +33,8 @@ def test_collection_delete_and_verify_share_one_page_scanner() -> None:
     )
     assert "globalThis.traceLensProcessYouTubeActivityPage" in collector
     assert "func: scanner" in collector
+    assert "target: {tabId}" in collector
+    assert "allFrames" not in collector
     assert "entry.result?.extraction || entry.result" in collector
     assert "payload.snapshot_complete === true" in collector
     assert 'extractor_version: "2.0.0-shared"' in collector
