@@ -16,7 +16,12 @@ def test_manifest_has_required_hosts_and_current_version() -> None:
     assert "https://www.threads.com/*" in manifest["host_permissions"]
     assert "https://www.instagram.com/*" in manifest["host_permissions"]
     assert "https://github.com/*" not in manifest["host_permissions"]
-    assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
+    assert manifest["content_scripts"][0]["js"] == [
+        "content_script.js",
+        "user_experience_messages.js",
+    ]
+    assert manifest["content_scripts"][1]["matches"] == ["https://myactivity.google.com/*"]
+    assert manifest["content_scripts"][1]["js"] == ["google_activity_user_messages.js"]
     assert set(manifest["permissions"]) == {"activeTab", "storage", "tabs", "scripting"}
 
 
@@ -60,6 +65,21 @@ def test_delete_page_uses_current_origin_and_owns_credit_sync() -> None:
     assert "reconcileStoredDeletionStatus" in content
     assert "renderedActivityIds" in content
     assert "serverRowsReconciled" in content
+
+
+def test_user_facing_message_layer_hides_internal_terms() -> None:
+    ux = read("user_experience_messages.js")
+    google_ux = read("google_activity_user_messages.js")
+    assert "삭제 완료" in ux
+    assert "삭제 보류" in ux
+    assert "목록 정리 완료" in ux
+    assert "삭제권은 사용되지 않았습니다" in ux
+    assert "처리 중 문제가 발생했습니다" in ux
+    assert "HTTP\\s*\\d+" in ux
+    assert "console.warn" in ux
+    assert ".delete-operation-status.notice" in ux
+    assert "안전을 위해 삭제하지" in google_ux
+    assert "삭제 결과를 확인하고 있습니다" in google_ux
 
 
 def test_delete_api_paths_are_dispatched_to_account_tools_app() -> None:
