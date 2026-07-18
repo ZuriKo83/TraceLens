@@ -135,8 +135,12 @@
   }
 
   function applyTone(status, tone) {
+    if (!tone) {
+      status.classList.remove("notice");
+      return;
+    }
     status.classList.remove("error", "success", "notice");
-    if (tone) status.classList.add(tone);
+    status.classList.add(tone);
   }
 
   function polishStatus() {
