@@ -43,6 +43,11 @@
     const card = document.getElementById("extension-status-card");
     const title = document.getElementById("extension-status-title");
     if (!card || !title) return;
+    const connected = document.documentElement.dataset.tracelensExtension === "connected";
+    if (connected) {
+      card.hidden = true;
+      return;
+    }
     const text = clean(title.textContent);
     const needsAction = /필요|사용할 수 없|설치|로그인|실패|확인 필요/.test(text);
     card.hidden = !needsAction;
@@ -101,6 +106,6 @@
     });
   }
 
-  new MutationObserver(schedule).observe(document.documentElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden", "class"]});
+  new MutationObserver(schedule).observe(document.documentElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden", "class", "data-tracelens-extension"]});
   schedule();
 })();
