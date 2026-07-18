@@ -13,7 +13,12 @@ def test_resilient_deletion_engine_and_shared_youtube_scanner_are_loaded() -> No
     manifest = json.loads(read(EXTENSION / "manifest.json"))
     worker = read(EXTENSION / "service_worker.js")
     assert manifest["version"] == "1.1.0"
-    assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
+    assert manifest["content_scripts"][0]["js"] == [
+        "content_script.js",
+        "user_experience_messages.js",
+        "dashboard_user_messages.js",
+    ]
+    assert manifest["content_scripts"][1]["js"] == ["google_activity_user_messages.js"]
     assert "deletion_engine_resilient.js" in worker
     assert '"deletion_engine.js"' not in worker
     assert not (EXTENSION / "deletion_engine.js").exists()
