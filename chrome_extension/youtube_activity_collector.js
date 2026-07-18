@@ -5,7 +5,7 @@
   if (!SITE_TASKS.youtube.some((task) => task.activityType === "live_chat")) {
     SITE_TASKS.youtube.push({
       platform: "youtube",
-      label: "YouTube 실시간 스트리밍 채팅 메시지",
+      label: "YouTube 실시간 채팅",
       activityType: "live_chat",
       url: "https://myactivity.google.com/page?page=youtube_live_chat&hl=ko",
     });
@@ -19,7 +19,7 @@
         && current.pathname.replace(/\/$/, "") === "/page"
         && current.searchParams.get("page") === "youtube_live_chat";
       if (!valid) {
-        throw new Error(`본인 실시간 채팅 활동 페이지 확인에 실패했습니다. 이동된 주소: ${current.href}`);
+        throw new Error("YouTube 실시간 채팅 페이지를 확인하지 못했습니다. Google 계정을 확인한 뒤 다시 시도해 주세요.");
       }
       return;
     }
@@ -33,11 +33,9 @@
 
     const scanner = globalThis.traceLensProcessYouTubeActivityPage;
     if (typeof scanner !== "function") {
-      throw new Error("YouTube 공통 전수조사 함수를 불러오지 못했습니다. 확장 프로그램을 새로고침하세요.");
+      throw new Error("YouTube 조회 기능을 불러오지 못했습니다. 확장 프로그램을 새로고침한 뒤 다시 시도해 주세요.");
     }
 
-    // 기존 별도 수집기를 사용하지 않는다. 공통 검증 함수를 verify 모드로
-    // 실행하기 위해 실제 항목과 절대 일치하지 않는 종류 식별용 대상만 전달한다.
     const probeTarget = {
       id: `__tracelens_full_scan_${activityType}__`,
       activityKind: activityType === "live_chat" ? "live_chat" : "comment",
@@ -48,8 +46,6 @@
       locator: {},
     };
 
-    // Google 내 활동 카드는 최상위 문서에 있다. iframe까지 실행하면 같은 카드의
-    // 일부 DOM 결과가 합쳐져 조회 개수와 서버 인정 개수가 달라질 수 있다.
     const results = await chrome.scripting.executeScript({
       target: {tabId},
       func: scanner,
@@ -60,7 +56,7 @@
       .map((entry) => entry.result?.extraction || entry.result)
       .filter(Boolean);
     if (!payloads.length) {
-      throw new Error("YouTube 활동 페이지에서 전수조사 결과를 받지 못했습니다.");
+      throw new Error("YouTube 활동을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     }
 
     const items = [];
@@ -85,8 +81,18 @@
     const primary = payloads.find((payload) => payload.snapshot_complete || payload.items?.length) || payloads[0];
     const complete = payloads.some((payload) => payload.snapshot_complete === true) && items.length < 5000;
     const label = activityType === "live_chat" ? "실시간 채팅" : "댓글";
-    const linkedCount = items.filter((item) => Boolean(item.source_url)).length;
-    const unlinkedCount = Math.max(0, items.length - linkedCount);
+    const unlinkedCount = items.filter((item) => !item.source_url).length;
+
+    let message;
+    if (items.length && complete) {
+      message = `YouTube ${label} ${items.length}개를 확인했습니다.${unlinkedCount ? ` 원문을 바로 열 수 없는 항목 ${unlinkedCount}개가 포함되어 있습니다.` : ""}`;
+    } else if (items.length) {
+      message = `YouTube ${label} ${items.length}개를 확인했습니다. 일부 기록은 확인하지 못했으므로 잠시 후 다시 조회해 주세요.`;
+    } else if (complete) {
+      message = `YouTube ${label} 기록이 없습니다.`;
+    } else {
+      message = primary.message || `YouTube ${label}을 모두 확인하지 못했습니다. 잠시 후 다시 조회해 주세요.`;
+    }
 
     return {
       platform: "youtube",
@@ -94,11 +100,7 @@
       scan_scope: activityType,
       status: complete ? "success" : "partial",
       snapshot_complete: complete,
-      message: items.length
-        ? `YouTube ${label} ${items.length}개를 공통 전수조사기로 확인했습니다. 원문 링크 ${linkedCount}개 확인${unlinkedCount ? `, ${unlinkedCount}개 미노출` : ""}. ${complete ? "끝까지 확인했습니다." : "끝까지 확인하지 못해 부분 결과로 저장했습니다."}`
-        : complete
-          ? `YouTube ${label} 기록이 없습니다. 끝까지 확인했습니다.`
-          : primary.message || `YouTube ${label} 기록을 끝까지 확인하지 못했습니다.`,
+      message,
       account_label: accountContext?.accountLabel || null,
       items: items.slice(0, 5000),
     };
