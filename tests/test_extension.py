@@ -109,7 +109,7 @@ def test_delete_api_paths_are_dispatched_to_account_tools_app() -> None:
     assert '"/api/delete-credits/confirm-deleted"' in middleware
     assert "account_tools_app.include_router(delete_credits_router)" in middleware
     assert "elif path in ACCOUNT_TOOL_PATHS:" in middleware
-    assert "target_app = account_tools_app"
+    assert "target_app = account_tools_app" in middleware
 
 
 def test_background_has_threads_and_bearer_import() -> None:
