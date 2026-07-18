@@ -6,7 +6,16 @@
 
   function hideInternalDetails(rawText) {
     const text = String(rawText || "");
-    if (/HTTP\s*\d+|CSRF|token|collector|ReferenceError|SyntaxError|Could not load|응답 본문|활동 ID|adapter|어댑터|service worker|서비스 워커|chrome-extension:\/\//i.test(text)) {
+    if (/로그인 상태를 확인하지 못|로그인된 .*?(?:프로필|계정|ID|주소).*찾지 못/.test(text)) {
+      return "해당 사이트에 로그인한 뒤 다시 조회해 주세요.";
+    }
+    if (/본인 활동 페이지 확인에 실패|활동 페이지를 확인하지 못/.test(text)) {
+      return "해당 사이트의 활동 페이지를 확인하지 못했습니다. 로그인 상태를 확인한 뒤 다시 조회해 주세요.";
+    }
+    if (/페이지 로딩 시간이 초과|조회 탭을 찾을 수 없/.test(text)) {
+      return "사이트 응답이 늦어 조회를 마치지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    }
+    if (/HTTP\s*\d+|CSRF|token|collector|ReferenceError|SyntaxError|Could not load|응답 본문|활동 ID|adapter|어댑터|service worker|서비스 워커|chrome-extension:\/\/|https?:\/\//i.test(text)) {
       console.warn("TraceLens internal scan message:", rawText);
       return "처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요. 문제가 계속되면 문의해 주세요.";
     }
@@ -16,6 +25,7 @@
       .replace(/원문 링크\s*\d+개 확인(?:,\s*\d+개 미노출)?\.?/g, "")
       .replace(/끝까지 확인했습니다\.?/g, "")
       .replace(/부분 결과로 저장했습니다\.?/g, "일부 기록만 확인했습니다. 다시 조회해 주세요.")
+      .replace(/(\d+)개 신규/g, "$1개 새로 저장")
       .replace(/동기화/g, "반영")
       .replace(/전수조사|전수 확인/g, "전체 확인")
       .replace(/행 탐색/g, "항목 확인")
@@ -69,7 +79,14 @@
     document.querySelectorAll(".scan-scope-row").forEach((row) => {
       const status = clean(row.querySelector(".scan-status")?.textContent);
       const message = row.querySelector("p");
-      if (message && status === "완료") message.hidden = true;
+      if (!message) return;
+      if (status === "완료") {
+        message.hidden = true;
+        return;
+      }
+      const next = hideInternalDetails(message.textContent || "");
+      message.hidden = !next;
+      if (next && next !== message.textContent) message.textContent = next;
     });
   }
 
