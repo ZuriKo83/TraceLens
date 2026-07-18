@@ -60,6 +60,7 @@
     });
   }
 
-  new MutationObserver(schedule).observe(document.documentElement, {subtree: true, childList: true, characterData: true});
+  const root = document.documentElement || document;
+  new MutationObserver(schedule).observe(root, {subtree: true, childList: true, characterData: true});
   schedule();
 })();
