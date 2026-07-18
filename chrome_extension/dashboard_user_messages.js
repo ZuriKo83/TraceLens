@@ -60,16 +60,10 @@
 
   function polishConnectionCard() {
     const card = document.getElementById("extension-status-card");
-    const title = document.getElementById("extension-status-title");
-    if (!card || !title) return;
-    const connected = document.documentElement.dataset.tracelensExtension === "connected";
-    if (connected) {
+    if (!card) return;
+    if (document.documentElement.dataset.tracelensExtension === "connected") {
       card.hidden = true;
-      return;
     }
-    const text = clean(title.textContent);
-    const needsAction = /필요|사용할 수 없|설치|로그인|실패|확인 필요/.test(text);
-    card.hidden = !needsAction;
   }
 
   function polishResults() {
