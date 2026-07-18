@@ -43,7 +43,8 @@
       ],
       "js": [
         "content_script.js",
-        "user_experience_messages.js"
+        "user_experience_messages.js",
+        "dashboard_user_messages.js"
       ],
       "run_at": "document_idle"
     },
