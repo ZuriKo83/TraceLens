@@ -34,7 +34,9 @@ def test_popup_uses_authenticated_user_token() -> None:
     assert "threads" in popup
     assert "github" not in popup.lower()
     assert "TraceLens 로그인" in popup_html
-    assert "진행 상태" in popup_html
+    assert "진행 상태" not in popup_html
+    assert 'id="connection-card" class="connection-card" hidden' in popup_html
+    assert 'id="log-wrap" class="log-wrap" hidden' in popup_html
     assert "확인 필요" in popup
     assert "처리 중 문제가 발생했습니다" in popup
     assert "오류: ${error.message}" not in popup
@@ -74,7 +76,7 @@ def test_delete_page_uses_current_origin_and_owns_credit_sync() -> None:
     assert "serverRowsReconciled" in content
 
 
-def test_user_facing_message_layer_hides_internal_terms() -> None:
+def test_user_facing_message_layer_hides_internal_terms_and_idle_status() -> None:
     ux = read("user_experience_messages.js")
     dashboard_ux = read("dashboard_user_messages.js")
     google_ux = read("google_activity_user_messages.js")
@@ -86,7 +88,9 @@ def test_user_facing_message_layer_hides_internal_terms() -> None:
     assert "HTTP\\s*\\d+" in ux
     assert "console.warn" in ux
     assert ".delete-operation-status.notice" in ux
-    assert "최근 조회 결과" in dashboard_ux
+    assert "status.hidden = Boolean(result.hidden)" in ux
+    assert '".stats small"' in dashboard_ux
+    assert "card.hidden = !needsAction" in dashboard_ux
     assert "확인 필요" in dashboard_ux
     assert "새로 저장" in dashboard_ux
     assert "공통 전수조사기" in dashboard_ux
