@@ -40,7 +40,7 @@ def test_delete_page_keeps_only_essential_copy() -> None:
     assert "삭제할 기록이 없습니다" in template
 
 
-def test_dashboard_removes_connection_and_explanation_copy() -> None:
+def test_dashboard_removes_explanations_but_keeps_reconnection_action() -> None:
     template = read_template("user_dashboard.html")
     unwanted = [
         "MY ACTIVITY",
@@ -57,6 +57,11 @@ def test_dashboard_removes_connection_and_explanation_copy() -> None:
     for text in unwanted:
         assert text not in template
     assert 'id="extension-status-card" data-install-url="{{ extension_store_url }}" hidden' in template
+    assert 'id="retry-extension-connection"' in template
+    assert "확장 프로그램 연결 필요" in template
+    assert "다시 연결" in template
+    assert "function requestConnection()" in template
+    assert "TRACELENS_WEB_COMMAND" in template
     assert "사이트 조회" in template
     assert "최근 조회" in template
     assert "작성한 게시글·댓글" in template
