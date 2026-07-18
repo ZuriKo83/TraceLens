@@ -9,27 +9,32 @@
     if (element && clean(element.textContent) === before) element.textContent = after;
   }
 
+  function hideInternalDetails(rawText) {
+    const text = String(rawText || "");
+    if (/HTTP\s*\d+|CSRF|token|collector|ReferenceError|SyntaxError|Could not load|응답 본문|활동 ID|adapter|어댑터|service worker|서비스 워커|chrome-extension:\/\//i.test(text)) {
+      console.warn("TraceLens internal scan message:", rawText);
+      return "처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요. 문제가 계속되면 문의해 주세요.";
+    }
+    return text
+      .replace(/^오류:\s*/gim, "확인 필요 · ")
+      .replace(/공통 전수조사기(?:로)?/g, "")
+      .replace(/원문 링크\s*\d+개 확인(?:,\s*\d+개 미노출)?\.?/g, "")
+      .replace(/끝까지 확인했습니다\.?/g, "전체 기록 확인을 완료했습니다.")
+      .replace(/부분 결과로 저장했습니다\.?/g, "일부 기록만 확인했습니다. 다시 조회해 주세요.")
+      .replace(/동기화/g, "반영")
+      .replace(/전수조사|전수 확인/g, "전체 확인")
+      .replace(/행 탐색/g, "항목 확인")
+      .replace(/활동 ID/g, "항목 정보")
+      .replace(/extractor|snapshot|scope/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
   function simplifyLog() {
     const log = document.getElementById("web-scan-log");
     if (!log) return;
-    let text = String(log.textContent || "");
-    if (/HTTP\s*\d+|collector|token|CSRF|응답 본문|ReferenceError|SyntaxError|Could not load/i.test(text)) {
-      text = "처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.";
-    } else {
-      text = text
-        .replace(/^오류:\s*/gim, "확인 필요 · ")
-        .replace(/공통 전수조사기(?:로)?/g, "")
-        .replace(/원문 링크\s*\d+개 확인(?:,\s*\d+개 미노출)?\.?/g, "")
-        .replace(/끝까지 확인했습니다\.?/g, "")
-        .replace(/부분 결과로 저장했습니다\.?/g, "일부 기록은 확인하지 못했습니다.")
-        .replace(/동기화/g, "목록 반영")
-        .replace(/전수조사|전수 확인/g, "전체 확인")
-        .replace(/행 탐색/g, "항목 확인")
-        .replace(/활동 ID/g, "항목 정보")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-    }
-    if (text && log.textContent !== text) log.textContent = text;
+    const next = hideInternalDetails(log.textContent || "");
+    if (next && log.textContent !== next) log.textContent = next;
   }
 
   function polish() {
@@ -64,6 +69,11 @@
     document.querySelectorAll(".scan-count").forEach((count) => {
       const match = clean(count.textContent).match(/(\d+)개 확인\s*·\s*(\d+)개 신규/);
       if (match) count.textContent = `${match[1]}개 확인 · ${match[2]}개 새로 저장`;
+    });
+
+    document.querySelectorAll(".scan-detail, .scan-message, .platform-message, .task-message").forEach((element) => {
+      const next = hideInternalDetails(element.textContent || "");
+      if (next && element.textContent !== next) element.textContent = next;
     });
 
     simplifyLog();
