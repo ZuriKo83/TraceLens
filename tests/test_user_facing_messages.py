@@ -94,6 +94,7 @@ def test_delete_outcomes_explain_list_and_credit_result() -> None:
     assert "목록에 그대로 두었습니다" in copy
     assert 'hidden: true' in copy
     assert 'status.hidden = Boolean(result.hidden)' in copy
+    assert '/확장 프로그램.*(?:연결됨|연결 확인 중)/' in copy
 
 
 def test_internal_details_are_hidden_from_user_messages() -> None:
