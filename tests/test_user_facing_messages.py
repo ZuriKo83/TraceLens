@@ -56,7 +56,6 @@ def test_dashboard_removes_connection_and_explanation_copy() -> None:
     ]
     for text in unwanted:
         assert text not in template
-    assert 'id="extension-status-card"' in template
     assert 'id="extension-status-card" data-install-url="{{ extension_store_url }}" hidden' in template
     assert "사이트 조회" in template
     assert "최근 조회" in template
@@ -121,6 +120,16 @@ def test_dashboard_defensively_hides_legacy_annotations() -> None:
     assert '".user-hero .lead"' in copy
     assert '".stats small"' in copy
     assert '"#web-scan-help"' in copy
-    assert "card.hidden = !needsAction" in copy
+    assert 'dataset.tracelensExtension === "connected"' in copy
     assert "확인 필요" in copy
     assert "새로 저장" in copy
+
+
+def test_all_platform_progress_lines_are_simplified() -> None:
+    dashboard = read_extension("dashboard_user_messages.js")
+    popup = read_extension("popup.js")
+    for content in (dashboard, popup):
+        assert "taskLine" in content
+        assert "개 새로 저장" in content
+        assert "해당 사이트에 로그인한 뒤 다시 조회해 주세요" in content
+        assert "사이트 응답이 늦어 조회를 마치지 못했습니다" in content
