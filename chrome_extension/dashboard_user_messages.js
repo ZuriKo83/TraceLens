@@ -6,6 +6,14 @@
 
   function hideInternalDetails(rawText) {
     const text = String(rawText || "");
+    const taskLine = text.match(/^([✓✕])\s*([^:]+):\s*(.*)$/s);
+    if (taskLine) {
+      const [, mark, label, detail] = taskLine;
+      const friendlyDetail = hideInternalDetails(detail);
+      return mark === "✓"
+        ? `${clean(label).replace(/\b내\s*/g, "")} · ${friendlyDetail}`
+        : `${clean(label).replace(/\b내\s*/g, "")} · ${friendlyDetail}`;
+    }
     if (/로그인 상태를 확인하지 못|로그인된 .*?(?:프로필|계정|ID|주소).*찾지 못/.test(text)) {
       return "해당 사이트에 로그인한 뒤 다시 조회해 주세요.";
     }
@@ -25,6 +33,7 @@
       .replace(/원문 링크\s*\d+개 확인(?:,\s*\d+개 미노출)?\.?/g, "")
       .replace(/끝까지 확인했습니다\.?/g, "")
       .replace(/부분 결과로 저장했습니다\.?/g, "일부 기록만 확인했습니다. 다시 조회해 주세요.")
+      .replace(/(\d+)개 확인,\s*(\d+)개 신규/g, "$1개 확인 · $2개 새로 저장")
       .replace(/(\d+)개 신규/g, "$1개 새로 저장")
       .replace(/동기화/g, "반영")
       .replace(/전수조사|전수 확인/g, "전체 확인")
