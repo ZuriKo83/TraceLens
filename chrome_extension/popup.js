@@ -34,18 +34,34 @@ let selectedSites = new Set(SITE_CATALOG.map((site) => site.id));
 let currentConfig = null;
 
 function friendlyLine(value) {
-  let text = String(value || "").trim();
-  if (!text) return "";
-  if (/HTTP\s*\d+|collector|token|CSRF|서버|응답 본문|ReferenceError|SyntaxError|Could not load|https?:\/\//i.test(text)) {
-    console.warn("TraceLens internal popup message:", text);
+  const original = String(value || "").trim();
+  if (!original) return "";
+  const taskLine = original.match(/^([✓✕])\s*([^:]+):\s*(.*)$/s);
+  if (taskLine) {
+    const [, , label, detail] = taskLine;
+    return `${label.replace(/\b내\s*/g, "").trim()} · ${friendlyLine(detail)}`;
+  }
+  if (/로그인 상태를 확인하지 못|로그인된 .*?(?:프로필|계정|ID|주소).*찾지 못/.test(original)) {
+    return "해당 사이트에 로그인한 뒤 다시 조회해 주세요.";
+  }
+  if (/본인 활동 페이지 확인에 실패|활동 페이지를 확인하지 못/.test(original)) {
+    return "해당 사이트의 활동 페이지를 확인하지 못했습니다. 로그인 상태를 확인한 뒤 다시 조회해 주세요.";
+  }
+  if (/페이지 로딩 시간이 초과|조회 탭을 찾을 수 없/.test(original)) {
+    return "사이트 응답이 늦어 조회를 마치지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  }
+  if (/HTTP\s*\d+|collector|token|CSRF|서버|응답 본문|ReferenceError|SyntaxError|Could not load|https?:\/\//i.test(original)) {
+    console.warn("TraceLens internal popup message:", original);
     return "처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.";
   }
-  return text
+  return original
     .replace(/^오류:\s*/i, "")
     .replace(/공통 전수조사기(?:로)?/g, "")
     .replace(/원문 링크\s*\d+개 확인(?:,\s*\d+개 미노출)?\.?/g, "")
     .replace(/끝까지 확인했습니다\.?/g, "")
     .replace(/부분 결과로 저장했습니다\.?/g, "일부 기록은 확인하지 못했습니다.")
+    .replace(/(\d+)개 확인,\s*(\d+)개 신규/g, "$1개 확인 · $2개 새로 저장")
+    .replace(/(\d+)개 신규/g, "$1개 새로 저장")
     .replace(/동기화/g, "반영")
     .replace(/전수조사|전수 확인/g, "전체 확인")
     .replace(/행 탐색/g, "항목 확인")
