@@ -61,7 +61,8 @@
   function polishConnectionCard() {
     const card = document.getElementById("extension-status-card");
     if (!card) return;
-    if (document.documentElement.dataset.tracelensExtension === "connected") {
+    const root = document.documentElement.dataset;
+    if (root.tracelensExtension === "connected" || root.tracelensExternalBridge === "connected") {
       card.hidden = true;
     }
   }
@@ -126,6 +127,6 @@
     });
   }
 
-  new MutationObserver(schedule).observe(document.documentElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden", "class", "data-tracelens-extension"]});
+  new MutationObserver(schedule).observe(document.documentElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden", "class", "data-tracelens-extension", "data-tracelens-external-bridge"]});
   schedule();
 })();
