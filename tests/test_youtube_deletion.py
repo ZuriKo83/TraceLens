@@ -14,6 +14,7 @@ def test_resilient_deletion_engine_and_shared_youtube_scanner_are_loaded() -> No
     worker = read(EXTENSION / "service_worker.js")
     assert manifest["version"] == "1.1.0"
     assert manifest["content_scripts"][0]["js"] == [
+        "extension_context_guard.js",
         "content_script.js",
         "user_experience_messages.js",
         "dashboard_user_messages.js",
