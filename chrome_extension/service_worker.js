@@ -1,5 +1,6 @@
 importScripts(
   "background.js",
+  "external_web_bridge.js",
   "youtube_delete_page.js",
   "youtube_activity_collector.js",
   "deletion_engine_resilient.js",
