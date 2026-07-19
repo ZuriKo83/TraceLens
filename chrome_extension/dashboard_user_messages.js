@@ -58,15 +58,6 @@
     ].join(",")).forEach((element) => { element.hidden = true; });
   }
 
-  function polishConnectionCard() {
-    const card = document.getElementById("extension-status-card");
-    if (!card) return;
-    const root = document.documentElement.dataset;
-    if (root.tracelensExtension === "connected" || root.tracelensExternalBridge === "connected") {
-      card.hidden = true;
-    }
-  }
-
   function polishResults() {
     document.querySelectorAll(".scan-status").forEach((status) => {
       const text = clean(status.textContent);
@@ -113,7 +104,6 @@
 
   function polish() {
     hideNonessentialElements();
-    polishConnectionCard();
     polishResults();
     polishDynamicMessages();
   }
@@ -127,6 +117,6 @@
     });
   }
 
-  new MutationObserver(schedule).observe(document.documentElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden", "class", "data-tracelens-extension", "data-tracelens-external-bridge"]});
+  new MutationObserver(schedule).observe(document.documentElement, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden", "class"]});
   schedule();
 })();
