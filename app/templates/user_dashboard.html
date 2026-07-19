@@ -4,23 +4,13 @@
 <meta name="tracelens-extension-token" content="{{ extension_token }}">
 <meta name="tracelens-server-url" content="{{ extension_server }}">
 <meta name="tracelens-user-email" content="{{ user.email }}">
-<style>
-.extension-status-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}.extension-status-actions .button{padding:7px 10px;font-size:.84rem}
-</style>
 {% endblock %}
 {% block content %}
 <section class="dashboard-hero user-hero">
   <div><h1>내 활동</h1></div>
-  <div class="extension-status-card" id="extension-status-card" data-install-url="{{ extension_store_url }}" hidden>
+  <div class="extension-status-card" id="extension-status-card" data-install-url="{{ extension_store_url }}"{% if extension_store_url %} role="link" tabindex="0" aria-label="Chrome 확장 프로그램 설치 페이지 열기"{% endif %}>
     <span class="status-dot"></span>
-    <div>
-      <b id="extension-status-title">확장 프로그램 연결 필요</b>
-      <small id="extension-status-text"></small>
-      <div class="extension-status-actions">
-        <button class="button secondary" id="retry-extension-connection" type="button">다시 연결</button>
-        {% if extension_store_url %}<a class="button secondary" id="install-extension-link" href="{{ extension_store_url }}" target="_blank" rel="noopener">설치</a>{% endif %}
-      </div>
-    </div>
+    <div><b id="extension-status-title">확장 프로그램 연결 확인 중</b><small id="extension-status-text">대시보드를 열면 자동 연결됩니다.</small></div>
   </div>
 </section>
 
@@ -54,7 +44,7 @@
   </div>
 
   <div class="web-scan-actions">
-    <button class="button primary web-scan-button" type="button" id="web-start-scan" disabled>조회 준비 중</button>
+    <button class="button primary web-scan-button" type="button" id="web-start-scan" disabled>확장 프로그램 연결 확인 중</button>
   </div>
 
   <div class="web-scan-progress" id="web-scan-progress" hidden>
@@ -139,7 +129,6 @@
   const card = document.getElementById('extension-status-card');
   const title = document.getElementById('extension-status-title');
   const statusText = document.getElementById('extension-status-text');
-  const retryConnectionButton = document.getElementById('retry-extension-connection');
   const startButton = document.getElementById('web-start-scan');
   const siteGrid = document.getElementById('web-site-grid');
   const countLabel = document.getElementById('web-selection-count');
@@ -150,8 +139,19 @@
   const scanLog = document.getElementById('web-scan-log');
   let connected = false;
   let scanning = false;
-  let connectionTimer = null;
   const installUrl = (card.dataset.installUrl || '').trim();
+
+  function openExtensionStore() {
+    if (!connected && installUrl) window.open(installUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  if (installUrl) {
+    card.classList.add('install-link');
+    card.addEventListener('click', openExtensionStore);
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openExtensionStore(); }
+    });
+  }
 
   const inputs = () => [...siteGrid.querySelectorAll('input[type="checkbox"]')];
   const selectedSites = () => inputs().filter((input) => input.checked).map((input) => input.value);
@@ -161,17 +161,13 @@
     startButton.disabled = !connected || scanning || count === 0;
   };
 
-  function resetRetryButton() {
-    retryConnectionButton.disabled = false;
-    retryConnectionButton.textContent = '다시 연결';
-  }
-
-  function setConnected() {
+  function setConnected(userEmail) {
     connected = true;
-    if (connectionTimer) clearTimeout(connectionTimer);
-    card.hidden = true;
+    card.hidden = false;
+    card.classList.add('connected');
     card.classList.remove('install-link');
-    resetRetryButton();
+    title.textContent = '확장 프로그램 자동 연결됨';
+    statusText.textContent = userEmail || '{{ user.email }}';
     startButton.textContent = '조회 시작';
     refreshSelection();
   }
@@ -181,30 +177,12 @@
     card.hidden = false;
     card.classList.remove('connected');
     if (installUrl) card.classList.add('install-link');
-    title.textContent = '확장 프로그램 연결 필요';
-    statusText.textContent = message && !/Receiving end does not exist|Could not establish connection|Extension context invalidated|message port closed/i.test(message)
-      ? message
-      : '확장 프로그램을 새로고침한 뒤 다시 연결해 주세요.';
-    resetRetryButton();
-    startButton.textContent = '조회 준비 필요';
+    title.textContent = '확장 프로그램이 필요합니다';
+    statusText.textContent = message || (installUrl ? '클릭하여 Chrome 확장 프로그램을 설치하세요.' : 'Chrome 확장 프로그램을 설치하거나 새로고침하세요.');
+    startButton.textContent = '확장 프로그램 연결 필요';
     refreshSelection();
   }
 
-  function requestConnection() {
-    if (connected) return;
-    card.hidden = false;
-    title.textContent = '확장 프로그램 연결 중';
-    statusText.textContent = '';
-    retryConnectionButton.disabled = true;
-    retryConnectionButton.textContent = '연결 중…';
-    window.dispatchEvent(new CustomEvent('TRACELENS_WEB_COMMAND', {detail: {type: 'PING'}}));
-    if (connectionTimer) clearTimeout(connectionTimer);
-    connectionTimer = setTimeout(() => {
-      if (!connected) setDisconnected();
-    }, 1400);
-  }
-
-  retryConnectionButton.addEventListener('click', requestConnection);
   inputs().forEach((input) => input.addEventListener('change', refreshSelection));
   document.getElementById('select-all-sites').addEventListener('click', () => { inputs().forEach((input) => input.checked = true); refreshSelection(); });
   document.getElementById('clear-all-sites').addEventListener('click', () => { inputs().forEach((input) => input.checked = false); refreshSelection(); });
@@ -228,7 +206,7 @@
   window.addEventListener('TRACELENS_EXTENSION_EVENT', (event) => {
     const detail = event.detail || {};
     if (detail.type === 'CONNECTION') {
-      detail.connected ? setConnected() : setDisconnected(detail.error);
+      detail.connected ? setConnected(detail.userEmail) : setDisconnected(detail.error);
       return;
     }
     if (detail.type === 'SCAN_STARTED') { progressBar.style.width = '30%'; return; }
@@ -254,7 +232,7 @@
   });
 
   window.dispatchEvent(new CustomEvent('TRACELENS_WEB_COMMAND', {detail: {type: 'PING'}}));
-  connectionTimer = setTimeout(() => { if (!connected) setDisconnected(); }, 1800);
+  setTimeout(() => { if (!connected) setDisconnected(); }, 1800);
   refreshSelection();
 
   const activityGroups = () => [...document.querySelectorAll('.activity-group')];
