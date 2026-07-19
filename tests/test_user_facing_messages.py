@@ -40,15 +40,13 @@ def test_delete_page_keeps_only_essential_copy() -> None:
     assert "삭제할 기록이 없습니다" in template
 
 
-def test_dashboard_removes_explanations_but_keeps_reconnection_action() -> None:
+def test_dashboard_restores_original_connection_section_only() -> None:
     template = read_template("user_dashboard.html")
     unwanted = [
         "MY ACTIVITY",
         "웹에서 바로 조회",
         "조회할 사이트를 선택하세요",
         "확장 프로그램 팝업을 열지 않아도 됩니다",
-        "확장 프로그램 연결 확인 중",
-        "확장 프로그램 자동 연결됨",
         "플랫폼별 실행 결과",
         "게시글·댓글처럼 나뉜 조회",
         "영상·SNS·커뮤니티",
@@ -56,12 +54,14 @@ def test_dashboard_removes_explanations_but_keeps_reconnection_action() -> None:
     ]
     for text in unwanted:
         assert text not in template
-    assert 'id="extension-status-card" data-install-url="{{ extension_store_url }}" hidden' in template
-    assert 'id="retry-extension-connection"' in template
-    assert "확장 프로그램 연결 필요" in template
-    assert "다시 연결" in template
-    assert "function requestConnection()" in template
-    assert "TRACELENS_WEB_COMMAND" in template
+    assert 'id="extension-status-card" data-install-url="{{ extension_store_url }}"' in template
+    assert "확장 프로그램 연결 확인 중" in template
+    assert "대시보드를 열면 자동 연결됩니다." in template
+    assert "확장 프로그램 자동 연결됨" in template
+    assert "확장 프로그램이 필요합니다" in template
+    assert "function openExtensionStore()" in template
+    assert 'id="retry-extension-connection"' not in template
+    assert "function requestConnection()" not in template
     assert "사이트 조회" in template
     assert "최근 조회" in template
     assert "작성한 게시글·댓글" in template
@@ -126,7 +126,7 @@ def test_dashboard_defensively_hides_legacy_annotations() -> None:
     assert '".user-hero .lead"' in copy
     assert '".stats small"' in copy
     assert '"#web-scan-help"' in copy
-    assert 'dataset.tracelensExtension === "connected"' in copy
+    assert "polishConnectionCard" not in copy
     assert "확인 필요" in copy
     assert "새로 저장" in copy
 
