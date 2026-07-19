@@ -223,7 +223,7 @@
         if (found.has(target.id)) failures.push({id: target.id, reason: "새로고침 후에도 동일한 항목이 Google 내 활동에 남아 있습니다."});
         else if (!verification.complete) failures.push({id: target.id, reason: "Google 내 활동 전체 확인이 끝나지 않아 결과를 확정할 수 없습니다."});
         else if (attempted.has(target.id)) verifiedDeletedIds.push(target.id);
-        else if (unmatched.has(target.id) && first.discoveryComplete === true) alreadyMissingIds.push(target.id);
+        else if (unmatched.has(target.id)) failures.push({id: target.id, reason: "Google 내 활동에서 대상을 정확히 특정하지 못해 TraceLens 목록에 유지합니다."});
         else failures.push({id: target.id, reason: "삭제 버튼 클릭 기록이 없어 삭제 여부를 확정할 수 없습니다."});
       }
 

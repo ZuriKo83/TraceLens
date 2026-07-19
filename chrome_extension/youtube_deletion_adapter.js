@@ -2,6 +2,7 @@
   const COMMENT_TASK_URL = "https://myactivity.google.com/page?hl=ko&utm_medium=web&utm_source=youtube&page=youtube_comments";
   const LIVE_CHAT_TASK_URL = "https://myactivity.google.com/page?hl=ko&utm_medium=web&utm_source=youtube&page=youtube_live_chat";
   const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+  const meaningfulCharacters = (value) => clean(value).match(/[\p{L}\p{N}]/gu)?.length || 0;
 
   function parseUrl(value) {
     try { return value ? new URL(value, "https://www.youtube.com") : null; } catch { return null; }
@@ -38,8 +39,17 @@
         const rawSourceUrl = raw?.sourceUrl || raw?.source_url || originalLocator.source_url || "";
         const urlCommentId = clean(parseUrl(rawSourceUrl)?.searchParams.get("lc"));
         const title = clean(raw?.title || originalLocator.title);
-        const content = clean(raw?.content || originalLocator.content);
+        const originalContent = clean(raw?.content || originalLocator.content);
         const sourceUrl = canonicalYouTubeUrl(rawSourceUrl);
+        const sourceKey = sourceIdentity(sourceUrl);
+        const shortContentFallback = Boolean(
+          originalContent
+          && meaningfulCharacters(originalContent) === 0
+          && sourceKey
+          && title.length >= 8
+          && !/^YouTube (?:동영상|실시간 스트리밍)$/i.test(title)
+        );
+        const content = shortContentFallback ? title : originalContent;
         if (!title && !content && !sourceUrl && !urlCommentId) continue;
         const id = clean(raw?.id) || `target-${output.length + 1}`;
         if (seen.has(id)) continue;
@@ -49,9 +59,11 @@
         const parsedActivityId = Number(raw?.activityId || raw?.activity_id || idFallback || 0);
         const locator = {
           ...originalLocator,
+          content,
           comment_id: urlCommentId || null,
           activity_token: null,
           legacy_activity_token: clean(originalLocator.activity_token || originalLocator.comment_id) || null,
+          original_short_content: shortContentFallback ? originalContent : null,
         };
         output.push({
           id,
@@ -61,8 +73,9 @@
           content,
           commentId: urlCommentId,
           sourceUrl,
-          sourceKey: sourceIdentity(sourceUrl),
+          sourceKey,
           locator,
+          shortContentFallback,
         });
       }
       return output;

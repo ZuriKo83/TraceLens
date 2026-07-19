@@ -16,17 +16,31 @@ def test_manifest_has_required_hosts_and_current_version() -> None:
     assert "https://www.threads.com/*" in manifest["host_permissions"]
     assert "https://www.instagram.com/*" in manifest["host_permissions"]
     assert "https://github.com/*" not in manifest["host_permissions"]
-    assert manifest["content_scripts"][0]["js"] == ["content_script.js"]
+    assert manifest["content_scripts"][0]["js"] == [
+        "content_script.js",
+        "user_experience_messages.js",
+        "dashboard_user_messages.js",
+    ]
+    assert manifest["content_scripts"][1]["matches"] == ["https://myactivity.google.com/*"]
+    assert manifest["content_scripts"][1]["js"] == ["google_activity_user_messages.js"]
     assert set(manifest["permissions"]) == {"activeTab", "storage", "tabs", "scripting"}
 
 
 def test_popup_uses_authenticated_user_token() -> None:
     popup = read("popup.js")
+    popup_html = read("popup.html")
     assert "collectorToken" in popup
     assert "Authorization" in popup
     assert "threads" in popup
     assert "github" not in popup.lower()
-    assert "웹 앱 로그인·연결" in read("popup.html")
+    assert "TraceLens 로그인" in popup_html
+    assert "진행 상태" not in popup_html
+    assert 'id="connection-card" class="connection-card" hidden' in popup_html
+    assert 'id="log-wrap" class="log-wrap" hidden' in popup_html
+    assert "확인 필요" in popup
+    assert "처리 중 문제가 발생했습니다" in popup
+    assert "오류: ${error.message}" not in popup
+    assert "workspace" not in popup
 
 
 def test_content_script_connects_from_logged_in_dashboard() -> None:
@@ -60,6 +74,36 @@ def test_delete_page_uses_current_origin_and_owns_credit_sync() -> None:
     assert "reconcileStoredDeletionStatus" in content
     assert "renderedActivityIds" in content
     assert "serverRowsReconciled" in content
+
+
+def test_user_facing_message_layer_hides_internal_terms_and_idle_status() -> None:
+    ux = read("user_experience_messages.js")
+    dashboard_ux = read("dashboard_user_messages.js")
+    google_ux = read("google_activity_user_messages.js")
+    assert "삭제 완료" in ux
+    assert "삭제 보류" in ux
+    assert "목록 정리 완료" in ux
+    assert "삭제권은 사용되지 않았습니다" in ux
+    assert "처리 중 문제가 발생했습니다" in ux
+    assert "HTTP\\s*\\d+" in ux
+    assert "console.warn" in ux
+    assert ".delete-operation-status.notice" in ux
+    assert "status.hidden = Boolean(result.hidden)" in ux
+    assert '".stats small"' in dashboard_ux
+    assert "card.hidden = !needsAction" in dashboard_ux
+    assert "확인 필요" in dashboard_ux
+    assert "새로 저장" in dashboard_ux
+    assert "공통 전수조사기" in dashboard_ux
+    assert "안전을 위해 삭제하지" in google_ux
+    assert "삭제 결과를 확인하고 있습니다" in google_ux
+
+
+def test_youtube_scan_messages_are_plain_language() -> None:
+    collector = read("youtube_activity_collector.js")
+    assert "YouTube 조회 기능을 불러오지 못했습니다" in collector
+    assert "원문을 바로 열 수 없는 항목" in collector
+    assert "공통 전수조사기로 확인했습니다" not in collector
+    assert "이동된 주소" not in collector
 
 
 def test_delete_api_paths_are_dispatched_to_account_tools_app() -> None:

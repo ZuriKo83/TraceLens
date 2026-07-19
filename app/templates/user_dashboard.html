@@ -7,11 +7,7 @@
 {% endblock %}
 {% block content %}
 <section class="dashboard-hero user-hero">
-  <div>
-    <p class="eyebrow">MY ACTIVITY</p>
-    <h1>내가 작성한 게시글·댓글</h1>
-    <p class="lead"><b>{{ user.email }}</b> 계정의 보관함입니다. 사이트의 실제 조회 기준은 현재 Chrome에 로그인된 계정입니다.</p>
-  </div>
+  <div><h1>내 활동</h1></div>
   <div class="extension-status-card" id="extension-status-card" data-install-url="{{ extension_store_url }}"{% if extension_store_url %} role="link" tabindex="0" aria-label="Chrome 확장 프로그램 설치 페이지 열기"{% endif %}>
     <span class="status-dot"></span>
     <div><b id="extension-status-title">확장 프로그램 연결 확인 중</b><small id="extension-status-text">대시보드를 열면 자동 연결됩니다.</small></div>
@@ -19,20 +15,16 @@
 </section>
 
 <section class="stats" aria-label="작성 기록 통계">
-  <div class="stat"><span>전체 작성 기록</span><strong>{{ total }}</strong><small>{{ platform_count }}개 플랫폼</small></div>
-  <div class="stat"><span>댓글</span><strong>{{ comment_count }}</strong><small>영상·SNS·커뮤니티</small></div>
-  <div class="stat"><span>게시글</span><strong>{{ post_count }}</strong><small>블로그·SNS 게시물</small></div>
-  <div class="stat"><span>질문·답변</span><strong>{{ answer_count }}</strong><small>지식iN 등 Q&amp;A</small></div>
+  <div class="stat"><span>전체</span><strong>{{ total }}</strong></div>
+  <div class="stat"><span>댓글</span><strong>{{ comment_count }}</strong></div>
+  <div class="stat"><span>게시글</span><strong>{{ post_count }}</strong></div>
+  <div class="stat"><span>질문·답변</span><strong>{{ answer_count }}</strong></div>
 </section>
 
 <section class="card quick-start web-scan-card">
   <div class="section-head">
-    <div>
-      <p class="card-kicker">웹에서 바로 조회</p>
-      <h2>조회할 사이트를 선택하세요</h2>
-      <p class="muted">확장 프로그램 팝업을 열지 않아도 됩니다. 아래에서 사이트를 선택하고 조회를 시작하면 설치된 확장 프로그램이 자동으로 작업합니다.</p>
-    </div>
-    <a class="button secondary" href="/supported-sites">지원 사이트 보기</a>
+    <div><h2>사이트 조회</h2></div>
+    <a class="button secondary" href="/supported-sites">지원 사이트</a>
   </div>
 
   <div class="web-site-toolbar">
@@ -42,29 +34,28 @@
   </div>
 
   <div class="web-site-grid" id="web-site-grid">
-    <label class="web-site-option"><input type="checkbox" value="youtube" checked><span><b>YouTube</b><small>내 댓글</small></span></label>
-    <label class="web-site-option"><input type="checkbox" value="instagram" checked><span><b>Instagram</b><small>내 댓글</small></span></label>
-    <label class="web-site-option"><input type="checkbox" value="threads" checked><span><b>Threads</b><small>내 게시글·답글</small></span></label>
-    <label class="web-site-option"><input type="checkbox" value="facebook" checked><span><b>Facebook</b><small>내 게시글·댓글</small></span></label>
-    <label class="web-site-option"><input type="checkbox" value="x" checked><span><b>X</b><small>내 게시글·답글</small></span></label>
-    <label class="web-site-option"><input type="checkbox" value="naver_blog" checked><span><b>네이버 블로그</b><small>내 게시글</small></span></label>
-    <label class="web-site-option"><input type="checkbox" value="naver_kin" checked><span><b>네이버 지식iN</b><small>내 질문·답변</small></span></label>
+    <label class="web-site-option"><input type="checkbox" value="youtube" checked><span><b>YouTube</b><small>댓글</small></span></label>
+    <label class="web-site-option"><input type="checkbox" value="instagram" checked><span><b>Instagram</b><small>댓글</small></span></label>
+    <label class="web-site-option"><input type="checkbox" value="threads" checked><span><b>Threads</b><small>게시글·답글</small></span></label>
+    <label class="web-site-option"><input type="checkbox" value="facebook" checked><span><b>Facebook</b><small>게시글·댓글</small></span></label>
+    <label class="web-site-option"><input type="checkbox" value="x" checked><span><b>X</b><small>게시글·답글</small></span></label>
+    <label class="web-site-option"><input type="checkbox" value="naver_blog" checked><span><b>네이버 블로그</b><small>게시글</small></span></label>
+    <label class="web-site-option"><input type="checkbox" value="naver_kin" checked><span><b>네이버 지식iN</b><small>질문·답변</small></span></label>
   </div>
 
   <div class="web-scan-actions">
     <button class="button primary web-scan-button" type="button" id="web-start-scan" disabled>확장 프로그램 연결 확인 중</button>
-    <p class="muted" id="web-scan-help">확장 프로그램이 설치되어 있으면 자동으로 연결됩니다.</p>
   </div>
 
   <div class="web-scan-progress" id="web-scan-progress" hidden>
-    <div class="progress-head"><b id="web-progress-title">조회 준비 중</b><span id="web-progress-state">대기</span></div>
+    <div class="progress-head"><b id="web-progress-title">조회 중</b><span id="web-progress-state"></span></div>
     <div class="progress-bar"><span id="web-progress-bar"></span></div>
     <pre id="web-scan-log"></pre>
   </div>
 </section>
 
 <section class="card scan-card">
-  <div class="section-head"><div><p class="card-kicker">최근 조회</p><h2>플랫폼별 실행 결과</h2><p class="muted">게시글·댓글처럼 나뉜 조회도 플랫폼 한 줄에 묶어서 표시합니다.</p></div></div>
+  <div class="section-head"><div><h2>최근 조회</h2></div></div>
   <div class="scan-group-list">
     {% for group in scan_groups %}
     <details class="scan-group">
@@ -75,9 +66,7 @@
           <span class="scan-status status-{{ group.status }}">{{ group.status_label }}</span>
         </div>
         <div class="scan-group-counts">
-          {% for entry in group.entries %}
-          <span><b>{% if entry.scope == 'live_chat' %}실시간 채팅{% else %}{{ entry.scope_label }}{% endif %}</b> {% if entry.status == 'success' and entry.found_count == 0 %}없음{% else %}{{ entry.found_count }}{% endif %}</span>
-          {% endfor %}
+          {% for entry in group.entries %}<span><b>{% if entry.scope == 'live_chat' %}실시간 채팅{% else %}{{ entry.scope_label }}{% endif %}</b> {% if entry.status == 'success' and entry.found_count == 0 %}없음{% else %}{{ entry.found_count }}{% endif %}</span>{% endfor %}
         </div>
         <time>{{ group.latest_at.strftime('%Y-%m-%d %H:%M') }}</time>
         <span class="disclosure-arrow" aria-hidden="true">⌄</span>
@@ -86,25 +75,21 @@
         {% for entry in group.entries %}
         <div class="scan-scope-row">
           <div><b>{% if entry.scope == 'live_chat' %}실시간 채팅{% else %}{{ entry.scope_label }}{% endif %}</b><span class="scan-status status-{{ entry.status }}">{{ entry.status_label }}</span></div>
-          {% if entry.status == 'success' and entry.found_count == 0 %}
-          <div class="scan-count"><b>기록 없음</b></div>
-          {% else %}
-          <div class="scan-count"><b>{{ entry.found_count }}</b>개 확인 <span>·</span> <b>{{ entry.imported_count }}</b>개 신규</div>
-          {% endif %}
-          {% if entry.message %}<p>{{ entry.message }}</p>{% endif %}
+          {% if entry.status == 'success' and entry.found_count == 0 %}<div class="scan-count"><b>기록 없음</b></div>{% else %}<div class="scan-count"><b>{{ entry.found_count }}</b>개 확인 <span>·</span> <b>{{ entry.imported_count }}</b>개 새로 저장</div>{% endif %}
+          {% if entry.message and entry.status != 'success' %}<p>{{ entry.message }}</p>{% endif %}
         </div>
         {% endfor %}
       </div>
     </details>
-    {% else %}<div class="empty compact"><strong>아직 조회 기록이 없습니다.</strong><span>위의 사이트 선택 영역에서 조회를 실행하세요.</span></div>{% endfor %}
+    {% else %}<div class="empty compact"><strong>조회 기록이 없습니다.</strong></div>{% endfor %}
   </div>
 </section>
 
 <section class="card result-card">
   <div class="section-head result-head">
-    <div><p class="card-kicker">내 보관함</p><h2>작성한 게시글·댓글</h2></div>
+    <div><h2>작성한 게시글·댓글</h2></div>
     <div class="result-head-actions">
-      <span class="result-count">{{ activity_group_count }}개 그룹 · {{ activities|length }}개 기록</span>
+      <span class="result-count">{{ activity_group_count }}개 그룹 · {{ activities|length }}개</span>
       <button class="chip-button" type="button" id="expand-activity-groups">모두 펼치기</button>
       <button class="chip-button" type="button" id="collapse-activity-groups">모두 접기</button>
     </div>
@@ -120,35 +105,21 @@
     {% for group in activity_groups %}
       <details class="activity-group">
         <summary>
-          <div class="activity-group-identity">
-            <span class="badge platform-{{ group.platform }}">{{ platform_labels.get(group.platform, group.platform) }}</span>
-            {% if group.account_label %}<span class="account-badge">{{ group.account_label }}</span>{% endif %}
-          </div>
-          <div class="activity-group-counts">
-            {% for type_count in group.type_counts %}<span><b>{{ type_count.label }}</b> {{ type_count.count }}</span>{% endfor %}
-            <span class="activity-total">총 {{ group.total }}개</span>
-          </div>
+          <div class="activity-group-identity"><span class="badge platform-{{ group.platform }}">{{ platform_labels.get(group.platform, group.platform) }}</span>{% if group.account_label %}<span class="account-badge">{{ group.account_label }}</span>{% endif %}</div>
+          <div class="activity-group-counts">{% for type_count in group.type_counts %}<span><b>{{ type_count.label }}</b> {{ type_count.count }}</span>{% endfor %}<span class="activity-total">총 {{ group.total }}개</span></div>
           {% if group.latest_at %}<time>최근 {{ group.latest_at.strftime('%Y-%m-%d') }}</time>{% endif %}
           <span class="disclosure-arrow" aria-hidden="true">⌄</span>
         </summary>
         <div class="activity-group-items">
           {% for activity in group.activities %}
           <article class="activity-row">
-            <div class="activity-meta">
-              <span>{{ activity_type_labels.get(activity.activity_type, activity.activity_type) }}</span>
-              <time>{% if activity.occurred_at %}{{ activity.occurred_at.strftime('%Y-%m-%d %H:%M') }}{% else %}날짜 미확인{% endif %}</time>
-            </div>
-            {% set parts = activity.content.split('\n', 1) %}
-            <h3>{{ parts[0] if parts else '내용 없음' }}</h3>
-            {% if parts|length > 1 and parts[1] %}<p>{{ parts[1] }}</p>{% endif %}
-            {% if activity.source_url %}<a class="source-link" href="{{ activity.source_url }}" target="_blank" rel="noopener">원문 열기 →</a>{% endif %}
+            <div class="activity-meta"><span>{{ activity_type_labels.get(activity.activity_type, activity.activity_type) }}</span><time>{% if activity.occurred_at %}{{ activity.occurred_at.strftime('%Y-%m-%d %H:%M') }}{% else %}날짜 미확인{% endif %}</time></div>
+            {% set parts = activity.content.split('\n', 1) %}<h3>{{ parts[0] if parts else '내용 없음' }}</h3>{% if parts|length > 1 and parts[1] %}<p>{{ parts[1] }}</p>{% endif %}{% if activity.source_url %}<a class="source-link" href="{{ activity.source_url }}" target="_blank" rel="noopener">원문 열기 →</a>{% endif %}
           </article>
           {% endfor %}
         </div>
       </details>
-    {% else %}
-      <div class="empty"><strong>표시할 작성 기록이 없습니다.</strong><span>{% if q or selected_platform or selected_activity_type or selected_account_label %}필터를 초기화하거나 다른 검색어를 입력하세요.{% else %}위의 사이트 선택 영역에서 조회를 실행하세요.{% endif %}</span></div>
-    {% endfor %}
+    {% else %}<div class="empty"><strong>표시할 기록이 없습니다.</strong>{% if q or selected_platform or selected_activity_type or selected_account_label %}<span>검색 조건을 변경해 주세요.</span>{% endif %}</div>{% endfor %}
   </div>
 </section>
 {% endblock %}
@@ -166,25 +137,19 @@
   const progressState = document.getElementById('web-progress-state');
   const progressBar = document.getElementById('web-progress-bar');
   const scanLog = document.getElementById('web-scan-log');
-  const help = document.getElementById('web-scan-help');
   let connected = false;
   let scanning = false;
   const installUrl = (card.dataset.installUrl || '').trim();
 
   function openExtensionStore() {
-    if (!connected && installUrl) {
-      window.open(installUrl, '_blank', 'noopener,noreferrer');
-    }
+    if (!connected && installUrl) window.open(installUrl, '_blank', 'noopener,noreferrer');
   }
 
   if (installUrl) {
     card.classList.add('install-link');
     card.addEventListener('click', openExtensionStore);
     card.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        openExtensionStore();
-      }
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openExtensionStore(); }
     });
   }
 
@@ -198,23 +163,23 @@
 
   function setConnected(userEmail) {
     connected = true;
+    card.hidden = false;
     card.classList.add('connected');
     card.classList.remove('install-link');
     title.textContent = '확장 프로그램 자동 연결됨';
     statusText.textContent = userEmail || '{{ user.email }}';
-    startButton.textContent = '선택 사이트 조회 시작';
-    help.textContent = '조회 중 각 사이트의 본인 활동 페이지가 잠시 열릴 수 있습니다.';
+    startButton.textContent = '조회 시작';
     refreshSelection();
   }
 
   function setDisconnected(message) {
     connected = false;
+    card.hidden = false;
     card.classList.remove('connected');
     if (installUrl) card.classList.add('install-link');
     title.textContent = '확장 프로그램이 필요합니다';
     statusText.textContent = message || (installUrl ? '클릭하여 Chrome 확장 프로그램을 설치하세요.' : 'Chrome 확장 프로그램을 설치하거나 새로고침하세요.');
     startButton.textContent = '확장 프로그램 연결 필요';
-    help.textContent = '설치 후 이 페이지를 새로고침하면 자동 연결됩니다.';
     refreshSelection();
   }
 
@@ -228,12 +193,13 @@
     if (!sites.length) return;
     scanning = true;
     refreshSelection();
-    startButton.textContent = '조회 진행 중…';
+    startButton.textContent = '조회 중…';
     progress.hidden = false;
-    progressTitle.textContent = `${sites.length}개 사이트 조회 중`;
-    progressState.textContent = '진행 중';
+    progress.classList.remove('error');
+    progressTitle.textContent = '조회 중';
+    progressState.textContent = `${sites.length}개 사이트`;
     progressBar.style.width = '18%';
-    scanLog.textContent = '사이트별 본인 활동 페이지를 확인하고 있습니다.\n창을 닫지 마세요.';
+    scanLog.textContent = '조회가 끝날 때까지 창을 닫지 마세요.';
     window.dispatchEvent(new CustomEvent('TRACELENS_WEB_COMMAND', {detail: {type: 'START_SCAN', sites}}));
   });
 
@@ -243,26 +209,23 @@
       detail.connected ? setConnected(detail.userEmail) : setDisconnected(detail.error);
       return;
     }
-    if (detail.type === 'SCAN_STARTED') {
-      progressBar.style.width = '30%';
-      return;
-    }
+    if (detail.type === 'SCAN_STARTED') { progressBar.style.width = '30%'; return; }
     if (detail.type !== 'SCAN_RESULT') return;
 
     scanning = false;
     if (detail.ok) {
       progressTitle.textContent = '조회 완료';
-      progressState.textContent = `${detail.completed || 0}개 작업 완료`;
+      progressState.textContent = `${detail.completed || 0}개 완료`;
       progressBar.style.width = '100%';
       scanLog.textContent = (detail.lines || ['조회가 완료되었습니다.']).join('\n');
-      startButton.textContent = '다시 조회하기';
+      startButton.textContent = '다시 조회';
       setTimeout(() => location.reload(), 1800);
     } else {
-      progressTitle.textContent = '조회 실패';
-      progressState.textContent = '오류';
+      progressTitle.textContent = '확인 필요';
+      progressState.textContent = '';
       progressBar.style.width = '100%';
       progress.classList.add('error');
-      scanLog.textContent = detail.error || '조회 중 오류가 발생했습니다.';
+      scanLog.textContent = detail.error || '조회를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.';
       startButton.textContent = '다시 시도';
       refreshSelection();
     }
@@ -273,12 +236,8 @@
   refreshSelection();
 
   const activityGroups = () => [...document.querySelectorAll('.activity-group')];
-  document.getElementById('expand-activity-groups')?.addEventListener('click', () => {
-    activityGroups().forEach((group) => { group.open = true; });
-  });
-  document.getElementById('collapse-activity-groups')?.addEventListener('click', () => {
-    activityGroups().forEach((group) => { group.open = false; });
-  });
+  document.getElementById('expand-activity-groups')?.addEventListener('click', () => { activityGroups().forEach((group) => { group.open = true; }); });
+  document.getElementById('collapse-activity-groups')?.addEventListener('click', () => { activityGroups().forEach((group) => { group.open = false; }); });
 })();
 </script>
 {% endblock %}
