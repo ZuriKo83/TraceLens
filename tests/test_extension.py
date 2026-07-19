@@ -17,6 +17,7 @@ def test_manifest_has_required_hosts_and_current_version() -> None:
     assert "https://www.instagram.com/*" in manifest["host_permissions"]
     assert "https://github.com/*" not in manifest["host_permissions"]
     assert manifest["content_scripts"][0]["js"] == [
+        "extension_context_guard.js",
         "content_script.js",
         "user_experience_messages.js",
         "dashboard_user_messages.js",
@@ -90,7 +91,8 @@ def test_user_facing_message_layer_hides_internal_terms_and_idle_status() -> Non
     assert ".delete-operation-status.notice" in ux
     assert "status.hidden = Boolean(result.hidden)" in ux
     assert '".stats small"' in dashboard_ux
-    assert "card.hidden = !needsAction" in dashboard_ux
+    assert "hideNonessentialElements" in dashboard_ux
+    assert "extension-status-card" not in dashboard_ux
     assert "확인 필요" in dashboard_ux
     assert "새로 저장" in dashboard_ux
     assert "공통 전수조사기" in dashboard_ux
