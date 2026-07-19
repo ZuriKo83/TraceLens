@@ -33,14 +33,6 @@
   "background": {
     "service_worker": "service_worker.js"
   },
-  "externally_connectable": {
-    "matches": [
-      "https://tracelens.kr/*",
-      "https://www.tracelens.kr/*",
-      "http://localhost/*",
-      "http://127.0.0.1/*"
-    ]
-  },
   "content_scripts": [
     {
       "matches": [
