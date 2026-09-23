@@ -1,0 +1,18 @@
+[Unit]
+Description=TraceLens RQ Worker
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+Requires=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=zuri
+Group=zuri
+WorkingDirectory=/home/zuri/Desktop/TraceLens
+EnvironmentFile=/home/zuri/Desktop/TraceLens/.env
+ExecStart=/home/zuri/Desktop/TraceLens/start_worker.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

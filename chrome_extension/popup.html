@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TraceLens</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <h1>TraceLens</h1>
+      <button id="open-dashboard" class="icon-button" title="내 활동 열기">↗</button>
+    </header>
+
+    <section id="connection-card" class="connection-card" hidden>
+      <div class="section-title">
+        <h2>로그인 필요</h2>
+        <span id="connection-state" class="state"><i></i></span>
+      </div>
+      <div id="connected-user" class="explain-box"></div>
+      <button id="open-login" class="secondary full">TraceLens 로그인</button>
+    </section>
+
+    <section id="scan-wrap" hidden>
+      <div class="section-title">
+        <h2>사이트 조회</h2>
+        <span id="selection-count" class="count">0개 선택</span>
+      </div>
+      <div class="select-actions">
+        <button id="select-all" type="button">전체 선택</button>
+        <button id="select-default" type="button">기본 선택</button>
+        <button id="clear-sites" type="button">선택 해제</button>
+      </div>
+      <div id="site-options" class="site-grid global-site-grid"></div>
+      <button id="scan-sites" class="primary">조회</button>
+    </section>
+
+    <section id="manual-card" class="manual-card" hidden>
+      <div class="section-title"><h2>현재 페이지 조회</h2></div>
+      <button id="capture-current" class="secondary full">현재 페이지 조회</button>
+    </section>
+
+    <div id="log-wrap" class="log-wrap" hidden>
+      <pre id="log" aria-live="polite"></pre>
+    </div>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
