@@ -2,6 +2,7 @@ import hashlib
 import json
 import re
 import secrets
+import httpx
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -9,7 +10,7 @@ from urllib.parse import quote, urlparse
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, inspect, or_, select, text
@@ -20,7 +21,7 @@ from rq.job import Job
 
 from app.config import get_settings
 from app.db import Base, engine, get_db
-from app.dependencies import collector_user
+from app.dependencies import collector_user, current_user
 from app.models import Activity, AuthToken, CollectorToken, ScanArchiveBatch, ScanLog, User, UserEmail, VerificationCode, utcnow
 from app.schemas import CollectorImport
 from app.rate_limit import client_key, enforce_rate_limit
@@ -896,6 +897,7 @@ def user_dashboard(
     if isinstance(user, RedirectResponse):
         return user
     extension_token = issue_collector_token(db, user)
+    request.session["browser_collector_token"] = extension_token
     data = dashboard_data(db, user.id, q, platform, activity_type, account_label)
     db.commit()
     site_summary = {
@@ -922,6 +924,64 @@ def user_dashboard(
         selected_account_label=account_label,
         **data,
     )
+
+
+SITE_BROWSER_LABELS = {
+    "youtube": "YouTube", "instagram": "Instagram", "threads": "Threads",
+    "facebook": "Facebook", "x": "X", "naver_blog": "네이버 블로그", "naver_kin": "네이버 지식iN",
+}
+
+
+@app.get("/app/site", response_class=HTMLResponse)
+def browser_site(request: Request, site: str, db: Session = Depends(get_db)):
+    user = require_web_user(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+    if site not in SITE_BROWSER_LABELS:
+        raise HTTPException(404, "지원하지 않는 사이트입니다.")
+    if not request.session.get("browser_collector_token"):
+        request.session["browser_collector_token"] = issue_collector_token(db, user)
+        db.commit()
+    return render(request, "browser_site.html", db=db, session_user=user, site=site, site_label=SITE_BROWSER_LABELS[site])
+
+
+@app.get("/api/browser/health")
+async def browser_health(user: User = Depends(current_user)):
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get("http://collector:3080/health")
+            response.raise_for_status()
+        return {"ok": True}
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, "서버의 수집기를 시작하지 못했습니다.") from exc
+
+
+@app.post("/api/browser/{action}")
+async def browser_command(action: str, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if action not in {"open", "frame", "input", "scan"}:
+        raise HTTPException(404, "지원하지 않는 요청입니다.")
+    require_csrf(request, request.headers.get("x-tracelens-csrf", ""))
+    data = await request.body()
+    if len(data) > 8192:
+        raise HTTPException(413, "요청 크기가 너무 큽니다.")
+    token = request.session.get("browser_collector_token")
+    if not token:
+        token = issue_collector_token(db, user)
+        db.commit()
+        request.session["browser_collector_token"] = token
+    try:
+        timeout = 900 if action == "scan" else 50
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                f"http://collector:3080/{action}",
+                content=data,
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            )
+        return Response(content=response.content, status_code=response.status_code,
+                        media_type=response.headers.get("content-type", "application/json"),
+                        headers={"Cache-Control": "no-store"})
+    except httpx.HTTPError as exc:
+        raise HTTPException(503, "서버의 수집기에 연결할 수 없습니다.") from exc
 
 
 @app.get("/app/account", response_class=HTMLResponse)

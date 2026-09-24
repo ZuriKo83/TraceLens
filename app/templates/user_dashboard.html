@@ -8,20 +8,20 @@
 {% block content %}
 <section class="dashboard-hero user-hero">
   <div><h1>내 활동</h1></div>
-  <div class="extension-status-card" id="extension-status-card" data-install-url="{{ extension_store_url }}"{% if extension_store_url %} role="link" tabindex="0" aria-label="Chrome 확장 프로그램 설치 페이지 열기"{% endif %}>
+  <div class="extension-status-card" id="extension-status-card">
     <span class="status-dot"></span>
     <div><b id="extension-status-title">수집기 연결 확인 중</b><small id="extension-status-text">로컬 수집기로 연 브라우저에서 자동 연결됩니다.</small></div>
   </div>
 </section>
 
 <section class="card" id="local-site-logins" hidden>
-  <div class="section-head"><div><h2>사이트 연결</h2><p>처음에는 각 사이트를 열어 직접 로그인하세요. 로그인 후 이 화면으로 돌아와 조회할 수 있습니다.</p></div></div>
+  <div class="section-head"><div><h2>사이트 연결</h2><p>사이트 버튼을 누르면 서버의 전용 브라우저 화면이 열립니다. 로그인 후 이 화면으로 돌아와 조회하세요.</p></div></div>
   <div class="web-site-toolbar">
     {% for value, label in [('youtube', 'YouTube'), ('instagram', 'Instagram'), ('threads', 'Threads'), ('facebook', 'Facebook'), ('x', 'X'), ('naver_blog', '네이버 블로그'), ('naver_kin', '네이버 지식iN')] %}
     <button class="chip-button" type="button" data-local-login="{{ value }}">{{ label }} 연결</button>
     {% endfor %}
   </div>
-  <p id="local-login-status" role="status">브라우저를 바꾸면 해당 브라우저에서 다시 로그인해야 합니다.</p>
+  <p id="local-login-status" role="status">사이트별 로그인은 서버의 사용자별 브라우저에 보관됩니다.</p>
 </section>
 
 <section class="stats" aria-label="작성 기록 통계">
@@ -149,19 +149,7 @@
   const scanLog = document.getElementById('web-scan-log');
   let connected = false;
   let scanning = false;
-  const installUrl = (card.dataset.installUrl || '').trim();
-
-  function openExtensionStore() {
-    if (!connected && installUrl) window.open(installUrl, '_blank', 'noopener,noreferrer');
-  }
-
-  if (installUrl) {
-    card.classList.add('install-link');
-    card.addEventListener('click', openExtensionStore);
-    card.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openExtensionStore(); }
-    });
-  }
+  const csrf = {{ csrf_token|tojson }};
 
   const inputs = () => [...siteGrid.querySelectorAll('input[type="checkbox"]')];
   const selectedSites = () => inputs().filter((input) => input.checked).map((input) => input.value);
@@ -171,13 +159,13 @@
     startButton.disabled = !connected || scanning || count === 0;
   };
 
-  function setConnected(userEmail, local, browserName) {
+  function setConnected() {
     connected = true;
     card.hidden = false;
     card.classList.add('connected');
     card.classList.remove('install-link');
-    title.textContent = local ? '로컬 수집기 연결됨' : '확장 프로그램 자동 연결됨';
-    statusText.textContent = local ? `${browserName} · 사이트 연결 후 조회하세요.` : (userEmail || '{{ user.email }}');
+    title.textContent = '서버 수집기 연결됨';
+    statusText.textContent = '사이트 연결 후 조회하세요.';
     startButton.textContent = '조회 시작';
     refreshSelection();
   }
@@ -186,9 +174,8 @@
     connected = false;
     card.hidden = false;
     card.classList.remove('connected');
-    if (installUrl) card.classList.add('install-link');
     title.textContent = '수집기를 실행하세요';
-    statusText.textContent = message || (installUrl ? '클릭하여 Chrome 확장 프로그램을 설치하세요.' : 'START_HERE.bat을 실행하고 선택한 브라우저에서 이 화면을 여세요.');
+    statusText.textContent = message || '서버의 수집기 상태를 확인하세요.';
     startButton.textContent = '수집기 연결 필요';
     refreshSelection();
   }
@@ -210,13 +197,21 @@
     progressState.textContent = `${sites.length}개 사이트`;
     progressBar.style.width = '18%';
     scanLog.textContent = '조회가 끝날 때까지 창을 닫지 마세요.';
-    window.dispatchEvent(new CustomEvent('TRACELENS_WEB_COMMAND', {detail: {type: 'START_SCAN', sites}}));
+    fetch('/api/browser/scan', {
+      method: 'POST', headers: {'Content-Type': 'application/json', 'X-TraceLens-CSRF': csrf},
+      body: JSON.stringify({sites}), cache: 'no-store'
+    }).then(async response => {
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || body.detail || '조회에 실패했습니다.');
+      window.dispatchEvent(new CustomEvent('TRACELENS_EXTENSION_EVENT', {detail: {type: 'SCAN_RESULT', ...body}}));
+    }).catch(error => window.dispatchEvent(new CustomEvent('TRACELENS_EXTENSION_EVENT',
+      {detail: {type: 'SCAN_RESULT', ok: false, error: error.message}})));
   });
 
   window.addEventListener('TRACELENS_EXTENSION_EVENT', (event) => {
     const detail = event.detail || {};
     if (detail.type === 'CONNECTION') {
-      detail.connected ? setConnected(detail.userEmail, detail.local, detail.browserName) : setDisconnected(detail.error);
+      detail.connected ? setConnected() : setDisconnected(detail.error);
       return;
     }
     if (detail.type === 'SCAN_STARTED') { progressBar.style.width = '30%'; return; }
@@ -242,7 +237,14 @@
     }
   });
 
-  window.dispatchEvent(new CustomEvent('TRACELENS_WEB_COMMAND', {detail: {type: 'PING'}}));
+  document.querySelectorAll('[data-local-login]').forEach(button => {
+    button.addEventListener('click', () => { window.location.href = '/app/site?site=' + encodeURIComponent(button.dataset.localLogin); });
+  });
+  fetch('/api/browser/health').then(response => {
+    if (!response.ok) throw new Error('서버의 수집기가 시작되지 않았습니다.');
+    setConnected();
+    document.getElementById('local-site-logins').hidden = false;
+  }).catch(error => setDisconnected(error.message));
   setTimeout(() => { if (!connected) setDisconnected(); }, 1800);
   refreshSelection();
 

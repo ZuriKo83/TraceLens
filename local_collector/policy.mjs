@@ -1,4 +1,4 @@
-export const SERVER = 'http://localhost:8021';
+export const SERVER = process.env.TRACELENS_SERVER_URL || 'http://localhost:8021';
 export const BROWSERS = Object.freeze({
   chromium: {engine: 'chromium'},
   chrome: {engine: 'chromium', channel: 'chrome'},

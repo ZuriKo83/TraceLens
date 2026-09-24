@@ -39,6 +39,11 @@ services:
     volumes:
       - .:/app
     command: ["sh", "-c", "python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8021 --reload"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8021/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -56,6 +61,19 @@ services:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
     restart: unless-stopped
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.collector
+    environment:
+      TRACELENS_SERVER_URL: http://web:8021
+      TRACELENS_BROWSER: ${TRACELENS_BROWSER:-chromium}
+    volumes:
+      - browser_profiles:/collector/profiles
+    depends_on:
+      web: {condition: service_healthy}
+    restart: unless-stopped
 volumes:
   postgres_data:
   redis_data:
+  browser_profiles:

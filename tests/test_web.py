@@ -58,7 +58,7 @@ def test_public_landing_and_login_flow() -> None:
         login(client, "owner@example.com")
         app_page = client.get("/app")
         assert "owner@example.com" in app_page.text
-        assert "확장 프로그램" in app_page.text
+        assert "서버 수집기" in app_page.text
         admin = client.get("/admin")
         assert admin.status_code == 200
         assert "ADMIN CONSOLE" in admin.text
@@ -191,6 +191,19 @@ def test_user_dashboard_contains_web_scan_controls() -> None:
         assert response.status_code == 200
         assert 'id="web-start-scan"' in response.text
         assert 'value="threads"' in response.text
+
+
+def test_server_browser_requires_login_and_csrf() -> None:
+    reset_database()
+    with TestClient(app) as client:
+        assert client.post("/api/browser/open", json={"site": "x"}).status_code == 401
+        login(client, "browser@example.com")
+        dashboard = client.get("/app")
+        assert dashboard.status_code == 200
+        site = client.get("/app/site?site=x")
+        assert site.status_code == 200
+        assert "서버에서 실행하는 전용 브라우저" in site.text
+        assert client.post("/api/browser/open", json={"site": "x"}).status_code == 400
 
 
 

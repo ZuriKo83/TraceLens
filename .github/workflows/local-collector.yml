@@ -25,3 +25,16 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium firefox
       - run: npm test
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose config --quiet
+      - run: docker compose up --build -d --wait
+      - run: curl --fail --silent http://localhost:8021/health
+      - run: docker compose exec -T collector node -e "fetch('http://localhost:3080/health').then(r => {if (!r.ok) process.exit(1)})"
+      - run: docker compose exec -T web pytest -q tests/test_web.py -k server_browser_requires_login_and_csrf
+      - if: always()
+        run: docker compose logs --tail=120 web collector && docker compose down -v
