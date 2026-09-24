@@ -481,7 +481,7 @@ def issue_collector_token(db: Session, user: User) -> str:
     db.add(CollectorToken(
         user_id=user.id,
         token_hash=hash_token(raw),
-        label="Chrome extension auto-connect",
+        label="Local browser collector",
         expires_at=now + timedelta(days=settings.collector_token_days),
     ))
     db.flush()

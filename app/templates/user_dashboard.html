@@ -10,8 +10,18 @@
   <div><h1>내 활동</h1></div>
   <div class="extension-status-card" id="extension-status-card" data-install-url="{{ extension_store_url }}"{% if extension_store_url %} role="link" tabindex="0" aria-label="Chrome 확장 프로그램 설치 페이지 열기"{% endif %}>
     <span class="status-dot"></span>
-    <div><b id="extension-status-title">확장 프로그램 연결 확인 중</b><small id="extension-status-text">대시보드를 열면 자동 연결됩니다.</small></div>
+    <div><b id="extension-status-title">수집기 연결 확인 중</b><small id="extension-status-text">로컬 수집기로 연 브라우저에서 자동 연결됩니다.</small></div>
   </div>
+</section>
+
+<section class="card" id="local-site-logins" hidden>
+  <div class="section-head"><div><h2>사이트 연결</h2><p>처음에는 각 사이트를 열어 직접 로그인하세요. 로그인 후 이 화면으로 돌아와 조회할 수 있습니다.</p></div></div>
+  <div class="web-site-toolbar">
+    {% for value, label in [('youtube', 'YouTube'), ('instagram', 'Instagram'), ('threads', 'Threads'), ('facebook', 'Facebook'), ('x', 'X'), ('naver_blog', '네이버 블로그'), ('naver_kin', '네이버 지식iN')] %}
+    <button class="chip-button" type="button" data-local-login="{{ value }}">{{ label }} 연결</button>
+    {% endfor %}
+  </div>
+  <p id="local-login-status" role="status">브라우저를 바꾸면 해당 브라우저에서 다시 로그인해야 합니다.</p>
 </section>
 
 <section class="stats" aria-label="작성 기록 통계">
@@ -44,7 +54,7 @@
   </div>
 
   <div class="web-scan-actions">
-    <button class="button primary web-scan-button" type="button" id="web-start-scan" disabled>확장 프로그램 연결 확인 중</button>
+    <button class="button primary web-scan-button" type="button" id="web-start-scan" disabled>수집기 연결 확인 중</button>
   </div>
 
   <div class="web-scan-progress" id="web-scan-progress" hidden>
@@ -161,13 +171,13 @@
     startButton.disabled = !connected || scanning || count === 0;
   };
 
-  function setConnected(userEmail) {
+  function setConnected(userEmail, local, browserName) {
     connected = true;
     card.hidden = false;
     card.classList.add('connected');
     card.classList.remove('install-link');
-    title.textContent = '확장 프로그램 자동 연결됨';
-    statusText.textContent = userEmail || '{{ user.email }}';
+    title.textContent = local ? '로컬 수집기 연결됨' : '확장 프로그램 자동 연결됨';
+    statusText.textContent = local ? `${browserName} · 사이트 연결 후 조회하세요.` : (userEmail || '{{ user.email }}');
     startButton.textContent = '조회 시작';
     refreshSelection();
   }
@@ -177,9 +187,9 @@
     card.hidden = false;
     card.classList.remove('connected');
     if (installUrl) card.classList.add('install-link');
-    title.textContent = '확장 프로그램이 필요합니다';
-    statusText.textContent = message || (installUrl ? '클릭하여 Chrome 확장 프로그램을 설치하세요.' : 'Chrome 확장 프로그램을 설치하거나 새로고침하세요.');
-    startButton.textContent = '확장 프로그램 연결 필요';
+    title.textContent = '수집기를 실행하세요';
+    statusText.textContent = message || (installUrl ? '클릭하여 Chrome 확장 프로그램을 설치하세요.' : 'START_HERE.bat을 실행하고 선택한 브라우저에서 이 화면을 여세요.');
+    startButton.textContent = '수집기 연결 필요';
     refreshSelection();
   }
 
@@ -206,7 +216,7 @@
   window.addEventListener('TRACELENS_EXTENSION_EVENT', (event) => {
     const detail = event.detail || {};
     if (detail.type === 'CONNECTION') {
-      detail.connected ? setConnected(detail.userEmail) : setDisconnected(detail.error);
+      detail.connected ? setConnected(detail.userEmail, detail.local, detail.browserName) : setDisconnected(detail.error);
       return;
     }
     if (detail.type === 'SCAN_STARTED') { progressBar.style.width = '30%'; return; }
@@ -214,12 +224,13 @@
 
     scanning = false;
     if (detail.ok) {
-      progressTitle.textContent = '조회 완료';
+      progressTitle.textContent = detail.failed ? '일부 사이트 조회 실패' : '조회 완료';
       progressState.textContent = `${detail.completed || 0}개 완료`;
       progressBar.style.width = '100%';
       scanLog.textContent = (detail.lines || ['조회가 완료되었습니다.']).join('\n');
       startButton.textContent = '다시 조회';
-      setTimeout(() => location.reload(), 1800);
+      if (!detail.failed) setTimeout(() => location.reload(), 1800);
+      refreshSelection();
     } else {
       progressTitle.textContent = '확인 필요';
       progressState.textContent = '';

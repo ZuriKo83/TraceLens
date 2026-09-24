@@ -10,3 +10,6 @@ __pycache__
 *.log
 backups
 archives
+
+node_modules/
+.local-browser/

@@ -1,0 +1,27 @@
+name: Local collector
+
+on:
+  push:
+    branches: [local-docker-development]
+  pull_request:
+    paths:
+      - 'local_collector/**'
+      - 'chrome_extension/**'
+      - '.github/workflows/local-collector.yml'
+
+jobs:
+  browser-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: local_collector
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: local_collector/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox
+      - run: npm test

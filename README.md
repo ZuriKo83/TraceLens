@@ -2,45 +2,77 @@
 
 FastAPI, PostgreSQL, Redis, RQ worker를 Docker Compose로 실행합니다. 웹 서버는 현재 컴퓨터의 `localhost:8021`에만 열립니다. 데이터베이스와 Redis는 호스트에 공개하지 않으며 Docker 볼륨에 보관됩니다.
 
-## 시작
+## Windows에서 시작
 
-Windows PowerShell:
+1. Docker Desktop을 실행하고 Node.js 22 이상을 설치합니다.
+2. 프로젝트 폴더의 `START_HERE.bat`을 실행합니다.
+3. Edge / Chrome / Firefox / Chromium 중 수집용 브라우저를 선택합니다.
+4. 열린 브라우저에서 TraceLens에 가입·로그인합니다.
+5. 대시보드의 **사이트 연결** 버튼으로 각 사이트에 직접 로그인합니다. 로그인 화면과 2단계 인증은 사용자가 직접 처리합니다.
+6. 대시보드로 돌아와 사이트를 선택하고 **조회 시작**을 누릅니다. 결과는 기존 수집 API와 중복 제거 로직을 통해 저장됩니다.
 
-```powershell
-Copy-Item .env.example .env
+최초 실행 시 `.env`가 없으면 생성합니다. 기존 `.env`는 덮어쓰지 않습니다. 배치파일은 Docker Compose 서비스와 Node.js 로컬 수집기를 실행하고, 확장 프로그램 설치 없이 동작합니다. 수집 중에는 배치파일 창과 수집용 브라우저를 열어 두세요.
+
+| 선택 | 실행 방식 |
+|---|---|
+| Edge | PC에 설치된 Microsoft Edge, 별도 프로필 |
+| Chrome | PC에 설치된 Google Chrome, 별도 프로필 |
+| Firefox | Playwright용 Firefox를 처음 실행할 때 다운로드 |
+| Chromium | Playwright용 Chromium을 처음 실행할 때 다운로드 |
+
+기존 일반 브라우저 프로필의 로그인을 가져오지 않습니다. 로그인 상태는 브라우저별 `.local-browser/` 폴더에 보관되며, Git 및 Docker 이미지에서 제외됩니다. 브라우저를 바꾸거나 사이트가 세션을 만료시키면 다시 로그인해야 합니다. 이 폴더에는 계정 세션이 있으므로 공유하지 마세요.
+
+## 직접 실행 / macOS·Linux
+
+프로젝트 루트에서 `.env.example`을 `.env`로 복사합니다(최초 한 번).
+
+```bash
 docker compose up --build -d
-docker compose logs -f web
+cd local_collector
+npm ci
+npx playwright install chromium
+node index.mjs --browser chromium
 ```
 
-macOS/Linux에서는 `cp .env.example .env` 후 동일한 Docker 명령을 실행합니다. 브라우저에서 http://localhost:8021 을 여세요. 웹 컨테이너 시작 시 Alembic 마이그레이션을 실행합니다. 코드 변경은 자동 재시작됩니다.
+`--browser edge`, `--browser chrome`, `--browser firefox`도 사용할 수 있습니다. Firefox 선택 시 `npx playwright install firefox`가 필요합니다. Linux에서 브라우저 시스템 라이브러리가 없으면 Playwright 공식 설치 안내에 따라 `npx playwright install --with-deps chromium firefox`를 실행합니다.
 
-`.env`의 `SESSION_SECRET`을 임의의 긴 값으로 바꾸세요. `POSTGRES_PASSWORD`를 바꾸려면 최초 실행 전에 영문·숫자 값으로 설정하세요. 이미 생성된 DB 볼륨의 암호는 환경 변수만 바꿔도 변경되지 않습니다. `.env`를 Git에 올리지 마세요.
+일반 브라우저에서 `http://localhost:8021`을 직접 열면 보관함을 볼 수 있지만 로컬 수집기 연결은 없습니다. 조회는 실행기가 열어 준 브라우저의 대시보드에서 진행합니다.
 
-이 브랜치에는 SMTP 발송 코드와 설정이 없습니다. 가입·재설정 번호 및 이메일 연결 링크는 개발 화면에 표시되며, 입력한 이메일의 소유 여부를 검증하지 않습니다. 외부에 공개하지 마세요. `ADMIN_EMAILS`에 사용할 이메일을 넣으면 관리자로 동기화됩니다. 실제 서버 데이터를 가져오려면 별도의 PostgreSQL 백업 및 복원 절차가 필요합니다. 새 설치는 빈 데이터베이스로 시작합니다.
+## 지원 범위와 제한
 
-```powershell
-docker compose ps
+- YouTube 댓글·실시간 채팅, Instagram 댓글, Threads 게시글·답글, Facebook 게시글·댓글, X, 네이버 블로그·지식iN의 기존 추출 코드와 본인 활동 확인 절차를 재사용합니다.
+- 수집은 **조회 시작 버튼을 누를 때** 실행됩니다. 상시 감시나 예약 수집은 포함하지 않습니다.
+- 이번 로컬 수집기는 조회·저장 범위입니다. 원본 사이트에서 삭제하는 기능은 기존 확장 프로그램에 남아 있으며 로컬 수집기에는 연결하지 않았습니다.
+- 사이트 화면 변경, 로그인 차단, CAPTCHA, 세션 만료 시 일부 사이트 조회가 실패할 수 있습니다. 로그인 자동 우회 기능은 없습니다.
+- Chromium·Firefox용 합성 페이지 통합 검사를 포함했습니다. 이 작업 환경에서는 브라우저 실행이 제한되어 통합 검사를 완료하지 못했습니다. 실제 플랫폼 계정과 설치된 Chrome·Edge의 동작은 해당 PC에서 확인해야 합니다.
+
+## 로컬 설정과 데이터
+
+`.env`의 `SESSION_SECRET`을 임의의 긴 값으로 바꾸세요. `POSTGRES_PASSWORD`는 최초 실행 전에 영문·숫자 값으로 설정하세요. 이미 생성된 DB 볼륨의 암호는 환경 변수만 바꿔도 변경되지 않습니다.
+
+SMTP 발송 코드와 설정은 제거되어 있습니다. 인증번호는 로컬 화면에 표시되며 이메일 소유 여부를 검증하지 않습니다. 외부에 공개하지 마세요. `ADMIN_EMAILS`에 사용할 이메일을 넣으면 관리자로 동기화됩니다. 새 설치는 빈 데이터베이스로 시작합니다.
+
+```bash
+docker compose logs -f web
 docker compose down
 ```
 
-`docker compose down -v`는 로컬 DB와 Redis 볼륨까지 삭제하므로 데이터가 필요하다면 실행하지 마세요.
-
-## 확장 프로그램으로 수집
-
-1. Chrome `chrome://extensions`에서 개발자 모드를 켭니다.
-2. `chrome_extension` 폴더를 압축해제된 확장 프로그램으로 로드합니다. 이미 로드했다면 새로고침합니다.
-3. http://localhost:8021 에 로그인해 대시보드를 다시 열면 로컬 토큰이 연결됩니다.
-4. 수집할 각 사이트에 동일한 Chrome 프로필로 로그인하고 조회합니다.
-
-이 브랜치의 확장 프로그램은 `localhost:8021` 또는 `127.0.0.1:8021` 서버에만 기록을 전송합니다. 기존 공개 도메인 권한과 기본 연결은 제거했습니다. 수집 대상 플랫폼의 웹페이지는 여전히 인터넷 연결이 필요합니다.
-
-## 확장 프로그램 없는 수집 검토
-
-현재 수집 코드는 Chrome 확장 프로그램의 `tabs`, `scripting` 권한과 사용자의 로그인 세션을 이용하여 각 플랫폼의 본인 활동 화면을 읽습니다. Docker의 웹 서버만 실행해서는 이 세션에 접근할 수 없습니다.
-
-우선 단계는 플랫폼에서 제공하는 공식 데이터 내보내기 파일을 사용자가 직접 업로드하고, 기존 활동 스키마에 맞춰 가져오는 방식입니다. 파일 형식과 본인 활동 검증을 플랫폼별로 구현해야 합니다. 이후 공식 OAuth/API가 해당 본인 활동 범위를 제공하는 플랫폼에 한해 계정 연결 방식을 검토할 수 있습니다. 브라우저 자동화는 로그인·2단계 인증·화면 변경과 세션 보관 문제가 있어 별도로 평가해야 합니다. **현재 확장 프로그램 없는 수집 기능은 구현되지 않았습니다.**
+`docker compose down -v`는 DB와 Redis 볼륨을 삭제합니다. `.local-browser` 폴더를 지우면 사이트 로그인 상태가 없어집니다.
 
 ## 검사
+
+로컬 수집기 테스트(플랫폼 실제 계정 사용 없음):
+
+```bash
+cd local_collector
+npm ci
+npx playwright install --with-deps chromium firefox
+npm test
+```
+
+브라우저 다운로드 없이 보안 경계와 동시 실행 제한만 검사하려면 `node --test test/policy.test.mjs`를 실행합니다.
+
+기존 Python 테스트:
 
 ```powershell
 docker compose exec web pytest -q

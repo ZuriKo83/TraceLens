@@ -20,3 +20,6 @@ archives/
 
 backups/
 *.dump
+
+node_modules/
+.local-browser/

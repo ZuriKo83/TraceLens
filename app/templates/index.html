@@ -10,7 +10,7 @@
   <div class="landing-copy">
     <p class="eyebrow">PERSONAL ACTIVITY ARCHIVE</p>
     <h1>흩어진 게시글과 댓글을<br>내 계정에서 한 번에 확인</h1>
-    <p class="lead">로컬에서 계정을 만든 뒤 Chrome 확장 프로그램이 현재 로그인된 사이트의 내 활동 페이지를 조회합니다. 다른 사용자의 기록은 계정별로 분리됩니다.</p>
+    <p class="lead">로컬에서 계정을 만든 뒤 로컬 수집기가 선택한 브라우저에서 로그인된 사이트의 내 활동 페이지를 조회합니다. 다른 사용자의 기록은 계정별로 분리됩니다.</p>
     <div class="hero-actions">
       {% if session_user %}
         <a class="button primary" href="/app">내 활동 열기</a>
@@ -21,7 +21,7 @@
     </div>
     <ul class="trust-list">
       <li>비밀번호를 수집하지 않습니다.</li>
-      <li>현재 Chrome 로그인 세션만 사용합니다.</li>
+      <li>선택한 수집용 브라우저의 로그인 세션을 사용합니다.</li>
       <li>사용자별 데이터가 분리됩니다.</li>
     </ul>
   </div>
@@ -41,7 +41,7 @@
 </section>
 <section class="feature-grid">
   <article class="feature-card"><span>1</span><h2>로컬 계정</h2><p>이메일 주소와 비밀번호로 계정을 만들고 로컬 인증번호를 입력합니다.</p></article>
-  <article class="feature-card"><span>2</span><h2>확장 프로그램 자동 연결</h2><p>로그인한 대시보드를 열면 연결 토큰이 확장 프로그램에 자동 전달됩니다.</p></article>
+  <article class="feature-card"><span>2</span><h2>로컬 수집기 연결</h2><p>브라우저를 선택해 실행하고 사이트에 로그인하면 대시보드에서 조회할 수 있습니다.</p></article>
   <article class="feature-card"><span>3</span><h2>내 기록만 조회</h2><p>사이트별 본인 활동 전용 화면에서 게시글·댓글만 수집합니다.</p></article>
 </section>
 {% endblock %}
