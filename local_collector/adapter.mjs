@@ -75,6 +75,7 @@ export async function createCollector(context, {transport = localFetch} = {}) {
     runExtractor: (...args) => sandbox.runExtractor(...args),
     assertOwnedTaskUrl: (...args) => sandbox.assertOwnedTaskUrl(...args),
     tabs: chrome.tabs,
+    scripting: chrome.scripting,
     async close() { await Promise.all([...tabs.keys()].map(id => chrome.tabs.remove(id))); },
   };
 }

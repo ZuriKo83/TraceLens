@@ -44,6 +44,10 @@ for (const [name, engine] of Object.entries({chromium, firefox})) {
       const loginPage = context.pages().find(page => page.url().startsWith('https://blog.naver.com/'));
       assert.ok(loginPage, 'The site connection should open a Naver page');
       assert.equal(await loginPage.locator('a[href="https://blog.naver.com/localtest"]').count(), 1);
+      const probe = await collector.tabs.create({url:'https://blog.naver.com/MyBlog.naver'});
+      const probeResult = await collector.scripting.executeScript({target:{tabId:probe.id}, func:() => ({url:location.href, ready:document.readyState, href:document.querySelector('a[href]')?.href})});
+      assert.equal(probeResult[0]?.result?.href, 'https://blog.naver.com/localtest', JSON.stringify(probeResult));
+      await collector.tabs.remove(probe.id);
       await dashboard.evaluate(() => window.dispatchEvent(new CustomEvent('TRACELENS_WEB_COMMAND', {detail:{type:'START_SCAN', sites:['naver_blog']}})));
       await dashboard.waitForFunction(() => events.some(e => e.type === 'SCAN_RESULT'), null, {timeout:60000});
       const result = await dashboard.evaluate(() => events.find(e => e.type === 'SCAN_RESULT'));
