@@ -53,7 +53,7 @@ if errorlevel 1 goto error
 timeout /t 3 /nobreak >nul
 
 echo [4/4] Opening TraceLens...
-start "" "http://tracelens.kr"
+start "" "http://localhost:8021"
 
 echo.
 echo TraceLens started.

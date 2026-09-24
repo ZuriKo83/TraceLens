@@ -1,0 +1,65 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tracelens
+      POSTGRES_USER: tracelens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracelens -d tracelens"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tracelens:${POSTGRES_PASSWORD:-local-development-only}@db:5432/tracelens
+      REDIS_URL: redis://redis:6379/0
+      PUBLIC_BASE_URL: http://localhost:8021
+      SECURE_COOKIES: "false"
+      DEBUG_MAGIC_LINKS: "true"
+      SMTP_HOST: ""
+      SMTP_FROM: ""
+      EXTENSION_STORE_URL: ""
+    ports:
+      - "127.0.0.1:8021:8021"
+    volumes:
+      - .:/app
+    command: ["sh", "-c", "python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8021 --reload"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+  worker:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tracelens:${POSTGRES_PASSWORD:-local-development-only}@db:5432/tracelens
+      REDIS_URL: redis://redis:6379/0
+      SMTP_HOST: ""
+      SMTP_FROM: ""
+    volumes:
+      - .:/app
+    command: ["python", "worker.py"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  redis_data:

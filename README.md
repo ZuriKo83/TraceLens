@@ -1,112 +1,49 @@
-# TraceLens
+# TraceLens 로컬 개발
 
-TraceLens는 여러 플랫폼에 흩어진 사용자의 게시글·댓글·질문·답변을 수집해 개인 보관함에서 조회하고 검색할 수 있게 하는 웹 애플리케이션과 Chrome 확장 프로그램입니다.
+FastAPI, PostgreSQL, Redis, RQ worker를 Docker Compose로 실행합니다. 웹 서버는 현재 컴퓨터의 `localhost:8021`에만 열립니다. 데이터베이스와 Redis는 호스트에 공개하지 않으며 Docker 볼륨에 보관됩니다.
 
-## 주요 기능
+## 시작
 
-- 이메일·비밀번호 로그인, 이메일 인증 및 비밀번호 재설정
-- 사용자별 활동 보관함과 플랫폼·계정·활동 유형별 검색
-- YouTube, Instagram, Threads, Facebook, X, 네이버 블로그, 네이버 지식iN 지원
-- Chrome 확장 프로그램 기반 활동 수집
-- 관리자 도구, 커뮤니티, 신고 및 이용 제한 기능
-- PostgreSQL, Redis 세션, RQ 백그라운드 작업 지원
+Windows PowerShell:
 
-## 디렉터리 구성
-
-- `app/`: FastAPI 웹 애플리케이션
-- `chrome_extension/`: Chrome 확장 프로그램
-- `alembic/`: 데이터베이스 마이그레이션
-- `scripts/`: 백업·검증·마이그레이션 도구
-- `systemd/`: Linux 서비스 정의
-- `tests/`: 자동화 테스트
-
-## 환경 설정
-
-저장소를 받은 뒤 예제 환경 파일을 복사하고 실제 값을 입력합니다.
-
-```bash
-cp .env.example .env
+```powershell
+Copy-Item .env.example .env
+docker compose up --build -d
+docker compose logs -f web
 ```
 
-최소한 다음 항목은 운영 환경에 맞게 변경해야 합니다.
+macOS/Linux에서는 `cp .env.example .env` 후 동일한 Docker 명령을 실행합니다. 브라우저에서 http://localhost:8021 을 여세요. 웹 컨테이너 시작 시 Alembic 마이그레이션을 실행합니다. 코드 변경은 자동 재시작됩니다.
 
-- `DATABASE_URL`
-- `REDIS_URL`
-- `SESSION_SECRET`
-- `PUBLIC_BASE_URL`
-- `SMTP_PASSWORD`
-- `ADMIN_EMAILS`
+`.env`의 `SESSION_SECRET`을 임의의 긴 값으로 바꾸세요. `POSTGRES_PASSWORD`를 바꾸려면 최초 실행 전에 영문·숫자 값으로 설정하세요. 이미 생성된 DB 볼륨의 암호는 환경 변수만 바꿔도 변경되지 않습니다. `.env`를 Git에 올리지 마세요.
 
-`.env`와 API 키, 비밀번호는 Git에 커밋하지 않습니다.
+로컬에서는 SMTP 전송을 끄고 인증번호 및 로그인 링크를 개발 화면에 표시합니다. `ADMIN_EMAILS`에 사용할 이메일을 넣으면 관리자로 동기화됩니다. 실제 서버 데이터를 가져오려면 별도의 PostgreSQL 백업 및 복원 절차가 필요합니다. 새 설치는 빈 데이터베이스로 시작합니다.
 
-## Linux 설치 및 실행
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-./scripts/migrate.sh
+```powershell
+docker compose ps
+docker compose down
 ```
 
-개별 프로세스 실행:
+`docker compose down -v`는 로컬 DB와 Redis 볼륨까지 삭제하므로 데이터가 필요하다면 실행하지 마세요.
 
-```bash
-./start_web.sh
-./start_worker.sh
-./start_maintenance.sh
+## 확장 프로그램으로 수집
+
+1. Chrome `chrome://extensions`에서 개발자 모드를 켭니다.
+2. `chrome_extension` 폴더를 압축해제된 확장 프로그램으로 로드합니다. 이미 로드했다면 새로고침합니다.
+3. http://localhost:8021 에 로그인해 대시보드를 다시 열면 로컬 토큰이 연결됩니다.
+4. 수집할 각 사이트에 동일한 Chrome 프로필로 로그인하고 조회합니다.
+
+이 브랜치의 확장 프로그램은 `localhost:8021` 또는 `127.0.0.1:8021` 서버에만 기록을 전송합니다. 기존 공개 도메인 권한과 기본 연결은 제거했습니다. 수집 대상 플랫폼의 웹페이지는 여전히 인터넷 연결이 필요합니다.
+
+## 확장 프로그램 없는 수집 검토
+
+현재 수집 코드는 Chrome 확장 프로그램의 `tabs`, `scripting` 권한과 사용자의 로그인 세션을 이용하여 각 플랫폼의 본인 활동 화면을 읽습니다. Docker의 웹 서버만 실행해서는 이 세션에 접근할 수 없습니다.
+
+우선 단계는 플랫폼에서 제공하는 공식 데이터 내보내기 파일을 사용자가 직접 업로드하고, 기존 활동 스키마에 맞춰 가져오는 방식입니다. 파일 형식과 본인 활동 검증을 플랫폼별로 구현해야 합니다. 이후 공식 OAuth/API가 해당 본인 활동 범위를 제공하는 플랫폼에 한해 계정 연결 방식을 검토할 수 있습니다. 브라우저 자동화는 로그인·2단계 인증·화면 변경과 세션 보관 문제가 있어 별도로 평가해야 합니다. **현재 확장 프로그램 없는 수집 기능은 구현되지 않았습니다.**
+
+## 검사
+
+```powershell
+docker compose exec web pytest -q
 ```
 
-systemd 서비스 설치:
-
-```bash
-chmod +x install_tracelens_services.sh
-APP_DIR="$PWD" APP_USER="$USER" APP_GROUP="$(id -gn)" ./install_tracelens_services.sh
-```
-
-상태 확인:
-
-```bash
-sudo systemctl status tracelens-web tracelens-worker tracelens-maintenance --no-pager
-sudo journalctl -u tracelens-web -n 100 --no-pager
-```
-
-## Windows 개발 실행
-
-```bat
-copy .env.example .env
-py -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-START_HERE.bat
-```
-
-## Chrome 확장 프로그램
-
-1. Chrome에서 `chrome://extensions`를 엽니다.
-2. 개발자 모드를 활성화합니다.
-3. `압축해제된 확장 프로그램을 로드합니다`를 선택합니다.
-4. `chrome_extension` 폴더를 지정합니다.
-
-Web Store 제출 정보는 `CHROME_WEB_STORE.md`를 참고합니다.
-
-## 공개 배포
-
-Cloudflare Tunnel을 사용하는 경우 공개 호스트의 원본 서비스는 다음과 같이 설정합니다.
-
-```text
-http://localhost:8021
-```
-
-외부 주소는 `.env`의 `PUBLIC_BASE_URL`과 일치해야 하며, 운영 환경에서는 `SECURE_COOKIES=true`를 유지합니다.
-
-## 테스트
-
-```bash
-pytest -q
-```
-
-## 관련 문서
-
-- `OPERATIONS.md`: 백업, 모니터링, Redis 및 운영 구성
-- `CHROME_WEB_STORE.md`: Chrome Web Store 등록 정보
-- `PRIVACY_POLICY.md`: 개인정보처리방침
+이전 Linux `systemd` 및 공개 배포 문서는 현재 로컬 Docker 실행에는 사용하지 않습니다.

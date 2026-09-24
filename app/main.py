@@ -1280,13 +1280,6 @@ def health():
     return {"status": "ok", "mode": "multi_user", "version": "1.0.4"}
 
 
-@app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
-def sitemap_xml():
-    return FileResponse(
-        Path(__file__).resolve().parent.parent / "sitemap.xml",
-        media_type="application/xml",
-    )
-
 @app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
 def robots_txt():
     return FileResponse(

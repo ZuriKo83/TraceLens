@@ -1,9 +1,2 @@
 User-agent: *
-Allow: /
-Disallow: /app
-Disallow: /admin
-Disallow: /api/
-Disallow: /logout
-
-Sitemap: https://tracelens.kr/sitemap.xml
-
+Disallow: /

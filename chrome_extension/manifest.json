@@ -11,10 +11,8 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://tracelens.kr/*",
-    "https://www.tracelens.kr/*",
-    "http://localhost/*",
-    "http://127.0.0.1/*",
+    "http://localhost:8021/*",
+    "http://127.0.0.1:8021/*",
     "https://www.youtube.com/*",
     "https://myactivity.google.com/*",
     "https://accounts.google.com/*",
@@ -36,10 +34,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://tracelens.kr/*",
-        "https://www.tracelens.kr/*",
-        "http://localhost/*",
-        "http://127.0.0.1/*"
+        "http://localhost:8021/*",
+        "http://127.0.0.1:8021/*"
       ],
       "js": [
         "extension_context_guard.js",
