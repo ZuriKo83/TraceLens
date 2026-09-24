@@ -34,6 +34,8 @@ services:
       SECURE_COOKIES: "false"
       DEBUG_MAGIC_LINKS: "true"
       EXTENSION_STORE_URL: ""
+      BROWSER_COLLECTOR_URL: http://collector:3080
+      BROWSER_PROFILE_DIR: /browser_profiles
     ports:
       - "127.0.0.1:8021:8021"
     volumes:
@@ -69,6 +71,8 @@ services:
     environment:
       TRACELENS_SERVER_URL: http://web:8021
       TRACELENS_BROWSER: ${TRACELENS_BROWSER:-chromium}
+      TRACELENS_COLLECTOR_HOST: 0.0.0.0
+      BROWSER_PROFILE_DIR: /collector/profiles
     volumes:
       - browser_profiles:/collector/profiles
     depends_on:

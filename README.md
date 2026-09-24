@@ -2,6 +2,8 @@
 
 FastAPI, PostgreSQL, Redis, 작업자, 브라우저 수집기를 Docker Compose에서 실행합니다. Docker를 돌리는 서버에만 설치가 필요합니다. 사용자는 Node.js, Docker, 확장 프로그램 없이 웹 브라우저로 접속합니다.
 
+최종 Linux 서버는 Docker 없이도 실행할 수 있습니다. 설치 순서와 systemd 설정은 [Linux 직접 실행 안내](deploy/linux/README.md)에 있습니다. 웹과 수집기의 내부 주소, 브라우저 프로필 경로를 환경 변수로 지정하므로 개발용 Docker 구성과 같은 애플리케이션 코드를 사용합니다.
+
 ## 서버 시작
 
 Windows 서버에서는 Docker Desktop을 실행한 뒤 `START_HERE.bat`을 실행합니다. Linux 또는 macOS 서버에서는 `.env.example`을 `.env`로 복사하고 `docker compose up --build -d`를 실행합니다. 첫 빌드는 Chromium과 Firefox를 내려받아 시간이 걸립니다.

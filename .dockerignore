@@ -13,3 +13,4 @@ archives
 
 node_modules/
 .local-browser/
+browser_profiles/

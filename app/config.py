@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./tracelens.db"
     session_secret: str = "change-this-before-public-deployment"
     public_base_url: str = "http://127.0.0.1:8021"
+    browser_collector_url: str = "http://127.0.0.1:3080"
+    browser_profile_dir: str = "./browser_profiles"
     extension_store_url: str = ""
     admin_emails: str = ""
     first_user_is_admin: bool = False

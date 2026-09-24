@@ -1,11 +1,15 @@
 import {createServer} from 'node:http';
 import {mkdir, rm} from 'node:fs/promises';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import * as playwright from 'playwright';
 import {createCollector} from './adapter.mjs';
 import {SERVER, SITES, allowedPage, selectedSites} from './policy.mjs';
 
 const engineName = process.env.TRACELENS_BROWSER === 'firefox' ? 'firefox' : 'chromium';
+const profileRoot = process.env.BROWSER_PROFILE_DIR || fileURLToPath(new URL('../browser_profiles/', import.meta.url));
+const listenHost = process.env.TRACELENS_COLLECTOR_HOST || '127.0.0.1';
+const listenPort = Number(process.env.TRACELENS_COLLECTOR_PORT || 3080);
 const sessions = new Map();
 const idleMs = 30 * 60 * 1000;
 const maxSessions = 8;
@@ -62,7 +66,7 @@ async function sessionFor(userId) {
 }
 
 async function createSession(userId) {
-  const profile = join('/collector/profiles', String(userId));
+  const profile = join(profileRoot, String(userId));
   await mkdir(profile, {recursive: true, mode: 0o700});
   const context = await playwright[engineName].launchPersistentContext(profile, {
     headless: true, viewport: {width: 1280, height: 800}, acceptDownloads: false,
@@ -81,7 +85,7 @@ async function createSession(userId) {
       return route.continue();
     });
     const collector = await createCollector(context);
-    session = {context, collector, pages: new Map(), usedAt: Date.now(), busy: false};
+    const session = {context, collector, pages: new Map(), usedAt: Date.now(), busy: false};
     sessions.set(userId, session);
     context.once('close', () => sessions.delete(userId));
     return session;
@@ -109,7 +113,7 @@ const server = createServer(async (req, res) => {
       if (existing?.busy || pending.has(userId)) return reply(res, 409, {error: '조회가 진행 중입니다.'});
       if (existing) await existing.context.close();
       sessions.delete(userId);
-      await rm(join('/collector/profiles', String(userId)), {recursive: true, force: true});
+      await rm(join(profileRoot, String(userId)), {recursive: true, force: true});
       return reply(res, 200, {ok: true});
     }
     const site = body.site;
@@ -158,4 +162,4 @@ setInterval(async () => {
     }
   }
 }, 60000).unref();
-server.listen(3080, '0.0.0.0', () => console.log(`TraceLens server collector (${engineName}) ready`));
+server.listen(listenPort, listenHost, () => console.log(`TraceLens server collector (${engineName}) ready on ${listenHost}:${listenPort}`));

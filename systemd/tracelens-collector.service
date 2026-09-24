@@ -1,0 +1,20 @@
+[Unit]
+Description=TraceLens per-user browser collector
+After=network-online.target tracelens-web.service
+Wants=network-online.target tracelens-web.service
+
+[Service]
+Type=simple
+User=tracelens
+Group=tracelens
+WorkingDirectory=/opt/tracelens
+EnvironmentFile=/etc/tracelens/tracelens.env
+StateDirectory=tracelens-browser
+StateDirectoryMode=0700
+ExecStart=/usr/bin/node /opt/tracelens/local_collector/server.mjs
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

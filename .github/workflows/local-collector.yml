@@ -25,6 +25,11 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium firefox
       - run: npm test
+      - run: |
+          TRACELENS_COLLECTOR_PORT=3081 BROWSER_PROFILE_DIR="$RUNNER_TEMP/tracelens-profiles" node server.mjs &
+          service_pid=$!
+          trap 'kill "$service_pid"' EXIT
+          curl --fail --retry 20 --retry-connrefused --retry-delay 1 --silent http://127.0.0.1:3081/health
 
   docker-smoke:
     runs-on: ubuntu-latest

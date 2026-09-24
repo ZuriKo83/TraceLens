@@ -226,7 +226,7 @@ def test_server_browser_requires_login_and_csrf(monkeypatch) -> None:
         response = client.post("/api/browser/frame", json={"site": "x"}, headers={"X-TraceLens-CSRF": csrf})
         assert response.status_code == 200 and response.content == b"image-bytes"
         assert response.headers["content-type"] == "image/jpeg"
-        assert calls[0][0] == "http://collector:3080/frame"
+        assert calls[0][0].endswith(":3080/frame")
         assert calls[0][2]["Authorization"].startswith("Bearer ")
 
 
