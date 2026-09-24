@@ -53,9 +53,12 @@ export async function createCollector(context, {transport = localFetch} = {}) {
         // Evaluate a trusted repository function, never source supplied by a webpage.
         const expression = `args => (${func.toString()})(...args)`;
         for (const frame of frames) {
-          if (!allowedPage(frame.url())) continue;
+          if (!allowedPage(frame.url())) {
+            if (frame === page.mainFrame()) throw new Error(`지원하지 않는 조회 페이지: ${frame.url()}`);
+            continue;
+          }
           try { results.push({result: await frame.evaluate(expression, args)}); }
-          catch (error) { if (frame === page.mainFrame()) throw error; }
+          catch (error) { if (frame === page.mainFrame()) throw new Error(`스크립트 실행 실패 (${frame.url()}): ${error.message}`); }
         }
         return results;
       },
