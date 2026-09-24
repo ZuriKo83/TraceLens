@@ -9,20 +9,16 @@ node -e "process.exit(Number(process.versions.node.split('.')[0]) >= 22 ? 0 : 1)
 if errorlevel 1 goto node_missing
 if not exist ".env" copy /Y ".env.example" ".env" >nul
 
-echo Select collection browser:
-echo 1. Microsoft Edge (installed)
-echo 2. Google Chrome (installed)
-echo 3. Firefox (managed, downloaded on first run)
-echo 4. Chromium (managed, downloaded on first run)
-choice /c 1234 /n /m "Browser [1-4]: "
-set "TRACELENS_BROWSER=chromium"
-if errorlevel 4 goto selected
-set "TRACELENS_BROWSER=firefox"
-if errorlevel 3 goto selected
-set "TRACELENS_BROWSER=chrome"
-if errorlevel 2 goto selected
-set "TRACELENS_BROWSER=edge"
-:selected
+if not defined TRACELENS_BROWSER (
+  if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" set "TRACELENS_BROWSER=edge"
+  if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" set "TRACELENS_BROWSER=edge"
+  if not defined TRACELENS_BROWSER if exist "%LocalAppData%\Microsoft\Edge\Application\msedge.exe" set "TRACELENS_BROWSER=edge"
+  if not defined TRACELENS_BROWSER if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "TRACELENS_BROWSER=chrome"
+  if not defined TRACELENS_BROWSER if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set "TRACELENS_BROWSER=chrome"
+  if not defined TRACELENS_BROWSER if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set "TRACELENS_BROWSER=chrome"
+  if not defined TRACELENS_BROWSER set "TRACELENS_BROWSER=chromium"
+)
+echo Collection browser: %TRACELENS_BROWSER%
 docker compose up --build -d
 if errorlevel 1 goto failed
 pushd local_collector

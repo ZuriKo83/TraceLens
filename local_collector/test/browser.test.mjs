@@ -30,7 +30,7 @@ for (const [name, engine] of Object.entries({chromium, firefox})) {
     let context;
     try {
       context = await engine.launchPersistentContext(profile, {headless: true});
-      await context.route('https://blog.naver.com/**', route => route.fulfill({contentType: 'text/html', body: `<html><body><a href="https://blog.naver.com/localtest">내 블로그</a><main><li><a class="title" href="https://blog.naver.com/localtest/123456">로컬에서 작성한 테스트 게시글</a><p>${'본인 블로그 내용입니다. '.repeat(15)}</p></li></main></body></html>`}));
+      await context.route('https://blog.naver.com/**', route => route.fulfill({contentType: 'text/html; charset=utf-8', body: `<html><head><meta charset="utf-8"></head><body><a href="https://blog.naver.com/localtest">내 블로그</a><main><li><a class="title" href="https://blog.naver.com/localtest/123456">로컬에서 작성한 테스트 게시글</a><p>${'본인 블로그 내용입니다. '.repeat(15)}</p></li></main></body></html>`}));
       await context.addCookies([{name:'session', value:'fixture-only', domain:'blog.naver.com', path:'/', expires:Math.floor(Date.now()/1000)+3600, secure:true}]);
       const collector = await createCollector(context);
       await context.exposeBinding('traceLensLocal', createController(context, collector, {browserName:name}));
