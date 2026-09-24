@@ -1,5 +1,6 @@
 from urllib.parse import urlsplit
 import re
+import httpx
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -193,7 +194,7 @@ def test_user_dashboard_contains_web_scan_controls() -> None:
         assert 'value="threads"' in response.text
 
 
-def test_server_browser_requires_login_and_csrf() -> None:
+def test_server_browser_requires_login_and_csrf(monkeypatch) -> None:
     reset_database()
     with TestClient(app) as client:
         assert client.post("/api/browser/open", json={"site": "x"}).status_code == 401
@@ -204,6 +205,29 @@ def test_server_browser_requires_login_and_csrf() -> None:
         assert site.status_code == 200
         assert "서버에서 실행하는 전용 브라우저" in site.text
         assert client.post("/api/browser/open", json={"site": "x"}).status_code == 400
+        csrf = extract_value(dashboard.text, "csrf")
+        calls = []
+
+        class FakeCollector:
+            def __init__(self, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+            async def post(self, url, *, content, headers):
+                calls.append((url, content, headers))
+                return httpx.Response(200, content=b"image-bytes", headers={"content-type": "image/jpeg"})
+
+        monkeypatch.setattr("app.main.httpx.AsyncClient", FakeCollector)
+        response = client.post("/api/browser/frame", json={"site": "x"}, headers={"X-TraceLens-CSRF": csrf})
+        assert response.status_code == 200 and response.content == b"image-bytes"
+        assert response.headers["content-type"] == "image/jpeg"
+        assert calls[0][0] == "http://collector:3080/frame"
+        assert calls[0][2]["Authorization"].startswith("Bearer ")
 
 
 

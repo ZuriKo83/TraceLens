@@ -2,6 +2,7 @@ import hashlib
 import json
 import re
 import secrets
+import shutil
 import httpx
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -1058,6 +1059,17 @@ def delete_account(
     if user.email in settings.admin_email_set:
         emails = list(db.scalars(select(UserEmail).where(UserEmail.user_id == user.id)))
         return render(request, "account.html", db=db, session_user=user, user=user, emails=emails, delete_error="환경 변수 ADMIN_EMAILS에 등록된 관리자 계정은 먼저 관리자 설정에서 제거해야 탈퇴할 수 있습니다.")
+
+    browser_token = request.session.get("browser_collector_token")
+    if browser_token:
+        try:
+            with httpx.Client(timeout=15) as client:
+                response = client.post("http://collector:3080/purge", json={}, headers={"Authorization": f"Bearer {browser_token}"})
+                if response.status_code == 409:
+                    raise HTTPException(409, "조회가 끝난 뒤 탈퇴를 다시 시도하세요.")
+        except httpx.HTTPError:
+            pass
+    shutil.rmtree(Path("/browser_profiles") / str(user.id), ignore_errors=True)
 
     now = utcnow()
     db.execute(delete(AuthToken).where(AuthToken.user_id == user.id))

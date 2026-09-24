@@ -38,6 +38,7 @@ services:
       - "127.0.0.1:8021:8021"
     volumes:
       - .:/app
+      - browser_profiles:/browser_profiles
     command: ["sh", "-c", "python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8021 --reload"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8021/health', timeout=3)"]

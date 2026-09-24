@@ -35,6 +35,7 @@
   });
   let imageUrl;
   let running = true;
+  let inputQueue = Promise.resolve();
   async function command(action, data = {}) {
     const response = await fetch('/api/browser/' + action, {
       method: 'POST', headers: {'Content-Type': 'application/json', 'X-TraceLens-CSRF': csrf},
@@ -59,9 +60,11 @@
     } catch (error) { message.textContent = error.message; }
     if (running) setTimeout(refresh, 1500);
   }
-  async function send(action, data) {
-    try { await command('input', {action, ...data}); message.textContent = '입력이 전달되었습니다.'; }
-    catch (error) { message.textContent = error.message; }
+  function send(action, data) {
+    inputQueue = inputQueue.then(() => command('input', {action, ...data}))
+      .then(() => { message.textContent = '입력이 전달되었습니다.'; })
+      .catch(error => { message.textContent = error.message; });
+    return inputQueue;
   }
   screen.addEventListener('click', event => {
     const rect = screen.getBoundingClientRect();

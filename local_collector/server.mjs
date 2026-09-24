@@ -1,5 +1,5 @@
 import {createServer} from 'node:http';
-import {mkdir} from 'node:fs/promises';
+import {mkdir, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import * as playwright from 'playwright';
 import {createCollector} from './adapter.mjs';
@@ -104,6 +104,14 @@ const server = createServer(async (req, res) => {
     const {userId, token} = await authenticate(req);
     if (req.method !== 'POST') return reply(res, 405, {error: '지원하지 않는 요청입니다.'});
     const body = await bodyOf(req);
+    if (req.url === '/purge') {
+      const existing = sessions.get(userId);
+      if (existing?.busy || pending.has(userId)) return reply(res, 409, {error: '조회가 진행 중입니다.'});
+      if (existing) await existing.context.close();
+      sessions.delete(userId);
+      await rm(join('/collector/profiles', String(userId)), {recursive: true, force: true});
+      return reply(res, 200, {ok: true});
+    }
     const site = body.site;
     if (!['/open', '/frame', '/input', '/scan'].includes(req.url)) return reply(res, 404, {error: '요청을 찾지 못했습니다.'});
     if (req.url !== '/scan') selectedSites([site]);
