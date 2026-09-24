@@ -33,8 +33,6 @@ services:
       PUBLIC_BASE_URL: http://localhost:8021
       SECURE_COOKIES: "false"
       DEBUG_MAGIC_LINKS: "true"
-      SMTP_HOST: ""
-      SMTP_FROM: ""
       EXTENSION_STORE_URL: ""
     ports:
       - "127.0.0.1:8021:8021"
@@ -51,8 +49,6 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://tracelens:${POSTGRES_PASSWORD:-local-development-only}@db:5432/tracelens
       REDIS_URL: redis://redis:6379/0
-      SMTP_HOST: ""
-      SMTP_FROM: ""
     volumes:
       - .:/app
     command: ["python", "worker.py"]

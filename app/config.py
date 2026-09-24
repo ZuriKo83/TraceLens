@@ -32,13 +32,6 @@ class Settings(BaseSettings):
     backup_dir: str = "./backups"
     backup_retention_days: int = 14
 
-    smtp_host: str = ""
-    smtp_port: int = 587
-    smtp_username: str = ""
-    smtp_password: str = ""
-    smtp_from: str = ""
-    smtp_starttls: bool = True
-
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property

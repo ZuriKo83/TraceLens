@@ -2,10 +2,8 @@ import hashlib
 import json
 import re
 import secrets
-import smtplib
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -419,22 +417,8 @@ def make_magic_link(db: Session, user: User, email: str, purpose: str) -> str:
 
 
 def send_magic_email(recipient: str, link: str, purpose: str) -> bool:
-    if not settings.smtp_host or not settings.smtp_from:
-        print(f"[MAGIC LINK] {recipient}: {link}")
-        return False
-    message = EmailMessage()
-    message["From"] = settings.smtp_from
-    message["To"] = recipient
-    message["Subject"] = "TraceLens 이메일 확인"
-    action = "연결 이메일을 확인" if purpose == "connect_email" else "로그인"
-    message.set_content(f"아래 링크를 눌러 {action}하세요.\n\n{link}\n\n링크는 {settings.login_token_minutes}분 동안 유효합니다.")
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-        if settings.smtp_starttls:
-            smtp.starttls()
-        if settings.smtp_username:
-            smtp.login(settings.smtp_username, settings.smtp_password)
-        smtp.send_message(message)
-    return True
+    # Local development: the link is shown in the response, never emailed.
+    return False
 
 
 def create_verification_code(db: Session, user: User, email: str, purpose: str) -> str:
@@ -456,25 +440,8 @@ def create_verification_code(db: Session, user: User, email: str, purpose: str) 
 
 
 def send_verification_code(recipient: str, code: str, purpose: str) -> bool:
-    if not settings.smtp_host or not settings.smtp_from:
-        print(f"[VERIFICATION CODE] {recipient}: {code}")
-        return False
-    label = "회원가입" if purpose == "signup" else "비밀번호 재설정"
-    message = EmailMessage()
-    message["From"] = settings.smtp_from
-    message["To"] = recipient
-    message["Subject"] = f"TraceLens {label} 인증번호"
-    message.set_content(
-        f"TraceLens {label} 인증번호는 {code}입니다.\n\n"
-        f"인증번호는 {settings.verification_code_minutes}분 동안 유효하며, 다른 사람에게 알려주지 마세요."
-    )
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-        if settings.smtp_starttls:
-            smtp.starttls()
-        if settings.smtp_username:
-            smtp.login(settings.smtp_username, settings.smtp_password)
-        smtp.send_message(message)
-    return True
+    # Local development: the code is shown in the response, never emailed.
+    return False
 
 
 def consume_verification_code(db: Session, email: str, purpose: str, code: str) -> tuple[User | None, str | None]:
