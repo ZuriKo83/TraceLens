@@ -41,6 +41,9 @@ for (const [name, engine] of Object.entries({chromium, firefox})) {
       assert.equal(await dashboard.locator('#local-site-logins').isVisible(), true);
       await dashboard.locator('[data-local-login]').click();
       await dashboard.waitForFunction(() => document.querySelector('#local-login-status').textContent.length > 0);
+      const loginPage = context.pages().find(page => page.url().startsWith('https://blog.naver.com/'));
+      assert.ok(loginPage, 'The site connection should open a Naver page');
+      assert.equal(await loginPage.locator('a[href="https://blog.naver.com/localtest"]').count(), 1);
       await dashboard.evaluate(() => window.dispatchEvent(new CustomEvent('TRACELENS_WEB_COMMAND', {detail:{type:'START_SCAN', sites:['naver_blog']}})));
       await dashboard.waitForFunction(() => events.some(e => e.type === 'SCAN_RESULT'), null, {timeout:60000});
       const result = await dashboard.evaluate(() => events.find(e => e.type === 'SCAN_RESULT'));
