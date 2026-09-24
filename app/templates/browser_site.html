@@ -2,24 +2,17 @@
 {% block title %}{{ site_label }} 연결 · {{ app_name }}{% endblock %}
 {% block content %}
 <section class="card">
-  <h1>{{ site_label }} 연결</h1>
-  <p>아래 화면은 서버에서 실행하는 전용 브라우저입니다. 이 화면에서 사이트에 로그인한 뒤 대시보드로 돌아와 조회하세요.</p>
-  <p id="browser-message" role="status">사이트를 여는 중입니다…</p>
-  <div style="max-width:1280px;overflow:auto;background:#151515">
-    <img id="browser-screen" alt="{{ site_label }} 사이트 화면" tabindex="0" style="display:block;width:100%;cursor:pointer" hidden>
-  </div>
-  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;align-items:center">
-    <input id="browser-text" type="text" autocomplete="off" placeholder="사이트 입력란에 넣을 글자" aria-label="사이트 입력란에 넣을 글자" style="min-width:260px">
-    <label><input id="browser-secret" type="checkbox"> 비밀번호 입력 숨기기</label>
-    <button id="browser-type" class="button secondary" type="button">입력</button>
-    <button id="browser-enter" class="button secondary" type="button">Enter</button>
-    <button id="browser-tab" class="button secondary" type="button">Tab</button>
-    <button id="browser-backspace" class="button secondary" type="button">Backspace</button>
-    <button id="browser-up" class="button secondary" type="button">위로</button>
-    <button id="browser-down" class="button secondary" type="button">아래로</button>
+  <div class="section-head">
+    <div><h1>{{ site_label }} 연결</h1><p>사이트 화면의 입력칸을 클릭한 뒤 바로 키보드로 입력하세요.</p></div>
     <a class="button secondary" href="/app">대시보드로 돌아가기</a>
   </div>
-  <p>비밀번호 입력 시 '비밀번호 입력 숨기기'를 선택하세요. 입력한 내용은 서버 브라우저의 로그인 페이지로 전달됩니다.</p>
+  <p id="browser-message" role="status">사이트를 여는 중입니다…</p>
+  <div id="browser-viewport" style="position:relative;max-width:1280px;overflow:hidden;background:#151515">
+    <img id="browser-screen" alt="{{ site_label }} 사이트 화면" tabindex="0" style="display:block;width:100%;cursor:text" hidden>
+    <textarea id="browser-keyboard" aria-label="사이트 화면 키보드 입력" autocomplete="off" autocapitalize="off" spellcheck="false"
+      style="position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;resize:none"></textarea>
+  </div>
+  <p>서버에서 실행하는 브라우저입니다. 로그인 정보는 서버로 전달되며 사용자별 브라우저 프로필에 사이트 로그인 상태가 저장됩니다.</p>
 </section>
 {% endblock %}
 {% block scripts %}
@@ -28,14 +21,17 @@
   const site = {{ site|tojson }};
   const csrf = {{ csrf_token|tojson }};
   const screen = document.getElementById('browser-screen');
+  const keyboard = document.getElementById('browser-keyboard');
   const message = document.getElementById('browser-message');
-  const input = document.getElementById('browser-text');
-  document.getElementById('browser-secret').addEventListener('change', event => {
-    input.type = event.target.checked ? 'password' : 'text';
-  });
   let imageUrl;
+  let revision;
   let running = true;
   let inputQueue = Promise.resolve();
+  let textBuffer = '';
+  let textTimer;
+  let composing = false;
+  let lastInteraction = Date.now();
+
   async function command(action, data = {}) {
     const response = await fetch('/api/browser/' + action, {
       method: 'POST', headers: {'Content-Type': 'application/json', 'X-TraceLens-CSRF': csrf},
@@ -47,44 +43,91 @@
     }
     return response;
   }
-  async function refresh() {
-    if (!running) return;
-    try {
-      const response = await command('frame');
-      const next = URL.createObjectURL(await response.blob());
-      screen.src = next;
-      screen.hidden = false;
-      if (imageUrl) URL.revokeObjectURL(imageUrl);
-      imageUrl = next;
-      message.textContent = '화면을 클릭하고 아래 입력란과 키 버튼을 사용해 로그인하세요.';
-    } catch (error) { message.textContent = error.message; }
-    if (running) setTimeout(refresh, 1500);
-  }
+
   function send(action, data) {
+    lastInteraction = Date.now();
     inputQueue = inputQueue.then(() => command('input', {action, ...data}))
-      .then(() => { message.textContent = '입력이 전달되었습니다.'; })
       .catch(error => { message.textContent = error.message; });
     return inputQueue;
   }
+
+  function flushText() {
+    clearTimeout(textTimer);
+    if (!textBuffer) return;
+    const text = textBuffer;
+    textBuffer = '';
+    send('text', {text});
+  }
+
+  function addText(text) {
+    if (!text) return;
+    textBuffer += text;
+    if (textBuffer.length >= 500) flushText();
+    else { clearTimeout(textTimer); textTimer = setTimeout(flushText, 40); }
+  }
+
+  async function refresh() {
+    if (!running) return;
+    let unchanged = false;
+    try {
+      const response = await command('frame', {revision});
+      unchanged = response.status === 204;
+      if (response.status !== 204) {
+        revision = response.headers.get('X-Frame-Revision');
+        const next = URL.createObjectURL(await response.blob());
+        const previous = imageUrl;
+        screen.onload = () => { if (previous) URL.revokeObjectURL(previous); };
+        screen.src = next;
+        screen.hidden = false;
+        imageUrl = next;
+      }
+      message.textContent = '사이트 입력칸을 클릭하고 바로 입력하세요.';
+    } catch (error) { message.textContent = error.message; }
+    const active = Date.now() - lastInteraction < 3000;
+    if (running) setTimeout(refresh, document.hidden ? 1500 : active ? 250 : unchanged ? 900 : 450);
+  }
+
   screen.addEventListener('click', event => {
     const rect = screen.getBoundingClientRect();
+    flushText();
     send('click', {x: Math.round((event.clientX - rect.left) * 1280 / rect.width),
                    y: Math.round((event.clientY - rect.top) * 800 / rect.height)});
+    keyboard.focus({preventScroll: true});
   });
-  screen.addEventListener('wheel', event => { event.preventDefault(); send('scroll', {y: event.deltaY}); }, {passive: false});
-  document.getElementById('browser-type').addEventListener('click', () => {
-    if (input.value) send('text', {text: input.value});
-    input.value = '';
+  screen.addEventListener('focus', () => keyboard.focus({preventScroll: true}));
+  screen.addEventListener('wheel', event => {
+    event.preventDefault();
+    flushText();
+    send('scroll', {y: event.deltaY});
+  }, {passive: false});
+
+  keyboard.addEventListener('compositionstart', () => { composing = true; });
+  keyboard.addEventListener('compositionend', () => {
+    composing = false;
+    addText(keyboard.value);
+    keyboard.value = '';
   });
-  document.getElementById('browser-enter').addEventListener('click', () => send('key', {key: 'Enter'}));
-  document.getElementById('browser-tab').addEventListener('click', () => send('key', {key: 'Tab'}));
-  document.getElementById('browser-backspace').addEventListener('click', () => send('key', {key: 'Backspace'}));
-  document.getElementById('browser-up').addEventListener('click', () => send('scroll', {y: -640}));
-  document.getElementById('browser-down').addEventListener('click', () => send('scroll', {y: 640}));
-  input.addEventListener('keydown', event => {
-    if (event.key === 'Enter') { event.preventDefault(); document.getElementById('browser-type').click(); send('key', {key: 'Enter'}); }
+  keyboard.addEventListener('input', () => {
+    if (composing) return;
+    addText(keyboard.value);
+    keyboard.value = '';
   });
-  window.addEventListener('pagehide', () => { running = false; if (imageUrl) URL.revokeObjectURL(imageUrl); });
+  keyboard.addEventListener('keydown', event => {
+    let key = event.key;
+    if ((event.ctrlKey || event.metaKey) && key.toLowerCase() === 'a') key = 'ControlOrMeta+A';
+    if (!['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'ControlOrMeta+A'].includes(key)) return;
+    event.preventDefault();
+    if (composing && key === 'Enter') return;
+    flushText();
+    send('key', {key});
+  });
+
+  window.addEventListener('pagehide', () => {
+    running = false;
+    clearTimeout(textTimer);
+    keyboard.value = '';
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
+  });
   command('open').then(refresh).catch(error => { message.textContent = error.message; });
 })();
 </script>

@@ -1,5 +1,6 @@
 from urllib.parse import urlsplit
 import re
+import json
 import httpx
 
 from fastapi.testclient import TestClient
@@ -220,14 +221,19 @@ def test_server_browser_requires_login_and_csrf(monkeypatch) -> None:
 
             async def post(self, url, *, content, headers):
                 calls.append((url, content, headers))
-                return httpx.Response(200, content=b"image-bytes", headers={"content-type": "image/jpeg"})
+                if json.loads(content).get("revision") == "frame-1":
+                    return httpx.Response(204, headers={"x-frame-revision": "frame-1"})
+                return httpx.Response(200, content=b"image-bytes", headers={"content-type": "image/jpeg", "x-frame-revision": "frame-1"})
 
         monkeypatch.setattr("app.main.httpx.AsyncClient", FakeCollector)
         response = client.post("/api/browser/frame", json={"site": "x"}, headers={"X-TraceLens-CSRF": csrf})
         assert response.status_code == 200 and response.content == b"image-bytes"
         assert response.headers["content-type"] == "image/jpeg"
+        assert response.headers["x-frame-revision"] == "frame-1"
         assert calls[0][0].endswith(":3080/frame")
         assert calls[0][2]["Authorization"].startswith("Bearer ")
+        unchanged = client.post("/api/browser/frame", json={"site": "x", "revision": "frame-1"}, headers={"X-TraceLens-CSRF": csrf})
+        assert unchanged.status_code == 204
 
 
 

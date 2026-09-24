@@ -978,9 +978,12 @@ async def browser_command(action: str, request: Request, user: User = Depends(cu
                 content=data,
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             )
+        response_headers = {"Cache-Control": "no-store"}
+        if action == "frame" and response.headers.get("x-frame-revision"):
+            response_headers["X-Frame-Revision"] = response.headers["x-frame-revision"]
         return Response(content=response.content, status_code=response.status_code,
                         media_type=response.headers.get("content-type", "application/json"),
-                        headers={"Cache-Control": "no-store"})
+                        headers=response_headers)
     except httpx.HTTPError as exc:
         raise HTTPException(503, "서버의 수집기에 연결할 수 없습니다.") from exc
 

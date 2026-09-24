@@ -2,6 +2,7 @@ import {createServer} from 'node:http';
 import {mkdir, rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
 import * as playwright from 'playwright';
 import {createCollector} from './adapter.mjs';
 import {SERVER, SITES, allowedPage, selectedSites} from './policy.mjs';
@@ -14,6 +15,7 @@ const sessions = new Map();
 const idleMs = 30 * 60 * 1000;
 const maxSessions = 8;
 const pending = new Map();
+const identities = new Map();
 
 function reply(res, status, value) {
   res.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'});
@@ -45,12 +47,16 @@ async function bodyOf(req) {
 async function authenticate(req) {
   const token = req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{20,256})$/)?.[1];
   if (!token) throw new Error('로그인이 필요합니다.');
+  const cached = identities.get(token);
+  if (cached && cached.expiresAt > Date.now()) return {token, userId: cached.userId};
   const response = await fetch(`${SERVER}/api/collector/status`, {
     headers: {Authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(10000), redirect: 'error',
   });
   if (!response.ok) throw new Error('로그인 상태가 만료되었습니다.');
   const identity = await response.json();
   if (!Number.isSafeInteger(identity.user_id) || identity.user_id < 1) throw new Error('계정을 확인할 수 없습니다.');
+  if (identities.size > 256) identities.clear();
+  identities.set(token, {userId: identity.user_id, expiresAt: Date.now() + 10000});
   return {token, userId: identity.user_id};
 }
 
@@ -113,6 +119,7 @@ const server = createServer(async (req, res) => {
       if (existing?.busy || pending.has(userId)) return reply(res, 409, {error: '조회가 진행 중입니다.'});
       if (existing) await existing.context.close();
       sessions.delete(userId);
+      identities.delete(token);
       await rm(join(profileRoot, String(userId)), {recursive: true, force: true});
       return reply(res, 200, {ok: true});
     }
@@ -134,15 +141,20 @@ const server = createServer(async (req, res) => {
     const page = await sitePage(session, site);
     if (req.url === '/open') return reply(res, 200, {ok: true});
     if (req.url === '/frame') {
-      const screenshot = await page.screenshot({type: 'jpeg', quality: 70, timeout: 10000});
-      res.writeHead(200, {'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store'});
+      const screenshot = await page.screenshot({type: 'jpeg', quality: 62, timeout: 10000});
+      const revision = createHash('sha1').update(screenshot).digest('hex');
+      if (body.revision === revision) {
+        res.writeHead(204, {'X-Frame-Revision': revision, 'Cache-Control': 'no-store'});
+        return res.end();
+      }
+      res.writeHead(200, {'Content-Type': 'image/jpeg', 'X-Frame-Revision': revision, 'Cache-Control': 'no-store'});
       return res.end(screenshot);
     }
     if (body.action === 'click' && Number.isFinite(body.x) && Number.isFinite(body.y)) {
       await page.mouse.click(Math.min(1279, Math.max(0, body.x)), Math.min(799, Math.max(0, body.y)));
     } else if (body.action === 'text' && typeof body.text === 'string' && body.text.length <= 1000) {
       await page.keyboard.insertText(body.text);
-    } else if (body.action === 'key' && ['Enter', 'Tab', 'Backspace', 'Escape', 'ArrowDown', 'ArrowUp'].includes(body.key)) {
+    } else if (body.action === 'key' && ['Enter', 'Tab', 'Backspace', 'Delete', 'Escape', 'ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'ControlOrMeta+A'].includes(body.key)) {
       await page.keyboard.press(body.key);
     } else if (body.action === 'scroll' && Number.isFinite(body.y)) {
       await page.mouse.wheel(0, Math.min(1200, Math.max(-1200, body.y)));
