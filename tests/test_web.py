@@ -204,7 +204,7 @@ def test_server_browser_requires_login_and_csrf(monkeypatch) -> None:
         assert dashboard.status_code == 200
         site = client.get("/app/site?site=x")
         assert site.status_code == 200
-        assert "서버에서 실행하는 전용 브라우저" in site.text
+        assert "서버에서 실행하는 브라우저" in site.text
         assert client.post("/api/browser/open", json={"site": "x"}).status_code == 400
         csrf = extract_value(dashboard.text, "csrf")
         calls = []
