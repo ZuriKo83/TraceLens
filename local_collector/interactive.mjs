@@ -73,6 +73,7 @@ export async function startInteractive({browserPath = executable(), profileDir =
       connected = true;
       try {
         const port = await debuggingPort(profileDir, child);
+        console.log('TraceLens: 기존 브라우저에 연결 중');
         browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
         const context = browser.contexts()[0];
         if (!context) throw new Error('브라우저 프로필에 연결하지 못했습니다.');
@@ -80,10 +81,12 @@ export async function startInteractive({browserPath = executable(), profileDir =
         await context.exposeBinding('traceLensLocal', createController(context, collector, {browserName:'edge/chrome'}));
         await context.addInitScript(installBridge, {server:SERVER});
         const dashboard = await context.newPage();
+        console.log('TraceLens: 대시보드 열기');
         await dashboard.goto(`${SERVER}/app`, {waitUntil:'domcontentloaded'});
         res.writeHead(303, {Location:SERVER + '/app'}).end();
         await dashboard.bringToFront();
       } catch (error) {
+        console.error(`TraceLens 연결 실패: ${error.message}`);
         connected = false;
         res.writeHead(500, {'Content-Type':'text/plain; charset=utf-8'}).end(`연결 실패: ${error.message}`);
       }
