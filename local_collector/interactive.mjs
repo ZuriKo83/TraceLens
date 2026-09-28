@@ -102,7 +102,7 @@ export async function startInteractive({browserPath = executable(), profileDir =
   child.on('error', error => console.error(`브라우저 시작 실패: ${error.message}`));
   child.once('exit', () => {browser?.close().catch(() => {}); helper.close();});
   console.log(`TraceLens 로그인 안내: ${helperUrl}`);
-  return {helperUrl, child, async close() {
+  return {helperUrl, child, context: () => browser?.contexts()[0], async close() {
     await browser?.close().catch(() => {});
     if (child.exitCode === null) {
       const exited = once(child, 'exit').catch(() => {});

@@ -94,14 +94,19 @@ test('native browser login happens before collector attachment and keeps its ses
     assert.ok(login);
     await context.addCookies([{name:'logged_in', value:'yes', domain:'blog.naver.com', path:'/', secure:true}]);
     assert.equal(await login.evaluate(() => typeof window.traceLensLocal), 'undefined');
-    const dashboardReady = context.waitForEvent('page', {timeout:10000}).catch(() => null);
-    await login.locator('button').click({noWaitAfter:true});
-    const dashboard = await dashboardReady;
-    assert.ok(dashboard, await login.locator('body').innerText());
+    const action = await login.locator('form').getAttribute('action');
+    await browser.close();
+    browser = undefined;
+    const response = await fetch(new URL(action, helper.helperUrl), {method:'POST', redirect:'manual'});
+    assert.equal(response.status, 303, await response.text());
+    const attached = helper.context();
+    assert.ok(attached);
+    const dashboard = attached.pages().find(page => page.url().startsWith('http://localhost:8021/app'));
+    assert.ok(dashboard);
     await dashboard.waitForURL('http://localhost:8021/app');
     await dashboard.waitForFunction(() => window.events?.some(x => x.type === 'CONNECTION' && x.local));
     assert.equal(await dashboard.evaluate(() => document.documentElement.dataset.tracelensLocalCollector), 'edge/chrome');
-    assert.ok((await context.cookies('https://blog.naver.com')).some(c => c.name === 'logged_in' && c.value === 'yes'));
+    assert.ok((await attached.cookies('https://blog.naver.com')).some(c => c.name === 'logged_in' && c.value === 'yes'));
   } finally {
     await browser?.close().catch(() => {});
     await helper?.close();
