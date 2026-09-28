@@ -106,6 +106,6 @@ test('native browser login happens before collector attachment and keeps its ses
     await browser?.close().catch(() => {});
     await helper?.close();
     await new Promise(resolve => server.close(resolve));
-    await rm(profile, {recursive:true, force:true});
+    await rm(profile, {recursive:true, force:true, maxRetries:10, retryDelay:200});
   }
 });

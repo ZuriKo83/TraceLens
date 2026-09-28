@@ -5,6 +5,7 @@ import {createServer} from 'node:http';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes} from 'node:crypto';
+import {once} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
 import {chromium} from 'playwright';
 import {SERVER, SITES} from './policy.mjs';
@@ -98,7 +99,15 @@ export async function startInteractive({browserPath = executable(), profileDir =
   child.on('error', error => console.error(`브라우저 시작 실패: ${error.message}`));
   child.once('exit', () => {browser?.close().catch(() => {}); helper.close();});
   console.log(`TraceLens 로그인 안내: ${helperUrl}`);
-  return {helperUrl, child, async close() { await browser?.close().catch(() => {}); child.kill(); helper.close(); }};
+  return {helperUrl, child, async close() {
+    await browser?.close().catch(() => {});
+    if (child.exitCode === null) {
+      const exited = once(child, 'exit').catch(() => {});
+      child.kill();
+      await exited;
+    }
+    helper.close();
+  }};
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
