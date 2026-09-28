@@ -141,7 +141,7 @@ const server = createServer(async (req, res) => {
     const page = await sitePage(session, site);
     if (req.url === '/open') return reply(res, 200, {ok: true});
     if (req.url === '/frame') {
-      const screenshot = await page.screenshot({type: 'jpeg', quality: 62, timeout: 10000});
+      const screenshot = await page.screenshot({type: 'jpeg', quality: 55, timeout: 10000});
       const revision = createHash('sha1').update(screenshot).digest('hex');
       if (body.revision === revision) {
         res.writeHead(204, {'X-Frame-Revision': revision, 'Cache-Control': 'no-store'});

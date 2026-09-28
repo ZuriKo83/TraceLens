@@ -119,6 +119,7 @@ class RedisSessionMiddleware:
         except Exception:
             logger.exception("Redis session read failed")
             session = {}
+        initial_session = session.copy()
         scope["session"] = session
 
         path = scope.get("path", "")
@@ -176,10 +177,16 @@ class RedisSessionMiddleware:
                         logger.exception("Failed to persist account deletion history for user_id=%s", old_user_id)
                 try:
                     if session:
-                        await self.redis.delete(key)
-                        await self.redis.hset(key, mapping={k: str(v) for k, v in session.items()})
-                        await self.redis.expire(key, self.max_age)
-                    else:
+                        if session == initial_session:
+                            await self.redis.expire(key, self.max_age)
+                        else:
+                            # Concurrent frames must never see the hash between writes.
+                            async with self.redis.pipeline(transaction=True) as pipe:
+                                pipe.delete(key)
+                                pipe.hset(key, mapping={k: str(v) for k, v in session.items()})
+                                pipe.expire(key, self.max_age)
+                                await pipe.execute()
+                    elif initial_session:
                         await self.redis.delete(key)
                 except Exception:
                     logger.exception("Failed to persist Redis session")

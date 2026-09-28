@@ -16,12 +16,17 @@
 
 <section class="card" id="local-site-logins" hidden>
   <div class="section-head"><div><h2>사이트 연결</h2><p>사이트 버튼을 누르면 서버의 전용 브라우저 화면이 열립니다. 로그인 후 이 화면으로 돌아와 조회하세요.</p></div></div>
-  <div class="web-site-toolbar">
-    {% for value, label in [('youtube', 'YouTube'), ('instagram', 'Instagram'), ('threads', 'Threads'), ('facebook', 'Facebook'), ('x', 'X'), ('naver_blog', '네이버 블로그'), ('naver_kin', '네이버 지식iN')] %}
-    <button class="chip-button" type="button" data-local-login="{{ value }}">{{ label }} 연결</button>
-    {% endfor %}
+  <div class="site-login-groups">
+    <div><b>Google</b><button class="chip-button" type="button" data-local-login="youtube">YouTube 열기</button></div>
+    <div><b>Meta</b><button class="chip-button" type="button" data-local-login="instagram">Instagram 열기</button>
+      <details><summary>다른 사이트</summary><button class="chip-button" type="button" data-local-login="facebook">Facebook</button><button class="chip-button" type="button" data-local-login="threads">Threads</button></details>
+    </div>
+    <div><b>네이버</b><button class="chip-button" type="button" data-local-login="naver_blog">블로그 열기</button>
+      <details><summary>다른 사이트</summary><button class="chip-button" type="button" data-local-login="naver_kin">지식iN</button></details>
+    </div>
+    <div><b>X</b><button class="chip-button" type="button" data-local-login="x">X 열기</button></div>
   </div>
-  <p id="local-login-status" role="status">사이트별 로그인은 서버의 사용자별 브라우저에 보관됩니다.</p>
+  <p id="local-login-status" role="status">같은 회사의 서비스를 묶었습니다. 사이트에 따라 별도 로그인 확인이 필요할 수 있습니다.</p>
 </section>
 
 <section class="stats" aria-label="작성 기록 통계">

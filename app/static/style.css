@@ -205,6 +205,26 @@ td a { color: var(--primary); font-weight: 700; }
 
 
 /* Web-controlled extension scanner */
+.container:has(.browser-card) { width: min(1340px, calc(100% - 24px)); padding: 12px 0 24px; }
+.browser-card { padding: 14px; }
+.browser-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.browser-heading h1 { font-size: clamp(20px, 2vw, 27px); margin: 0; }
+.browser-heading p { font-size: 13px; color: var(--muted); margin: 2px 0 0; }
+.browser-heading .button { flex-shrink: 0; }
+.browser-viewport { position: relative; width: min(100%, (100dvh - 195px) * 1.6); max-width: 1280px; min-width: 0; margin: auto; overflow: hidden; background: #151515; }
+#browser-screen { display: block; width: 100%; aspect-ratio: 8 / 5; object-fit: fill; cursor: none; }
+#browser-screen[hidden] { display: none; }
+#browser-cursor { display: none; position: absolute; width: 20px; height: 20px; pointer-events: none; z-index: 2; transform: translate(-2px, -2px); filter: drop-shadow(0 1px 2px #000); }
+#browser-cursor::before { content: ''; display: block; width: 18px; height: 20px; background: #fff; clip-path: polygon(0 0, 0 100%, 5px 15px, 14px 13px); }
+#browser-cursor::after { content: ''; position: absolute; inset: 0; width: 18px; height: 20px; background: #101828; clip-path: polygon(0 0, 0 100%, 5px 15px, 14px 13px); transform: scale(.72); transform-origin: 2px 2px; }
+.browser-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+@media (max-width: 600px) { .browser-heading { align-items: flex-start; } .browser-heading .button { padding: 0 9px; font-size: 12px; } .browser-viewport { width: 100%; } }
+.site-login-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.site-login-groups > div { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.site-login-groups details { font-size: 13px; color: var(--muted); }
+.site-login-groups summary { cursor: pointer; }
+.site-login-groups details .chip-button { margin: 8px 5px 0 0; }
+@media (max-width: 700px) { .site-login-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .web-scan-card { overflow: hidden; }
 .web-site-toolbar { display: flex; align-items: center; gap: 8px; margin: 18px 0 12px; }
 .web-site-toolbar > span { margin-left: auto; color: var(--muted); font-size: 13px; font-weight: 700; }

@@ -234,6 +234,9 @@ def test_server_browser_requires_login_and_csrf(monkeypatch) -> None:
         assert calls[0][2]["Authorization"].startswith("Bearer ")
         unchanged = client.post("/api/browser/frame", json={"site": "x", "revision": "frame-1"}, headers={"X-TraceLens-CSRF": csrf})
         assert unchanged.status_code == 204
+        back = client.get("/app", follow_redirects=False)
+        assert back.status_code == 200
+        assert "내 활동" in back.text
 
 
 

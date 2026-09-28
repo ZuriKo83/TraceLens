@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 {% block title %}{{ site_label }} 연결 · {{ app_name }}{% endblock %}
 {% block content %}
-<section class="card">
-  <div class="section-head">
-    <div><h1>{{ site_label }} 연결</h1><p>사이트 화면의 입력칸을 클릭한 뒤 바로 키보드로 입력하세요.</p></div>
+<section class="card browser-card">
+  <div class="browser-heading">
+    <div><h1>{{ site_label }} 연결</h1><p id="browser-message" role="status">사이트를 여는 중입니다…</p></div>
     <a class="button secondary" href="/app">대시보드로 돌아가기</a>
   </div>
-  <p id="browser-message" role="status">사이트를 여는 중입니다…</p>
-  <div id="browser-viewport" style="position:relative;max-width:1280px;overflow:hidden;background:#151515">
-    <img id="browser-screen" alt="{{ site_label }} 사이트 화면" tabindex="0" style="display:block;width:100%;cursor:text" hidden>
+  <div id="browser-viewport" class="browser-viewport">
+    <img id="browser-screen" alt="{{ site_label }} 사이트 화면" tabindex="0" hidden>
+    <span id="browser-cursor" aria-hidden="true"></span>
     <textarea id="browser-keyboard" aria-label="사이트 화면 키보드 입력" autocomplete="off" autocapitalize="off" spellcheck="false"
       style="position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;resize:none"></textarea>
   </div>
-  <p>서버에서 실행하는 브라우저입니다. 로그인 정보는 서버로 전달되며 사용자별 브라우저 프로필에 사이트 로그인 상태가 저장됩니다.</p>
+  <p class="browser-note">사이트 화면을 클릭한 뒤 바로 입력하세요. 로그인 상태는 서버의 사용자별 브라우저에 저장됩니다.</p>
 </section>
 {% endblock %}
 {% block scripts %}
@@ -23,6 +23,8 @@
   const screen = document.getElementById('browser-screen');
   const keyboard = document.getElementById('browser-keyboard');
   const message = document.getElementById('browser-message');
+  const viewport = document.getElementById('browser-viewport');
+  const cursor = document.getElementById('browser-cursor');
   let imageUrl;
   let revision;
   let running = true;
@@ -31,6 +33,7 @@
   let textTimer;
   let composing = false;
   let lastInteraction = Date.now();
+  let firstFrame = true;
 
   async function command(action, data = {}) {
     const response = await fetch('/api/browser/' + action, {
@@ -76,7 +79,15 @@
         revision = response.headers.get('X-Frame-Revision');
         const next = URL.createObjectURL(await response.blob());
         const previous = imageUrl;
-        screen.onload = () => { if (previous) URL.revokeObjectURL(previous); };
+        screen.onload = () => {
+          if (previous) URL.revokeObjectURL(previous);
+          if (firstFrame) {
+            firstFrame = false;
+            if (viewport.getBoundingClientRect().bottom > window.innerHeight) {
+              viewport.scrollIntoView({block: 'start', behavior: 'smooth'});
+            }
+          }
+        };
         screen.src = next;
         screen.hidden = false;
         imageUrl = next;
@@ -84,9 +95,16 @@
       message.textContent = '사이트 입력칸을 클릭하고 바로 입력하세요.';
     } catch (error) { message.textContent = error.message; }
     const active = Date.now() - lastInteraction < 3000;
-    if (running) setTimeout(refresh, document.hidden ? 1500 : active ? 250 : unchanged ? 900 : 450);
+    if (running) setTimeout(refresh, document.hidden ? 1800 : active ? 350 : unchanged ? 1100 : 600);
   }
 
+  screen.addEventListener('pointermove', event => {
+    const rect = screen.getBoundingClientRect();
+    cursor.style.left = `${event.clientX - rect.left}px`;
+    cursor.style.top = `${event.clientY - rect.top}px`;
+    cursor.style.display = 'block';
+  });
+  screen.addEventListener('pointerleave', () => { cursor.style.display = 'none'; });
   screen.addEventListener('click', event => {
     const rect = screen.getBoundingClientRect();
     flushText();
