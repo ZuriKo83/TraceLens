@@ -45,7 +45,8 @@ for (const [name, engine] of Object.entries({chromium, firefox})) {
       });
       await page.goto('http://localhost:8021/app/site?site=naver_blog');
       await page.locator('#browser-screen').waitFor({state:'visible'});
-      await page.waitForFunction(() => window.scrollY > 0);
+      await page.waitForFunction(() => window.scrollY > 0 &&
+        document.getElementById('browser-screen').getBoundingClientRect().bottom <= window.innerHeight + 5);
       const bounds = await page.locator('#browser-screen').boundingBox();
       assert.ok(bounds.height <= 900 - 180 && bounds.y + bounds.height <= 905, JSON.stringify(bounds));
       await page.locator('#browser-screen').hover({position:{x:200,y:150}});
