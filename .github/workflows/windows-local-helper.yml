@@ -1,0 +1,32 @@
+name: Windows local login helper
+
+on:
+  push:
+    branches: [local-docker-development]
+  workflow_dispatch:
+
+jobs:
+  bundle:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: local_collector/package-lock.json
+      - run: npm ci
+        working-directory: local_collector
+      - shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path bundle -Force | Out-Null
+          Copy-Item START_LOCAL_LOGIN.bat bundle/
+          Copy-Item chrome_extension bundle/chrome_extension -Recurse
+          Copy-Item local_collector bundle/local_collector -Recurse
+          Copy-Item (Join-Path (Split-Path (Get-Command node).Source) 'node.exe') bundle/node.exe
+          Remove-Item bundle/local_collector/test -Recurse -Force
+          Compress-Archive -Path bundle/* -DestinationPath TraceLens-Windows-Local-Login.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TraceLens-Windows-Local-Login
+          path: TraceLens-Windows-Local-Login.zip
