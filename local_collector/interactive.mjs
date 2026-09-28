@@ -68,7 +68,7 @@ export async function startInteractive({browserPath = executable(), profileDir =
       res.end(pageHtml(secret));
       return;
     }
-    if (req.method === 'POST' && req.url === `/${secret}/connect` && req.headers.origin === `http://127.0.0.1:${helper.address().port}`) {
+    if (req.method === 'POST' && req.url === `/${secret}/connect`) {
       if (connected) {res.writeHead(409).end('이미 연결 중입니다.'); return;}
       connected = true;
       try {
