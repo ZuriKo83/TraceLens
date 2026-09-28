@@ -94,9 +94,10 @@ test('native browser login happens before collector attachment and keeps its ses
     assert.ok(login);
     await context.addCookies([{name:'logged_in', value:'yes', domain:'blog.naver.com', path:'/', secure:true}]);
     assert.equal(await login.evaluate(() => typeof window.traceLensLocal), 'undefined');
-    const dashboardReady = context.waitForEvent('page', {timeout:20000});
+    const dashboardReady = context.waitForEvent('page', {timeout:10000}).catch(() => null);
     await login.locator('button').click();
     const dashboard = await dashboardReady;
+    assert.ok(dashboard, await login.locator('body').innerText());
     await dashboard.waitForURL('http://localhost:8021/app');
     await dashboard.waitForFunction(() => window.events?.some(x => x.type === 'CONNECTION' && x.local));
     assert.equal(await dashboard.evaluate(() => document.documentElement.dataset.tracelensLocalCollector), 'edge/chrome');
