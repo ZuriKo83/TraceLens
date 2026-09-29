@@ -16,17 +16,24 @@
 </section>
 
 <section class="card" id="local-site-logins" hidden>
-  <div class="section-head"><div><h2>사이트 로그인</h2><p>전용 브라우저에서 처음 한 번 로그인하세요. 이후 로그인 상태를 재사용합니다.</p></div></div>
+  <div class="section-head"><div><h2>사이트 로그인</h2><p>대시보드가 사이트 접근 상태를 자동으로 확인합니다. 확인되지 않는 사이트는 직접 로그인하고 내 프로필 또는 활동 페이지로 이동하세요.</p></div></div>
   <div class="site-login-groups">
     <div><b>Google</b><button class="chip-button" type="button" id="google-login-setup">일반 브라우저에서 로그인</button>
-      <button class="chip-button" type="button" id="google-login-check">접근 확인</button><small id="google-login-status" role="status">Google 활동 페이지 접근 확인 전</small></div>
+      <small id="google-login-status" data-site-status="youtube" role="status">접근 확인 전</small></div>
     <div><b>Meta</b><button class="chip-button" type="button" data-local-login="instagram">Instagram 열기</button>
+      <small data-site-status="instagram" role="status">Instagram 접근 확인 전</small>
       <details><summary>다른 사이트</summary><button class="chip-button" type="button" data-local-login="facebook">Facebook</button><button class="chip-button" type="button" data-local-login="threads">Threads</button></details>
+      <small data-site-status="facebook" role="status">Facebook 접근 확인 전</small>
+      <small data-site-status="threads" role="status">Threads 접근 확인 전</small>
     </div>
     <div><b>네이버</b><button class="chip-button" type="button" data-local-login="naver_blog">블로그 열기</button>
+      <small data-site-status="naver_blog" role="status">블로그 접근 확인 전</small>
       <details><summary>다른 사이트</summary><button class="chip-button" type="button" data-local-login="naver_kin">지식iN</button></details>
+      <small data-site-status="naver_kin" role="status">지식iN 접근 확인 전</small>
     </div>
-    <div><b>X</b><button class="chip-button" type="button" data-local-login="x">X 열기</button></div>
+    <div><b>X</b><button class="chip-button" type="button" data-local-login="x">X 열기</button>
+      <button class="chip-button" type="button" id="x-normal-login">Google로 로그인할 때</button>
+      <small data-site-status="x" role="status">X 접근 확인 전</small></div>
   </div>
   <p id="local-login-status" role="status">조회 결과에 로그인 오류가 나오면 해당 사이트에 직접 로그인한 뒤 다시 조회하세요.</p>
 </section>
@@ -158,6 +165,9 @@
   const googleInput = siteGrid.querySelector('input[value="youtube"]');
   let connected = false;
   let scanning = false;
+  let statusCheck;
+  let lastStatusCheck = 0;
+  let siteOpened = false;
 
   const inputs = () => [...siteGrid.querySelectorAll('input[type="checkbox"]')];
   const selectedSites = () => inputs().filter((input) => !input.disabled && input.checked).map((input) => input.value);
@@ -247,33 +257,54 @@
       try {
         await window.traceLensLocal({type: 'OPEN_SITE', sites: [button.dataset.localLogin],
           token: document.querySelector('meta[name="tracelens-extension-token"]').content});
+        siteOpened = true;
         document.getElementById('local-login-status').textContent = '열린 사이트에서 로그인한 뒤 이 대시보드로 돌아와 조회하세요.';
       } catch (error) { document.getElementById('local-login-status').textContent = error.message; }
       finally { button.disabled = false; }
     });
   });
   const collectorToken = () => document.querySelector('meta[name="tracelens-extension-token"]').content;
-  const checkGoogle = async () => {
-    document.getElementById('google-login-check').disabled = true;
-    document.getElementById('google-login-setup').disabled = true;
-    googleStatus.textContent = 'Google 활동 페이지 확인 중…';
-    try {
-      const result = await window.traceLensLocal({type: 'CHECK_GOOGLE', token: collectorToken()});
-      googleInput.disabled = !result.accessible;
-      if (!result.accessible) googleInput.checked = false;
-      googleStatus.textContent = result.accessible ? 'Google 활동 페이지 접근 확인됨' : '접근 불가 · 일반 브라우저에서 로그인 필요';
-    } catch (error) { googleStatus.textContent = `확인 실패: ${error.message}`; }
-    finally {
-      document.getElementById('google-login-check').disabled = false;
-      document.getElementById('google-login-setup').disabled = false;
-    }
-    refreshSelection();
+  const labels = {youtube: 'Google 활동', instagram: 'Instagram 댓글', facebook: 'Facebook 활동',
+    threads: 'Threads 프로필', naver_blog: '네이버 블로그', naver_kin: '지식iN 내 활동', x: 'X 프로필'};
+  const renderStatus = ({site, state}) => {
+    const node = document.querySelector(`[data-site-status="${site}"]`);
+    if (!node) return;
+    if (state === 'accessible') node.textContent = `${labels[site]} 페이지 접근 확인됨`;
+    else if (state === 'security_required') node.textContent = '추가 보안 확인을 완료한 뒤 돌아오세요.';
+    else if (state === 'login_required') node.textContent = '로그인 필요 · 사이트를 열어 직접 로그인하세요.';
+    else if (state === 'profile_required') node.textContent = '내 프로필/활동 페이지 접근 불가 · 사이트를 열어 내 프로필로 이동하세요.';
+    else node.textContent = '접근 확인 실패 · 사이트를 열어 로그인과 내 프로필을 확인하세요.';
   };
-  document.getElementById('google-login-check').addEventListener('click', checkGoogle);
+  const checkStatuses = () => {
+    if (!connected || scanning || statusCheck) return statusCheck;
+    lastStatusCheck = Date.now();
+    document.querySelectorAll('[data-site-status]').forEach(node => { node.textContent = '접근 확인 중…'; });
+    statusCheck = window.traceLensLocal({type: 'CHECK_SITES', token: collectorToken()})
+      .then(result => {
+        for (const status of result.statuses || []) renderStatus(status);
+        const google = (result.statuses || []).find(status => status.site === 'youtube');
+        googleInput.disabled = google?.state !== 'accessible';
+        if (googleInput.disabled) googleInput.checked = false;
+      })
+      .catch(error => { document.querySelectorAll('[data-site-status]').forEach(node => { node.textContent = `확인 실패: ${error.message}`; }); })
+      .finally(() => { statusCheck = null; refreshSelection(); });
+    return statusCheck;
+  };
   document.getElementById('google-login-setup').addEventListener('click', async () => {
     googleStatus.textContent = '일반 브라우저를 엽니다. 로그인 후 해당 창을 모두 닫으면 수집기가 다시 열립니다.';
     try { await window.traceLensLocal({type: 'GOOGLE_LOGIN', token: collectorToken()}); }
     catch (error) { googleStatus.textContent = error.message; }
+  });
+  document.getElementById('x-normal-login').addEventListener('click', async () => {
+    document.querySelector('[data-site-status="x"]').textContent = '일반 브라우저로 이동합니다. 로그인 후 창을 닫으세요.';
+    try { await window.traceLensLocal({type: 'NORMAL_LOGIN', sites: ['x'], token: collectorToken()}); }
+    catch (error) { document.querySelector('[data-site-status="x"]').textContent = error.message; }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && (siteOpened || Date.now() - lastStatusCheck > 30000)) {
+      siteOpened = false;
+      checkStatuses();
+    }
   });
   const checkCollector = async () => {
     try {
@@ -281,7 +312,7 @@
       await window.traceLensLocal({type: 'PING'});
       setConnected();
       document.getElementById('local-site-logins').hidden = false;
-      await checkGoogle();
+      checkStatuses();
     } catch {
       setDisconnected('시작 메뉴에서 TraceLens PC Collector를 실행하고 새로 열린 브라우저에서 로그인하세요.');
     }

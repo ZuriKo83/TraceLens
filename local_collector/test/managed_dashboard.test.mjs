@@ -17,7 +17,9 @@ test('managed browser opens site login and scans without a debugging port', {tim
     await context.exposeBinding('traceLensLocal', async (_source, command) => {
       commands.push(command);
       if (command.type === 'START_SCAN') return {ok: true, failed: 1, completed: 0, lines: ['로그인 확인']};
-      if (command.type === 'CHECK_GOOGLE') return {ok: true, accessible: false};
+      if (command.type === 'CHECK_SITES') return {ok: true, statuses: [
+        {site: 'youtube', state: 'accessible'}, {site: 'instagram', state: 'profile_required'},
+        {site: 'x', state: 'login_required'}]};
       return {ok: true};
     });
     const page = await context.newPage();
@@ -25,7 +27,9 @@ test('managed browser opens site login and scans without a debugging port', {tim
       <meta name="tracelens-extension-token" content="test-token-abcdefghijklmnopqrstuvwxyz">
       <section id="extension-status-card"><b id="extension-status-title"></b><small id="extension-status-text"></small></section>
       <section id="local-site-logins" hidden><button data-local-login="naver_blog">네이버 블로그 열기</button><p id="local-login-status"></p></section>
-      <button id="google-login-setup"></button><button id="google-login-check"></button><small id="google-login-status"></small>
+      <button id="google-login-setup"></button><button id="x-normal-login"></button>
+      <small id="google-login-status" data-site-status="youtube"></small>
+      <small data-site-status="instagram"></small><small data-site-status="x"></small>
       <div id="web-site-grid"><input type="checkbox" value="youtube" disabled><input type="checkbox" value="naver_blog" checked></div>
       <button id="select-all-sites"></button><button id="clear-all-sites"></button><span id="web-selection-count"></span>
       <button id="web-start-scan" disabled></button>
@@ -34,10 +38,13 @@ test('managed browser opens site login and scans without a debugging port', {tim
     await page.goto('http://localhost:8021/app');
     await page.waitForFunction(() => document.getElementById('web-start-scan').disabled === false);
     assert.equal(await page.locator('#local-site-logins').isVisible(), true);
+    await page.waitForFunction(() => document.querySelector('[data-site-status="instagram"]').textContent.includes('내 프로필'));
+    assert.equal(await page.locator('#google-login-status').textContent(), 'Google 활동 페이지 접근 확인됨');
+    assert.equal(await page.locator('input[value="youtube"]').isEnabled(), true);
     await page.locator('[data-local-login="naver_blog"]').click();
     await page.locator('#web-start-scan').click();
     await page.waitForFunction(() => document.querySelector('#web-scan-log').textContent === '로그인 확인');
-    assert.deepEqual(commands.map(command => command.type), ['PING', 'CHECK_GOOGLE', 'OPEN_SITE', 'START_SCAN']);
+    assert.deepEqual(commands.map(command => command.type), ['PING', 'CHECK_SITES', 'OPEN_SITE', 'START_SCAN']);
     assert.deepEqual(commands[3].sites, ['naver_blog']);
     await context.close();
   } finally { await browser.close(); }

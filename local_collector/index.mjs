@@ -8,7 +8,7 @@ import {BROWSERS, SERVER} from './policy.mjs';
 import {createCollector} from './adapter.mjs';
 import {createController} from './controller.mjs';
 import {backgroundPage} from './cdp.mjs';
-import {runGoogleLogin, selectInstalledBrowser} from './google_login.mjs';
+import {runNormalLogin, selectInstalledBrowser} from './google_login.mjs';
 
 const {values} = parseArgs({options: {browser: {type: 'string', default: 'auto'}}});
 const browserName = values.browser === 'auto' ? selectInstalledBrowser() : values.browser;
@@ -31,19 +31,20 @@ try {
   console.log(`사용 브라우저: ${browserName === 'edge' ? 'Microsoft Edge' : 'Google Chrome'}`);
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { context?.close().catch(() => {}); });
   for (;;) {
-    let openGoogleLogin = false;
+    let normalLoginSite = null;
     context = await playwright[selection.engine].launchPersistentContext(profile, {
       channel: selection.channel, headless: false, viewport: null, acceptDownloads: false,
     });
     const collector = await createCollector(context, {
       newPage: () => backgroundPage(context.browser(), context), backgroundOnly: true,
     });
-    const controller = createController(context, collector, {browserName});
+    const controller = createController(context, collector, {browserName,
+      probePage: () => backgroundPage(context.browser(), context)});
     await context.exposeBinding('traceLensLocal', async (source, message) => {
       const result = await controller(source, message);
-      if (message?.type === 'GOOGLE_LOGIN') {
+      if (message?.type === 'GOOGLE_LOGIN' || message?.type === 'NORMAL_LOGIN') {
         // Let the binding response reach the dashboard before closing its tab.
-        setTimeout(() => { openGoogleLogin = true; context.close().catch(() => {}); }, 500);
+        setTimeout(() => { normalLoginSite = message.type === 'NORMAL_LOGIN' ? 'x' : 'youtube'; context.close().catch(() => {}); }, 500);
       }
       return result;
     });
@@ -51,10 +52,10 @@ try {
     await page.goto(`${SERVER}/app`);
     console.log('TraceLens에 로그인한 뒤 대시보드의 사이트 연결 버튼으로 각 사이트에 로그인하세요.');
     await new Promise(resolve => context.once('close', resolve));
-    if (!openGoogleLogin) break;
-    console.log('일반 브라우저에서 Google에 로그인하세요. 완료 후 해당 브라우저 창을 모두 닫으면 TraceLens가 다시 열립니다.');
-    try { await runGoogleLogin(browserName, profile); }
-    catch (error) { console.error(`Google 로그인 창 오류: ${error.message}`); }
+    if (!normalLoginSite) break;
+    console.log('일반 브라우저에서 로그인하세요. 완료 후 해당 브라우저 창을 모두 닫으면 TraceLens가 다시 열립니다.');
+    try { await runNormalLogin(browserName, profile, normalLoginSite); }
+    catch (error) { console.error(`로그인 창 오류: ${error.message}`); }
   }
 } catch (error) {
   console.error(`실행 실패: ${error.message}`);

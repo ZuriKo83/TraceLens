@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
-import {runGoogleLogin, selectInstalledBrowser} from '../google_login.mjs';
+import {runGoogleLogin, runNormalLogin, selectInstalledBrowser} from '../google_login.mjs';
 import {mkdtemp, mkdir, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -33,4 +33,17 @@ test('regular Google login launches the saved profile without debugging switches
   assert.deepEqual(invocation.args, ['--user-data-dir=C:\\collector profile', '--new-window',
     'https://myactivity.google.com/page?page=youtube_comments']);
   assert.equal(invocation.args.some(arg => arg.startsWith('--remote-debugging')), false);
+});
+
+test('X sign-in uses the same saved profile and a fixed login address', async () => {
+  let args;
+  const launch = (_executable, values) => {
+    args = values;
+    const child = new EventEmitter();
+    queueMicrotask(() => child.emit('exit', 0, null));
+    return child;
+  };
+  await runNormalLogin('edge', 'C:\\collector profile', 'x', {launch, executable: 'msedge.exe'});
+  assert.deepEqual(args, ['--user-data-dir=C:\\collector profile', '--new-window', 'https://x.com/i/flow/login']);
+  await assert.rejects(runNormalLogin('edge', 'C:\\collector profile', 'example', {launch, executable: 'msedge.exe'}), /지원하지 않는/);
 });

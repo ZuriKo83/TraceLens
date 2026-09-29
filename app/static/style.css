@@ -221,6 +221,7 @@ td a { color: var(--primary); font-weight: 700; }
 @media (max-width: 600px) { .browser-heading { align-items: flex-start; } .browser-heading .button { padding: 0 9px; font-size: 12px; } .browser-viewport { width: 100%; } }
 .site-login-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .site-login-groups > div { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.site-login-groups small { color: var(--muted); line-height: 1.45; }
 .site-login-groups details { font-size: 13px; color: var(--muted); }
 .site-login-groups summary { cursor: pointer; }
 .site-login-groups details .chip-button { margin: 8px 5px 0 0; }

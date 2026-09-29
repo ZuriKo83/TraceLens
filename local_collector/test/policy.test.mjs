@@ -26,17 +26,22 @@ test('untrusted pages and invalid sessions cannot collect', async () => {
   assert.equal(scans, 0);
 });
 test('Google collection requires a reachable activity page', async () => {
-  let currentUrl = 'https://accounts.google.com/v3/signin/rejected';
-  const page = {goto: async () => {}, waitForTimeout: async () => {}, url: () => currentUrl, close: async () => {}};
-  const context = {newPage: async () => page};
+  let googleUrl = 'https://accounts.google.com/v3/signin/rejected';
+  const context = {newPage: async () => {
+    let currentUrl;
+    return {goto: async url => { currentUrl = url.includes('myactivity') ? googleUrl : url; },
+      waitForTimeout: async () => {}, url: () => currentUrl, close: async () => {},
+      evaluate: async () => ({hasPassword: false, profileUrls: [], xProfile: null, securityScreen: false})};
+  }};
   const fn = createController(context, {scan: async () => ({lines: ['✓ 조회 완료']})},
     {browserName: 'edge', transport: async () => ({ok: true})});
   const token = 'a'.repeat(40);
   await assert.rejects(fn(source(), {type: 'START_SCAN', sites: ['youtube'], token}), /Google 활동 페이지/);
-  assert.deepEqual(await fn(source(), {type: 'CHECK_GOOGLE', token}), {ok: true, accessible: false});
+  assert.equal((await fn(source(), {type: 'CHECK_SITES', token})).statuses[0].state, 'login_required');
   assert.equal((await fn(source(), {type: 'GOOGLE_LOGIN', token})).ok, true);
-  currentUrl = 'https://myactivity.google.com/page?page=youtube_comments';
-  assert.deepEqual(await fn(source(), {type: 'CHECK_GOOGLE', token}), {ok: true, accessible: true});
+  assert.equal((await fn(source(), {type: 'NORMAL_LOGIN', sites: ['x'], token})).ok, true);
+  googleUrl = 'https://myactivity.google.com/page?page=youtube_comments';
+  assert.equal((await fn(source(), {type: 'CHECK_SITES', token})).statuses[0].state, 'accessible');
   assert.equal((await fn(source(), {type: 'START_SCAN', sites: ['youtube'], token})).completed, 1);
 });
 test('concurrent scans are rejected and lock released after failure', async () => {
