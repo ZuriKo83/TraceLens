@@ -25,10 +25,19 @@ test('untrusted pages and invalid sessions cannot collect', async () => {
   await assert.rejects(fn(source(), {type: 'START_SCAN', sites: ['x'], token: 'a'.repeat(40)}));
   assert.equal(scans, 0);
 });
-test('managed collector does not offer a blocked Google login', async () => {
-  const fn = createController({}, {scan: async () => { throw Error('unexpected scan'); }}, {transport: async () => ({ok: true})});
-  await assert.rejects(fn(source(), {type: 'OPEN_SITE', sites: ['youtube'], token: 'a'.repeat(40)}), /Google 로그인/);
-  await assert.rejects(fn(source(), {type: 'START_SCAN', sites: ['youtube'], token: 'a'.repeat(40)}), /Google 로그인/);
+test('Google collection requires a reachable activity page', async () => {
+  let currentUrl = 'https://accounts.google.com/v3/signin/rejected';
+  const page = {goto: async () => {}, waitForTimeout: async () => {}, url: () => currentUrl, close: async () => {}};
+  const context = {newPage: async () => page};
+  const fn = createController(context, {scan: async () => ({lines: ['✓ 조회 완료']})},
+    {browserName: 'edge', transport: async () => ({ok: true})});
+  const token = 'a'.repeat(40);
+  await assert.rejects(fn(source(), {type: 'START_SCAN', sites: ['youtube'], token}), /Google 활동 페이지/);
+  assert.deepEqual(await fn(source(), {type: 'CHECK_GOOGLE', token}), {ok: true, accessible: false});
+  assert.equal((await fn(source(), {type: 'GOOGLE_LOGIN', token})).ok, true);
+  currentUrl = 'https://myactivity.google.com/page?page=youtube_comments';
+  assert.deepEqual(await fn(source(), {type: 'CHECK_GOOGLE', token}), {ok: true, accessible: true});
+  assert.equal((await fn(source(), {type: 'START_SCAN', sites: ['youtube'], token})).completed, 1);
 });
 test('concurrent scans are rejected and lock released after failure', async () => {
   let release;
