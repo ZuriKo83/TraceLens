@@ -257,12 +257,21 @@
       if (url) window.open(url, '_blank', 'noopener');
     });
   });
-  fetch('http://127.0.0.1:8765/health', {cache: 'no-store'}).then(response => {
-    if (!response.ok) throw new Error('사용 중인 브라우저의 디버깅 연결을 확인하세요.');
-    setConnected();
-    document.getElementById('local-site-logins').hidden = false;
-  }).catch(() => setDisconnected('PC 수집기를 실행하고 브라우저 연결을 허용하세요.'));
-  setTimeout(() => { if (!connected) setDisconnected(); }, 1800);
+  let checkingHelper = false;
+  const checkHelper = async () => {
+    if (checkingHelper || scanning) return;
+    checkingHelper = true;
+    try {
+      const response = await fetch('http://127.0.0.1:8765/health', {cache: 'no-store'});
+      if (!response.ok) throw new Error('브라우저 연결 실패');
+      setConnected();
+      document.getElementById('local-site-logins').hidden = false;
+    } catch {
+      setDisconnected('PC 수집기를 실행하고 브라우저 연결을 허용하세요.');
+    } finally { checkingHelper = false; }
+  };
+  checkHelper();
+  setInterval(checkHelper, 5000);
   refreshSelection();
 
   const activityGroups = () => [...document.querySelectorAll('.activity-group')];
