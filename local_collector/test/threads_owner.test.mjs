@@ -13,7 +13,7 @@ test('Threads resolves the signed-in navigation profile, never a feed author', {
   let context;
   try {
     context = await chromium.launchPersistentContext(profile, {headless: true});
-    await context.route('https://www.threads.com/**', route => route.fulfill({contentType: 'text/html', body: `
+    await context.route('https://www.threads.com/**', route => route.fulfill({contentType: 'text/html; charset=utf-8', body: `
       <nav><a href="/@mine" aria-label="프로필">프로필</a></nav>
       <main><a href="/@other" aria-label="Profile">Profile</a><a href="/@other/post/abc">다른 사람 글</a></main>`}));
     const collector = await createCollector(context);
@@ -39,7 +39,7 @@ test('Threads refuses to infer ownership from feed and suggestion links', {timeo
   let context;
   try {
     context = await chromium.launchPersistentContext(profile, {headless: true});
-    await context.route('https://www.threads.com/**', route => route.fulfill({contentType: 'text/html', body: `
+    await context.route('https://www.threads.com/**', route => route.fulfill({contentType: 'text/html; charset=utf-8', body: `
       <main><a href="/@other" aria-label="Profile">Profile</a><a href="/@other/post/abc">다른 사람 글</a></main>`}));
     const collector = await createCollector(context);
     const tab = await collector.tabs.create({url: 'https://www.threads.com/'});
