@@ -202,7 +202,7 @@ def test_dashboard_uses_pc_collector() -> None:
         login(client, "browser@example.com")
         dashboard = client.get("/app")
         assert dashboard.status_code == 200
-        assert "http://127.0.0.1:8765/scan" in dashboard.text
+        assert "window.traceLensLocal({type: 'START_SCAN'" in dashboard.text
         assert "/releases/download/pc-collector/TraceLens-PC-Setup.exe" in dashboard.text
         assert "https://x.com/home" in dashboard.text
         assert "/api/browser/scan" not in dashboard.text

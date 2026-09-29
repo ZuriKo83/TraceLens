@@ -10,13 +10,13 @@
   <div><h1>내 활동</h1></div>
   <div class="extension-status-card" id="extension-status-card">
     <span class="status-dot"></span>
-    <div><b id="extension-status-title">PC 수집기 연결 확인 중</b><small id="extension-status-text">사용 중인 브라우저에 연결합니다.</small></div>
+    <div><b id="extension-status-title">PC 수집기 연결 확인 중</b><small id="extension-status-text">TraceLens 전용 브라우저를 확인합니다.</small></div>
     <a class="chip-button" href="https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens-PC-Setup.exe">PC 수집기 설치 파일 다운로드</a>
   </div>
 </section>
 
 <section class="card" id="local-site-logins" hidden>
-  <div class="section-head"><div><h2>사이트 로그인</h2><p>로그인이 필요한 사이트만 현재 브라우저에서 여세요. 이미 로그인했다면 바로 조회할 수 있습니다.</p></div></div>
+  <div class="section-head"><div><h2>사이트 로그인</h2><p>전용 브라우저에서 처음 한 번 로그인하세요. 이후 로그인 상태를 재사용합니다.</p></div></div>
   <div class="site-login-groups">
     <div><b>Google</b><button class="chip-button" type="button" data-local-login="youtube">YouTube 열기</button></div>
     <div><b>Meta</b><button class="chip-button" type="button" data-local-login="instagram">Instagram 열기</button>
@@ -169,8 +169,8 @@
     card.hidden = false;
     card.classList.add('connected');
     card.classList.remove('install-link');
-    title.textContent = '사용 중인 브라우저 연결됨';
-    statusText.textContent = '로그인된 사이트를 PC에서 조회합니다.';
+    title.textContent = '전용 브라우저 연결됨';
+    statusText.textContent = '전용 브라우저의 로그인 상태로 PC에서 조회합니다.';
     startButton.textContent = '조회 시작';
     refreshSelection();
   }
@@ -201,13 +201,9 @@
     progressTitle.textContent = '조회 중';
     progressState.textContent = `${sites.length}개 사이트`;
     progressBar.style.width = '18%';
-    scanLog.textContent = '현재 브라우저에서 조회 중입니다. 이 탭을 닫지 마세요.';
-    fetch('http://127.0.0.1:8765/scan', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({sites, token: document.querySelector('meta[name="tracelens-extension-token"]').content}), cache: 'no-store'
-    }).then(async response => {
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || body.detail || '조회에 실패했습니다.');
+    scanLog.textContent = '전용 브라우저에서 조회 중입니다. 이 탭을 닫지 마세요.';
+    const sitesRequest = {sites, token: document.querySelector('meta[name="tracelens-extension-token"]').content};
+    window.traceLensLocal({type: 'START_SCAN', ...sitesRequest}).then(body => {
       window.dispatchEvent(new CustomEvent('TRACELENS_PC_EVENT', {detail: {type: 'SCAN_RESULT', ...body}}));
     }).catch(error => window.dispatchEvent(new CustomEvent('TRACELENS_PC_EVENT',
       {detail: {type: 'SCAN_RESULT', ok: false, error: error.message}})));
@@ -243,35 +239,27 @@
   });
 
   document.querySelectorAll('[data-local-login]').forEach(button => {
-    button.addEventListener('click', () => {
-      const urls = {
-        youtube: 'https://myactivity.google.com/page?page=youtube_comments',
-        instagram: 'https://www.instagram.com/your_activity/interactions/comments/',
-        facebook: 'https://www.facebook.com/me/allactivity/',
-        threads: 'https://www.threads.com/',
-        naver_blog: 'https://blog.naver.com/MyBlog.naver',
-        naver_kin: 'https://kin.naver.com/myinfo/index.naver',
-        x: 'https://x.com/home'
-      };
-      const url = urls[button.dataset.localLogin];
-      if (url) window.open(url, '_blank', 'noopener');
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        await window.traceLensLocal({type: 'OPEN_SITE', sites: [button.dataset.localLogin],
+          token: document.querySelector('meta[name="tracelens-extension-token"]').content});
+        document.getElementById('local-login-status').textContent = '열린 사이트에서 로그인한 뒤 이 대시보드로 돌아와 조회하세요.';
+      } catch (error) { document.getElementById('local-login-status').textContent = error.message; }
+      finally { button.disabled = false; }
     });
   });
-  let checkingHelper = false;
-  const checkHelper = async () => {
-    if (checkingHelper || scanning) return;
-    checkingHelper = true;
+  const checkCollector = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:8765/health', {cache: 'no-store'});
-      if (!response.ok) throw new Error('브라우저 연결 실패');
+      if (typeof window.traceLensLocal !== 'function') throw new Error('전용 브라우저에서 열어야 합니다.');
+      await window.traceLensLocal({type: 'PING'});
       setConnected();
       document.getElementById('local-site-logins').hidden = false;
     } catch {
-      setDisconnected('PC 수집기를 실행하고 브라우저 연결을 허용하세요.');
-    } finally { checkingHelper = false; }
+      setDisconnected('시작 메뉴에서 TraceLens PC Collector를 실행하고 새로 열린 브라우저에서 로그인하세요.');
+    }
   };
-  checkHelper();
-  setInterval(checkHelper, 5000);
+  checkCollector();
   refreshSelection();
 
   const activityGroups = () => [...document.querySelectorAll('.activity-group')];

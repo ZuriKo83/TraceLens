@@ -26,7 +26,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist/TraceLens-PC/runtime,dist/TraceLens-PC/local_collector | Out-Null
           Copy-Item (Get-Command node).Source dist/TraceLens-PC/runtime/node.exe
           Copy-Item START_PC_COLLECTOR.bat dist/TraceLens-PC/
-          Copy-Item local_collector/attach.mjs,local_collector/adapter.mjs,local_collector/cdp.mjs,local_collector/policy.mjs dist/TraceLens-PC/local_collector/
+          Copy-Item local_collector/index.mjs,local_collector/controller.mjs,local_collector/adapter.mjs,local_collector/cdp.mjs,local_collector/policy.mjs dist/TraceLens-PC/local_collector/
           Copy-Item local_collector/node_modules dist/TraceLens-PC/local_collector/ -Recurse
           New-Item -ItemType Directory -Force -Path dist/TraceLens-PC/chrome_extension | Out-Null
           Copy-Item chrome_extension/background.js,chrome_extension/youtube_delete_page.js,chrome_extension/youtube_activity_collector.js dist/TraceLens-PC/chrome_extension/
@@ -48,6 +48,7 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
           if (-not (Test-Path "$target\runtime\node.exe")) { throw 'Node runtime is missing.' }
           if (-not (Test-Path "$target\START_PC_COLLECTOR.bat")) { throw 'Collector launcher is missing.' }
+          if (-not (Test-Path "$target\local_collector\index.mjs")) { throw 'Managed browser entry point is missing.' }
       - uses: actions/upload-artifact@v4
         with:
           name: TraceLens-PC-Setup
