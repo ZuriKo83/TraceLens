@@ -23,7 +23,7 @@ test('managed browser opens site login and scans without a debugging port', {tim
       return {ok: true};
     });
     const page = await context.newPage();
-    await page.route('http://localhost:8021/app', route => route.fulfill({contentType: 'text/html', body: `
+    await page.route('http://localhost:8021/app', route => route.fulfill({contentType: 'text/html; charset=utf-8', body: `
       <meta name="tracelens-extension-token" content="test-token-abcdefghijklmnopqrstuvwxyz">
       <section id="extension-status-card"><b id="extension-status-title"></b><small id="extension-status-text"></small></section>
       <section id="local-site-logins" hidden><button data-local-login="naver_blog">네이버 블로그 열기</button><p id="local-login-status"></p></section>
@@ -38,7 +38,7 @@ test('managed browser opens site login and scans without a debugging port', {tim
     await page.goto('http://localhost:8021/app');
     await page.waitForFunction(() => document.getElementById('web-start-scan').disabled === false);
     assert.equal(await page.locator('#local-site-logins').isVisible(), true);
-    await page.waitForFunction(() => document.querySelector('[data-site-status="instagram"]').textContent.includes('내 프로필'));
+    await page.waitForFunction(() => document.querySelector('[data-site-status="instagram"]').textContent.includes('내 프로필'), null, {timeout: 5000});
     assert.equal(await page.locator('#google-login-status').textContent(), 'Google 활동 페이지 접근 확인됨');
     assert.equal(await page.locator('input[value="youtube"]').isEnabled(), true);
     await page.locator('[data-local-login="naver_blog"]').click();
