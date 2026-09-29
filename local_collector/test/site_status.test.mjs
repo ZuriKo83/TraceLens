@@ -44,7 +44,7 @@ test('automatic checks inspect distinct background pages and close them', {timeo
     await context.route('https://www.threads.com/**', route => route.fulfill({contentType: 'text/html', body: '<nav><a href="/@mine" aria-label="Profile">Profile</a></nav>'}));
     await context.route('https://x.com/**', route => route.fulfill({contentType: 'text/html', body: '<nav><a data-testid="AppTabBar_Profile_Link" href="/mine">Profile</a></nav>'}));
     const initial = context.pages().length;
-    const result = await checkSites(() => backgroundPage(context.browser(), context), ['youtube', 'threads', 'x']);
+    const result = await checkSites(() => backgroundPage(context.browser(), context, {hidden: true}), ['youtube', 'threads', 'x']);
     assert.deepEqual(result.map(item => item.state), ['accessible', 'accessible', 'accessible']);
     assert.equal(context.pages().length, initial);
   } finally { await context?.close(); await rm(profile, {recursive: true, force: true}); }

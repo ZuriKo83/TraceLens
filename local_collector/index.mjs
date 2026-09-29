@@ -39,7 +39,7 @@ try {
       newPage: () => backgroundPage(context.browser(), context), backgroundOnly: true,
     });
     const controller = createController(context, collector, {browserName,
-      probePage: () => backgroundPage(context.browser(), context)});
+      probePage: () => backgroundPage(context.browser(), context, {hidden: true})});
     await context.exposeBinding('traceLensLocal', async (source, message) => {
       const result = await controller(source, message);
       if (message?.type === 'GOOGLE_LOGIN' || message?.type === 'NORMAL_LOGIN') {

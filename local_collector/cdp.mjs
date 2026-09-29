@@ -1,9 +1,9 @@
 import {setTimeout as delay} from 'node:timers/promises';
 
-export async function backgroundPage(browser, context) {
+export async function backgroundPage(browser, context, {hidden = false} = {}) {
   const session = await browser.newBrowserCDPSession();
   let targetId;
-  try { ({targetId} = await session.send('Target.createTarget', {url: 'about:blank', background: true})); }
+  try { ({targetId} = await session.send('Target.createTarget', {url: 'about:blank', background: true, hidden})); }
   finally { await session.detach(); }
   for (let attempt = 0; attempt < 50; attempt += 1) {
     for (const page of context.pages()) {
