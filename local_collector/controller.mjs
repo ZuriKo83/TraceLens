@@ -10,6 +10,7 @@ export function createController(context, collector, {transport = localFetch, br
     if (!['OPEN_SITE', 'START_SCAN'].includes(message?.type)) throw new Error('지원하지 않는 요청입니다.');
     if (busy) throw new Error('조회가 진행 중입니다. 완료 후 다시 시도하세요.');
     const sites = selectedSites(message.sites);
+    if (sites.includes('youtube')) throw new Error('현재 PC 수집기에서 Google 로그인이 차단되어 YouTube 연결을 제공하지 않습니다.');
     if (message.type === 'OPEN_SITE' && sites.length !== 1) throw new Error('한 사이트씩 연결하세요.');
     const token = message.token;
     if (typeof token !== 'string' || token.length < 20 || token.length > 256) throw new Error('TraceLens에 다시 로그인하세요.');

@@ -18,7 +18,7 @@
 <section class="card" id="local-site-logins" hidden>
   <div class="section-head"><div><h2>사이트 로그인</h2><p>전용 브라우저에서 처음 한 번 로그인하세요. 이후 로그인 상태를 재사용합니다.</p></div></div>
   <div class="site-login-groups">
-    <div><b>Google</b><button class="chip-button" type="button" data-local-login="youtube">YouTube 열기</button></div>
+    <div><b>Google</b><span>현재 전용 브라우저에서 Google 로그인이 차단되어 YouTube 연결을 제공하지 않습니다.</span></div>
     <div><b>Meta</b><button class="chip-button" type="button" data-local-login="instagram">Instagram 열기</button>
       <details><summary>다른 사이트</summary><button class="chip-button" type="button" data-local-login="facebook">Facebook</button><button class="chip-button" type="button" data-local-login="threads">Threads</button></details>
     </div>
@@ -46,11 +46,11 @@
   <div class="web-site-toolbar">
     <button class="chip-button" type="button" id="select-all-sites">전체 선택</button>
     <button class="chip-button" type="button" id="clear-all-sites">선택 해제</button>
-    <span id="web-selection-count">7개 선택</span>
+    <span id="web-selection-count">6개 선택</span>
   </div>
 
   <div class="web-site-grid" id="web-site-grid">
-    <label class="web-site-option"><input type="checkbox" value="youtube" checked><span><b>YouTube</b><small>댓글</small></span></label>
+    <label class="web-site-option"><input type="checkbox" value="youtube" disabled><span><b>YouTube</b><small>PC 수집기 연결 불가</small></span></label>
     <label class="web-site-option"><input type="checkbox" value="instagram" checked><span><b>Instagram</b><small>댓글</small></span></label>
     <label class="web-site-option"><input type="checkbox" value="threads" checked><span><b>Threads</b><small>게시글·답글</small></span></label>
     <label class="web-site-option"><input type="checkbox" value="facebook" checked><span><b>Facebook</b><small>게시글·댓글</small></span></label>
@@ -157,7 +157,7 @@
   let scanning = false;
 
   const inputs = () => [...siteGrid.querySelectorAll('input[type="checkbox"]')];
-  const selectedSites = () => inputs().filter((input) => input.checked).map((input) => input.value);
+  const selectedSites = () => inputs().filter((input) => !input.disabled && input.checked).map((input) => input.value);
   const refreshSelection = () => {
     const count = selectedSites().length;
     countLabel.textContent = `${count}개 선택`;
@@ -186,7 +186,7 @@
   }
 
   inputs().forEach((input) => input.addEventListener('change', refreshSelection));
-  document.getElementById('select-all-sites').addEventListener('click', () => { inputs().forEach((input) => input.checked = true); refreshSelection(); });
+  document.getElementById('select-all-sites').addEventListener('click', () => { inputs().forEach((input) => { if (!input.disabled) input.checked = true; }); refreshSelection(); });
   document.getElementById('clear-all-sites').addEventListener('click', () => { inputs().forEach((input) => input.checked = false); refreshSelection(); });
 
   startButton.addEventListener('click', () => {

@@ -23,8 +23,8 @@ test('managed browser opens site login and scans without a debugging port', {tim
     await page.route('http://localhost:8021/app', route => route.fulfill({contentType: 'text/html', body: `
       <meta name="tracelens-extension-token" content="test-token-abcdefghijklmnopqrstuvwxyz">
       <section id="extension-status-card"><b id="extension-status-title"></b><small id="extension-status-text"></small></section>
-      <section id="local-site-logins" hidden><button data-local-login="youtube">YouTube 열기</button><p id="local-login-status"></p></section>
-      <div id="web-site-grid"><input type="checkbox" value="youtube" checked></div>
+      <section id="local-site-logins" hidden><button data-local-login="naver_blog">네이버 블로그 열기</button><p id="local-login-status"></p></section>
+      <div id="web-site-grid"><input type="checkbox" value="youtube" disabled><input type="checkbox" value="naver_blog" checked></div>
       <button id="select-all-sites"></button><button id="clear-all-sites"></button><span id="web-selection-count"></span>
       <button id="web-start-scan" disabled></button>
       <section id="web-scan-progress" hidden><b id="web-progress-title"></b><span id="web-progress-state"></span><div id="web-progress-bar"></div><pre id="web-scan-log"></pre></section>
@@ -32,11 +32,11 @@ test('managed browser opens site login and scans without a debugging port', {tim
     await page.goto('http://localhost:8021/app');
     await page.waitForFunction(() => document.getElementById('web-start-scan').disabled === false);
     assert.equal(await page.locator('#local-site-logins').isVisible(), true);
-    await page.locator('[data-local-login="youtube"]').click();
+    await page.locator('[data-local-login="naver_blog"]').click();
     await page.locator('#web-start-scan').click();
     await page.waitForFunction(() => document.querySelector('#web-scan-log').textContent === '로그인 확인');
     assert.deepEqual(commands.map(command => command.type), ['PING', 'OPEN_SITE', 'START_SCAN']);
-    assert.deepEqual(commands[2].sites, ['youtube']);
+    assert.deepEqual(commands[2].sites, ['naver_blog']);
     await context.close();
   } finally { await browser.close(); }
 });

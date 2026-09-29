@@ -204,6 +204,8 @@ def test_dashboard_uses_pc_collector() -> None:
         assert dashboard.status_code == 200
         assert "window.traceLensLocal({type: 'START_SCAN'" in dashboard.text
         assert "/releases/download/pc-collector/TraceLens-PC-Setup.exe" in dashboard.text
+        assert 'value="youtube" disabled' in dashboard.text
+        assert 'data-local-login="youtube"' not in dashboard.text
         assert "/api/browser/scan" not in dashboard.text
         assert client.get("/app/site?site=x").status_code == 404
 

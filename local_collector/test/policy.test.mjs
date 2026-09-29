@@ -25,6 +25,11 @@ test('untrusted pages and invalid sessions cannot collect', async () => {
   await assert.rejects(fn(source(), {type: 'START_SCAN', sites: ['x'], token: 'a'.repeat(40)}));
   assert.equal(scans, 0);
 });
+test('managed collector does not offer a blocked Google login', async () => {
+  const fn = createController({}, {scan: async () => { throw Error('unexpected scan'); }}, {transport: async () => ({ok: true})});
+  await assert.rejects(fn(source(), {type: 'OPEN_SITE', sites: ['youtube'], token: 'a'.repeat(40)}), /Google 로그인/);
+  await assert.rejects(fn(source(), {type: 'START_SCAN', sites: ['youtube'], token: 'a'.repeat(40)}), /Google 로그인/);
+});
 test('concurrent scans are rejected and lock released after failure', async () => {
   let release;
   const gate = new Promise(resolve => {release = resolve;});
