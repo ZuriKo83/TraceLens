@@ -8,14 +8,15 @@ import {BROWSERS, SERVER} from './policy.mjs';
 import {createCollector} from './adapter.mjs';
 import {createController} from './controller.mjs';
 import {backgroundPage} from './cdp.mjs';
-import {runGoogleLogin} from './google_login.mjs';
+import {runGoogleLogin, selectInstalledBrowser} from './google_login.mjs';
 
-const {values} = parseArgs({options: {browser: {type: 'string', default: 'edge'}}});
-if (!Object.hasOwn(BROWSERS, values.browser)) throw new Error('browser: chromium, chrome, edge, firefox 중 선택하세요.');
-const selection = BROWSERS[values.browser];
+const {values} = parseArgs({options: {browser: {type: 'string', default: 'auto'}}});
+const browserName = values.browser === 'auto' ? selectInstalledBrowser() : values.browser;
+if (!Object.hasOwn(BROWSERS, browserName)) throw new Error('browser: auto, edge, chrome 중 선택하세요.');
+const selection = BROWSERS[browserName];
 const profile = process.env.TRACELENS_PROFILE_DIR || (process.env.LOCALAPPDATA
-  ? join(process.env.LOCALAPPDATA, 'TraceLens', 'collector-profile', values.browser)
-  : fileURLToPath(new URL(`../.local-browser/${values.browser}/`, import.meta.url)));
+  ? join(process.env.LOCALAPPDATA, 'TraceLens', 'collector-profile', browserName)
+  : fileURLToPath(new URL(`../.local-browser/${browserName}/`, import.meta.url)));
 let context;
 try {
   console.log('TraceLens 서버 시작을 기다립니다...');
@@ -27,16 +28,17 @@ try {
   }
   if (!ready) throw new Error(`TraceLens 서버(${SERVER})에 연결되지 않습니다. 서버를 먼저 실행하세요.`);
   await mkdir(profile, {recursive: true, mode: 0o700});
+  console.log(`사용 브라우저: ${browserName === 'edge' ? 'Microsoft Edge' : 'Google Chrome'}`);
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { context?.close().catch(() => {}); });
   for (;;) {
     let openGoogleLogin = false;
     context = await playwright[selection.engine].launchPersistentContext(profile, {
       channel: selection.channel, headless: false, viewport: null, acceptDownloads: false,
     });
-    const collector = await createCollector(context, selection.engine === 'chromium' ? {
+    const collector = await createCollector(context, {
       newPage: () => backgroundPage(context.browser(), context), backgroundOnly: true,
-    } : {});
-    const controller = createController(context, collector, {browserName: values.browser});
+    });
+    const controller = createController(context, collector, {browserName});
     await context.exposeBinding('traceLensLocal', async (source, message) => {
       const result = await controller(source, message);
       if (message?.type === 'GOOGLE_LOGIN') {
@@ -51,7 +53,7 @@ try {
     await new Promise(resolve => context.once('close', resolve));
     if (!openGoogleLogin) break;
     console.log('일반 브라우저에서 Google에 로그인하세요. 완료 후 해당 브라우저 창을 모두 닫으면 TraceLens가 다시 열립니다.');
-    try { await runGoogleLogin(values.browser, profile); }
+    try { await runGoogleLogin(browserName, profile); }
     catch (error) { console.error(`Google 로그인 창 오류: ${error.message}`); }
   }
 } catch (error) {

@@ -15,7 +15,7 @@ Windows에서 서버 PC는 `START_HERE.bat`을 실행합니다. 사용자 PC는 
 ## 사용자 PC에서 조회
 
 1. Docker 서버를 먼저 실행합니다. 현재 개발 주소는 `http://localhost:8021`입니다.
-2. [Windows 설치 파일](https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens-PC-Setup.exe)을 설치하고 시작 메뉴의 **TraceLens PC Collector**를 실행합니다. PC에 설치된 Edge를 전용 프로필로 엽니다. Edge가 없으면 설치된 Chrome을 사용합니다. 이미 열린 다른 브라우저 창을 닫을 필요는 없습니다. 압축 해제나 배치파일 선택, Node.js 별도 설치는 필요하지 않습니다.
+2. [Windows 설치 파일](https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens-PC-Setup.exe)을 설치하고 시작 메뉴의 **TraceLens PC Collector**를 실행합니다. 설치된 Edge를 우선 사용하고 없으면 설치된 Chrome을 사용합니다. 둘 다 없으면 실행을 중단하고 안내합니다. 이미 열린 다른 브라우저 창을 닫을 필요는 없습니다. 압축 해제나 배치파일 선택, Node.js 별도 설치는 필요하지 않습니다.
 3. 새로 열린 창에서 TraceLens에 로그인합니다. 연결 가능한 사이트의 **사이트 로그인** 버튼을 눌러 직접 로그인을 시도하고 2차 인증을 마칩니다. Google 로그인 화면이 차단되면 **일반 브라우저에서 로그인**을 누르세요. 수집기가 잠시 종료되고 동일한 전용 프로필을 일반 Edge 또는 Chrome으로 엽니다. 로그인과 2차 인증을 마친 뒤 해당 창을 모두 닫으면 수집기가 다시 열립니다. 대시보드에서 **Google 활동 페이지 접근 확인됨**을 확인한 다음에만 YouTube를 선택할 수 있습니다. 기존 개인 브라우저의 로그인 세션은 복사하지 않습니다.
 4. 대시보드에 **전용 브라우저 연결됨**이 표시되면 사이트를 선택하고 **조회 시작**을 누릅니다. 조회 탭은 전용 프로필의 백그라운드에서 열리고 결과만 서버 API로 보냅니다. 조회 중에는 수집기 창을 열어 두세요.
 
@@ -28,6 +28,8 @@ Linux 서버로 이전할 때는 PC 수집기 실행 환경의 `TRACELENS_SERVER
 ## 지원 범위
 
 Instagram 댓글, Threads 게시글·답글, Facebook 게시글·댓글, X, 네이버 블로그·지식iN의 기존 추출 코드를 재사용합니다. 조회 시작을 누를 때만 읽고 저장합니다. 각 사이트의 로그인과 추출 성공 여부는 실제 계정으로 확인해야 합니다. YouTube는 일반 브라우저로 Google에 로그인한 전용 프로필을 수집기에서 다시 여는 시험적 방식입니다. Google 활동 페이지 접근 확인은 댓글 추출 성공을 보장하지 않으며, 사이트 정책에 따라 다시 차단될 수 있습니다. PC 수집기에서는 원본 사이트 삭제와 상시 수집을 지원하지 않습니다.
+
+Threads는 계정 메뉴의 내 프로필 링크를 하나로 확인할 수 있을 때만 조회합니다. 추천 계정이나 피드 작성자의 프로필 링크로는 본인 계정을 추정하지 않으며, 내 프로필을 식별하지 못하면 저장하지 않습니다. 이 변경 이전에 잘못 저장된 기록은 자동으로 삭제하지 않습니다.
 
 ## 로컬 설정
 
@@ -49,7 +51,7 @@ docker compose down
 ```bash
 cd local_collector
 npm ci
-npx playwright install --with-deps chromium firefox
+npx playwright install --with-deps chromium
 npm test
 ```
 

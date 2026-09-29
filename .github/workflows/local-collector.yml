@@ -23,7 +23,7 @@ jobs:
           cache: npm
           cache-dependency-path: local_collector/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium firefox
+      - run: npx playwright install --with-deps chromium
       - run: npm test
       - run: |
           TRACELENS_COLLECTOR_PORT=3081 BROWSER_PROFILE_DIR="$RUNNER_TEMP/tracelens-profiles" node server.mjs &

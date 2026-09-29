@@ -420,34 +420,33 @@ async function resolveTaskTarget(tabId, resolver) {
     const results = await chrome.scripting.executeScript({
       target: {tabId},
       func: () => {
-        const reserved = new Set(["", "activity", "search", "settings", "login", "signup", "privacy", "terms"]);
-        const candidates = [];
-        for (const anchor of document.querySelectorAll("a[href]")) {
+        // Feed posts and suggested accounts also contain profile links. Only a
+        // clearly labelled profile control in the account navigation identifies
+        // the signed-in user; ambiguous pages must fail without uploading.
+        const usernames = new Set();
+        for (const anchor of document.querySelectorAll("nav a[href], [role='navigation'] a[href]")) {
           try {
             const parsed = new URL(anchor.href, location.href);
             if (!['www.threads.com', 'threads.com'].includes(parsed.hostname)) continue;
             const match = parsed.pathname.match(/^\/@([A-Za-z0-9._]+)\/?$/);
-            if (!match || reserved.has(match[1].toLowerCase())) continue;
-            const label = `${anchor.getAttribute('aria-label') || ''} ${anchor.textContent || ''}`;
-            let score = 0;
-            if (/(프로필|profile)/i.test(label)) score += 80;
-            if (anchor.closest('nav, aside')) score += 40;
-            if (anchor.querySelector('img')) score += 15;
-            candidates.push({username: match[1], score});
+            if (!match) continue;
+            const labels = [anchor.getAttribute('aria-label'), anchor.getAttribute('title'), anchor.textContent];
+            if (labels.some(label => /^(내\s*)?(프로필|profile)$/i.test((label || '').trim()))) {
+              usernames.add(match[1].toLowerCase());
+            }
           } catch {}
         }
-        candidates.sort((a, b) => b.score - a.score);
-        return candidates[0]?.username || null;
+        return usernames.size === 1 ? [...usernames][0] : null;
       }
     });
     const username = results?.[0]?.result;
-    if (!username) throw new Error("로그인된 Threads 프로필 주소를 찾지 못했습니다.");
+    if (!username) throw new Error("Threads 로그인 계정을 확인하지 못했습니다. 계정 메뉴의 내 프로필 주소가 명확하지 않아 수집을 중단했습니다.");
     const suffix = resolver === "threads_replies" ? "/replies" : "";
     const targetUrl = `https://www.threads.com/@${username}${suffix}`;
     await chrome.tabs.update(tabId, {url: targetUrl});
     await waitForTabComplete(tabId);
     await waitForPageSettled(tabId, 18000);
-    return {accountLabel: `@${username}`, threadsUsername: username};
+    return {accountLabel: `@${username}`, threadsUsername: username, threadsIdentityVerified: true};
   }
 
   if (resolver === "x_profile") {
@@ -874,8 +873,14 @@ async function extractPage(requestedPlatform, defaultActivityType, ownershipScop
   if (platform === "threads") {
     const ownerUsername = String(accountContext?.threadsUsername || accountLabel || "").replace(/^@/, "").toLowerCase();
     const repliesMode = defaultActivityType === "comment";
-    if (!ownerUsername) {
+    if (!ownerUsername || accountContext?.threadsIdentityVerified !== true) {
       return {platform, source_url: location.href, status: "partial", message: "Threads 로그인 계정을 확인하지 못했습니다.", items: []};
+    }
+    const profile = new URL(location.href);
+    const expectedPath = `/@${ownerUsername}${repliesMode ? '/replies' : ''}`;
+    if (!['www.threads.com', 'threads.com'].includes(profile.hostname)
+        || profile.pathname.replace(/\/$/, '').toLowerCase() !== expectedPath) {
+      return {platform, source_url: location.href, status: "partial", message: "Threads 내 프로필 페이지가 아니므로 수집을 중단했습니다.", items: []};
     }
     const threadsItems = [];
     const threadsSeen = new Set();
@@ -939,6 +944,7 @@ async function extractPage(requestedPlatform, defaultActivityType, ownershipScop
             threads_scope: repliesMode ? "authored_replies" : "authored_posts",
             threads_owner: ownerUsername,
             threads_actor: ownerUsername,
+            threads_identity_source: "navigation_profile_link",
             extractor_version: "0.9.1",
             account_label: accountLabel
           }

@@ -1,9 +1,7 @@
 export const SERVER = (process.env.TRACELENS_SERVER_URL || 'http://localhost:8021').replace(/\/+$/, '');
 export const BROWSERS = Object.freeze({
-  chromium: {engine: 'chromium'},
   chrome: {engine: 'chromium', channel: 'chrome'},
   edge: {engine: 'chromium', channel: 'msedge'},
-  firefox: {engine: 'firefox'},
 });
 export const SITES = Object.freeze({
   youtube: 'https://myactivity.google.com/page?page=youtube_comments',

@@ -7,7 +7,7 @@ import * as playwright from 'playwright';
 import {createCollector} from './adapter.mjs';
 import {SERVER, SITES, allowedPage, selectedSites} from './policy.mjs';
 
-const engineName = process.env.TRACELENS_BROWSER === 'firefox' ? 'firefox' : 'chromium';
+const engineName = 'chromium';
 const profileRoot = process.env.BROWSER_PROFILE_DIR || fileURLToPath(new URL('../browser_profiles/', import.meta.url));
 const listenHost = process.env.TRACELENS_COLLECTOR_HOST || '127.0.0.1';
 const listenPort = Number(process.env.TRACELENS_COLLECTOR_PORT || 3080);

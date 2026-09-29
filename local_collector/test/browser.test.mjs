@@ -1,16 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {mkdtemp, rm} from 'node:fs/promises';
+import {access, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {chromium, firefox} from 'playwright';
+import {chromium} from 'playwright';
 import {createCollector} from '../adapter.mjs';
 import {createController} from '../controller.mjs';
 import {installBridge} from '../bridge.mjs';
 
-for (const [name, engine] of Object.entries({chromium, firefox})) {
-  test(`${name}: bridge, authenticated collection and persistent login`, {timeout: 90000}, async () => {
+for (const [name, engine] of Object.entries({chromium})) {
+  test(`${name}: bridge, authenticated collection and persistent login`, {timeout: 90000}, async t => {
+    try { await access(engine.executablePath()); }
+    catch { return t.skip('Playwright Chromium is not installed locally'); }
     const uploads = [];
     const server = createServer(async (req, res) => {
       if (req.url === '/app') {

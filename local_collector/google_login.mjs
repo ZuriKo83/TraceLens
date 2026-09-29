@@ -15,6 +15,15 @@ export function browserExecutable(browserName, env = process.env, platform = pro
   return candidate;
 }
 
+export function selectInstalledBrowser(env = process.env, platform = process.platform) {
+  if (platform !== 'win32') return 'edge';
+  for (const browser of ['edge', 'chrome']) {
+    try { browserExecutable(browser, env, platform); return browser; }
+    catch {}
+  }
+  throw new Error('Microsoft Edge 또는 Google Chrome을 설치한 뒤 다시 실행하세요.');
+}
+
 export async function runGoogleLogin(browserName, profile, {launch = spawn, executable = browserExecutable(browserName)} = {}) {
   if (!['edge', 'chrome'].includes(browserName)) throw new Error('Google 로그인은 Edge 또는 Chrome에서만 시도할 수 있습니다.');
   // Launch without Playwright or a remote debugging switch. The managed collector

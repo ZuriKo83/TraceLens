@@ -27,7 +27,7 @@ SUPPORTED_SITES = [
         "tier": "automatic",
         "accuracy": "부분",
         "logo_url": None,
-        "note": "로그인된 Threads 프로필의 게시글 탭과 답글 탭에서 본인 작성 항목만 수집합니다.",
+        "note": "계정 메뉴의 내 프로필 링크를 확인할 수 있을 때만 게시글·답글을 조회합니다. 계정 확인이 불명확하면 저장하지 않습니다.",
     },
     {
         "platform": "facebook",

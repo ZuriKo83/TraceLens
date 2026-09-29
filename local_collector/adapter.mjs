@@ -73,6 +73,7 @@ export async function createCollector(context, {transport = localFetch, newPage 
     scan: (sites, config) => sandbox.scanSites(sites, config),
     // Exposed to local tests, never to the browser binding.
     runExtractor: (...args) => sandbox.runExtractor(...args),
+    resolveTaskTarget: (...args) => sandbox.resolveTaskTarget(...args),
     assertOwnedTaskUrl: (...args) => sandbox.assertOwnedTaskUrl(...args),
     tabs: chrome.tabs,
     scripting: chrome.scripting,
