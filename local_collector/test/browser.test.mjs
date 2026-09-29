@@ -1,14 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {chromium, firefox} from 'playwright';
 import {createCollector} from '../adapter.mjs';
 import {createController} from '../controller.mjs';
 import {installBridge} from '../bridge.mjs';
-import {startInteractive} from '../interactive.mjs';
 
 for (const [name, engine] of Object.entries({chromium, firefox})) {
   test(`${name}: bridge, authenticated collection and persistent login`, {timeout: 90000}, async () => {
@@ -70,47 +69,3 @@ for (const [name, engine] of Object.entries({chromium, firefox})) {
     }
   });
 }
-
-test('native browser login happens before collector attachment and keeps its session', {timeout: 90000}, async () => {
-  const server = createServer((req, res) => {
-    if (req.url === '/health') return res.writeHead(200).end('ok');
-    if (req.url === '/app') return res.writeHead(200, {'Content-Type':'text/html'}).end('<meta name="tracelens-extension-token" content="test-token-abcdefghijklmnopqrstuvwxyz"><div id="local-site-logins" hidden></div><script>window.events=[];window.addEventListener("TRACELENS_EXTENSION_EVENT", e=>events.push(e.detail));</script>');
-    res.writeHead(404).end();
-  });
-  await new Promise(resolve => server.listen(8021, '0.0.0.0', resolve));
-  const profile = await mkdtemp(join(tmpdir(), 'tracelens-native-'));
-  let helper, browser;
-  try {
-    helper = await startInteractive({browserPath:chromium.executablePath(), profileDir:profile, headless:true});
-    const portFile = join(profile, 'DevToolsActivePort');
-    let port;
-    for (let i = 0; i < 100; i++) {
-      try {port = Number((await readFile(portFile, 'utf8')).split('\n')[0]); break;} catch {await new Promise(resolve => setTimeout(resolve, 100));}
-    }
-    assert.ok(port);
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
-    const context = browser.contexts()[0];
-    const login = context.pages().find(page => page.url().startsWith(helper.helperUrl));
-    assert.ok(login);
-    await context.addCookies([{name:'logged_in', value:'yes', domain:'blog.naver.com', path:'/', secure:true}]);
-    assert.equal(await login.evaluate(() => typeof window.traceLensLocal), 'undefined');
-    const action = await login.locator('form').getAttribute('action');
-    await browser.close();
-    browser = undefined;
-    const response = await fetch(new URL(action, helper.helperUrl), {method:'POST', redirect:'manual'});
-    assert.equal(response.status, 303, await response.text());
-    const attached = helper.context();
-    assert.ok(attached);
-    const dashboard = attached.pages().find(page => page.url().startsWith('http://localhost:8021/app'));
-    assert.ok(dashboard);
-    await dashboard.waitForURL('http://localhost:8021/app');
-    await dashboard.waitForFunction(() => window.events?.some(x => x.type === 'CONNECTION' && x.local));
-    assert.equal(await dashboard.evaluate(() => document.documentElement.dataset.tracelensLocalCollector), 'edge/chrome');
-    assert.ok((await attached.cookies('https://blog.naver.com')).some(c => c.name === 'logged_in' && c.value === 'yes'));
-  } finally {
-    await browser?.close().catch(() => {});
-    await helper?.close();
-    await new Promise(resolve => server.close(resolve));
-    await rm(profile, {recursive:true, force:true, maxRetries:10, retryDelay:200});
-  }
-});

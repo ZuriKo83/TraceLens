@@ -154,7 +154,6 @@
   const scanLog = document.getElementById('web-scan-log');
   let connected = false;
   let scanning = false;
-  let localMode = false;
   const csrf = {{ csrf_token|tojson }};
 
   const inputs = () => [...siteGrid.querySelectorAll('input[type="checkbox"]')];
@@ -165,13 +164,12 @@
     startButton.disabled = !connected || scanning || count === 0;
   };
 
-  function setConnected(local = false) {
+  function setConnected() {
     connected = true;
-    localMode = local;
     card.hidden = false;
     card.classList.add('connected');
     card.classList.remove('install-link');
-    title.textContent = local ? '내 브라우저 수집기 연결됨' : '서버 수집기 연결됨';
+    title.textContent = '서버 수집기 연결됨';
     statusText.textContent = '사이트 연결 후 조회하세요.';
     startButton.textContent = '조회 시작';
     refreshSelection();
@@ -204,10 +202,6 @@
     progressState.textContent = `${sites.length}개 사이트`;
     progressBar.style.width = '18%';
     scanLog.textContent = '조회가 끝날 때까지 창을 닫지 마세요.';
-    if (localMode) {
-      window.dispatchEvent(new CustomEvent('TRACELENS_WEB_COMMAND', {detail: {type: 'START_SCAN', sites}}));
-      return;
-    }
     fetch('/api/browser/scan', {
       method: 'POST', headers: {'Content-Type': 'application/json', 'X-TraceLens-CSRF': csrf},
       body: JSON.stringify({sites}), cache: 'no-store'
@@ -222,7 +216,7 @@
   window.addEventListener('TRACELENS_EXTENSION_EVENT', (event) => {
     const detail = event.detail || {};
     if (detail.type === 'CONNECTION') {
-      detail.connected ? setConnected(!!detail.local) : setDisconnected(detail.error);
+      detail.connected ? setConnected() : setDisconnected(detail.error);
       return;
     }
     if (detail.type === 'SCAN_STARTED') { progressBar.style.width = '30%'; return; }
@@ -249,16 +243,14 @@
   });
 
   document.querySelectorAll('[data-local-login]').forEach(button => {
-    button.addEventListener('click', () => {
-      if (!localMode) window.location.href = '/app/site?site=' + encodeURIComponent(button.dataset.localLogin);
-    });
+    button.addEventListener('click', () => { window.location.href = '/app/site?site=' + encodeURIComponent(button.dataset.localLogin); });
   });
   fetch('/api/browser/health').then(response => {
     if (!response.ok) throw new Error('서버의 수집기가 시작되지 않았습니다.');
-    if (!localMode) setConnected();
+    setConnected();
     document.getElementById('local-site-logins').hidden = false;
-  }).catch(error => { if (!localMode) setDisconnected(error.message); });
-  setTimeout(() => { if (!connected && !localMode) setDisconnected(); }, 1800);
+  }).catch(error => setDisconnected(error.message));
+  setTimeout(() => { if (!connected) setDisconnected(); }, 1800);
   refreshSelection();
 
   const activityGroups = () => [...document.querySelectorAll('.activity-group')];

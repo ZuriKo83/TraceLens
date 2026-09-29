@@ -21,14 +21,6 @@ Windows 서버에서는 Docker Desktop을 실행한 뒤 `START_HERE.bat`을 실�
 
 서버 브라우저는 기본 Chromium입니다. 서버에서 Playwright Firefox를 사용하려면 `.env`에 `TRACELENS_BROWSER=firefox`를 넣고 수집기 컨테이너를 재시작하세요. 사용자 PC에 설치된 Edge, Chrome, Firefox와 무관하게 동작합니다.
 
-## 일반 브라우저 로그인 시험 경로 (Windows)
-
-자동화 브라우저의 로그인을 거부하는 사이트를 확인하기 위한 시험용 경로입니다. GitHub Actions의 **Windows local login helper** 실행 결과에서 `TraceLens-Windows-Local-Login` ZIP을 내려받고 압축을 풀어 `START_LOCAL_LOGIN.bat`을 실행합니다. ZIP에 Node.js 실행 파일이 포함되므로 사용자 PC에 Node.js를 설치할 필요가 없습니다. 서버는 먼저 실행되어 있어야 하며 현재 기본 주소는 `http://localhost:8021`입니다. 다른 PC의 서버에 접속할 때는 `TRACELENS_SERVER_URL`을 그 서버 주소로 설정해야 합니다.
-
-보조 프로그램은 사용자 PC에 설치된 Edge, 없으면 Chrome을 일반 창으로 열고 로그인 안내 탭을 표시합니다. 사이트에서 직접 로그인과 2차 인증을 완료한 다음 **로그인 완료 · TraceLens 열기**를 누르면 그때 수집기가 같은 브라우저 프로필에 연결합니다. 대시보드의 조회 버튼은 연결된 사용자 브라우저에서 기존 추출기로 읽고 서버에 저장합니다. 비밀번호를 TraceLens에 입력하거나 서버로 전송하지 않습니다.
-
-이 경로는 합성 로그인 세션으로 동작을 확인하는 실험 단계입니다. 실제 Google 등 사이트의 로그인 허용이나 수집 성공은 검증되지 않았습니다. 브라우저 자동화 연결 이후 서비스가 차단할 수도 있습니다. 각 사이트의 조회 결과가 성공할 때만 연결을 확인한 것으로 판단하세요. 로그인 쿠키는 사용자의 압축 해제 폴더 아래 `.local-browser/native` 프로필에 남습니다. 공유 PC에서는 사용하지 마세요.
-
 ## 지원 범위
 
 YouTube 댓글·실시간 채팅, Instagram 댓글, Threads 게시글·답글, Facebook 게시글·댓글, X, 네이버 블로그·지식iN의 기존 추출 코드와 본인 활동 확인 절차를 재사용합니다. 조회 시작을 누를 때만 읽고 저장합니다. 원본 사이트 삭제와 상시 수집은 이 방식에 포함하지 않았습니다. 실제 사이트별 로그인과 추출 결과는 계정으로 확인해야 합니다.
