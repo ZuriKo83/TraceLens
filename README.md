@@ -16,7 +16,7 @@ Windows에서 평소 누를 파일은 서버 PC의 `START_HERE.bat`, 수집할 �
 
 1. 브라우저에서 TraceLens에 로그인합니다. 현재 Docker 개발 주소는 `http://localhost:8021`입니다.
 2. 사용 중인 브라우저가 로컬 DevTools 연결을 허용해야 합니다. Edge가 꺼져 있다면 PC 수집기 실행 파일이 기존 Edge 프로필을 연결 가능한 상태로 엽니다. 이미 브라우저가 켜져 있는데 연결 기능이 없다면 창을 닫고 실행 파일을 다시 열어야 합니다. 브라우저 세션을 다른 프로필로 복사하지 않습니다.
-3. [Windows PC 수집기 파일](https://github.com/ZuriKo83/TraceLens/actions/runs/36509547196/artifacts/11008731747)을 내려받아 압축을 푼 뒤 `START_PC_COLLECTOR.bat`을 실행합니다. GitHub 로그인과 Actions 파일 보관 기간이 적용됩니다. Node.js 설치는 필요하지 않습니다. 개발 환경에서는 `cd local_collector && npm ci && node attach.mjs`로 실행할 수 있습니다. 디버깅 포트는 로컬 PC에서만 열어야 합니다.
+3. 대시보드의 **PC 수집기 다운로드**를 눌러 [Windows 수집기 ZIP](https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens-PC-Windows.zip)을 바로 받은 뒤 압축을 풀고 `START_PC_COLLECTOR.bat`을 실행합니다. 첫 다운로드에는 포함된 Node.js 실행 파일 때문에 시간이 걸릴 수 있지만, 같은 파일을 다시 받을 필요는 없습니다. 별도의 Node.js 설치는 필요하지 않습니다. 개발 환경에서는 `cd local_collector && npm ci && node attach.mjs`로 실행할 수 있습니다. 디버깅 포트는 로컬 PC에서만 열어야 합니다.
 4. 대시보드에 **사용 중인 브라우저 연결됨**이 표시되면 사이트를 선택하고 **조회 시작**을 누릅니다. PC 수집기가 현재 브라우저의 로그인 세션에서 별도 조회 탭을 열고 결과만 서버 API로 보냅니다. 사이트 로그인 오류가 나온 경우에만 대시보드의 사이트 링크를 눌러 직접 로그인한 뒤 다시 조회하세요.
 
 Chrome 136 이상은 기본 프로필에 `--remote-debugging-port`를 적용하지 않습니다. 현재 로그인 상태를 유지하려면 새 프로필로 우회할 수 없으므로, Chrome에서는 기존 브라우저가 별도로 디버깅 연결을 허용한 경우에만 수집할 수 있습니다. 웨일도 로컬 DevTools 포트를 제공하는 환경에서만 연결할 수 있으며 실제 웨일 버전별 동작은 아직 검증되지 않았습니다. Firefox는 이 CDP 수집기에 연결되지 않습니다. 디버깅 연결을 열지 않은 일반 실행 중 브라우저에 PC 프로그램이 자동으로 붙을 수는 없습니다.

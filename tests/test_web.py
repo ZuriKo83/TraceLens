@@ -203,7 +203,7 @@ def test_dashboard_uses_pc_collector() -> None:
         dashboard = client.get("/app")
         assert dashboard.status_code == 200
         assert "http://127.0.0.1:8765/scan" in dashboard.text
-        assert "/actions/runs/36509547196/artifacts/11008731747" in dashboard.text
+        assert "/releases/download/pc-collector/TraceLens-PC-Windows.zip" in dashboard.text
         assert "https://x.com/home" in dashboard.text
         assert "/api/browser/scan" not in dashboard.text
         assert client.get("/app/site?site=x").status_code == 404
