@@ -18,6 +18,12 @@ test('Threads resolves the signed-in navigation profile, never a feed author', {
       <main><a href="/@other" aria-label="Profile">Profile</a><a href="/@other/post/abc">다른 사람 글</a></main>`}));
     const collector = await createCollector(context);
     const tab = await collector.tabs.create({url: 'https://www.threads.com/'});
+    const pageState = await collector.scripting.executeScript({target: {tabId: tab.id}, func: () => ({
+      url: location.href,
+      links: [...document.querySelectorAll("nav a[href], [role='navigation'] a[href]")]
+        .map(a => ({href: a.href, label: a.getAttribute('aria-label'), text: a.textContent})),
+    })});
+    assert.deepEqual(pageState[0].result.links, [{href: 'https://www.threads.com/@mine', label: '프로필', text: '프로필'}], JSON.stringify(pageState));
     const owner = await collector.resolveTaskTarget(tab.id, 'threads_posts');
     assert.equal(owner.threadsUsername, 'mine');
     assert.equal(owner.threadsIdentityVerified, true);
