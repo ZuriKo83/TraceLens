@@ -8,7 +8,7 @@ FastAPI, PostgreSQL, Redis, 작업자, 유지보수 작업을 Docker Compose에�
 
 Windows 서버에서는 Docker Desktop을 실행한 뒤 `START_HERE.bat`을 실행합니다. Linux 또는 macOS 서버에서는 `.env.example`을 `.env`로 복사하고 `docker compose up --build -d`를 실행합니다.
 
-Windows에서 평소 누를 파일은 서버 PC의 `START_HERE.bat`, 수집할 사용자 PC의 다운로드 묶음에 든 `START_PC_COLLECTOR.bat` 두 개입니다. 같은 PC에서 서버와 수집기를 실행한다면 이 순서대로 한 번씩 실행합니다. Docker Compose가 웹·작업자·유지보수 작업을 함께 시작합니다.
+Windows에서 서버 PC는 `START_HERE.bat`을 실행합니다. 사용자 PC는 설치 파일을 한 번 실행한 뒤 시작 메뉴의 **TraceLens PC Collector**를 클릭합니다. 같은 PC에서 서버와 수집기를 실행한다면 서버를 먼저 시작합니다. Docker Compose가 웹·작업자·유지보수 작업을 함께 시작합니다.
 
 기본 웹 주소는 **http://localhost:8021**입니다. 현재 Compose 파일은 서버 자신의 `127.0.0.1`에만 포트를 엽니다. 다른 PC에서 접속시키려면 별도 네트워크·HTTPS 배포 설정이 필요합니다. 이 로컬 설정을 외부에 그대로 공개하지 마세요.
 
@@ -16,7 +16,9 @@ Windows에서 평소 누를 파일은 서버 PC의 `START_HERE.bat`, 수집할 �
 
 1. 브라우저에서 TraceLens에 로그인합니다. 현재 Docker 개발 주소는 `http://localhost:8021`입니다.
 2. 사용 중인 브라우저가 로컬 DevTools 연결을 허용해야 합니다. Edge가 꺼져 있다면 PC 수집기 실행 파일이 기존 Edge 프로필을 연결 가능한 상태로 엽니다. 이미 브라우저가 켜져 있는데 연결 기능이 없다면 창을 닫고 실행 파일을 다시 열어야 합니다. 브라우저 세션을 다른 프로필로 복사하지 않습니다.
-3. 대시보드의 **PC 수집기 다운로드**를 눌러 [Windows 수집기 ZIP](https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens-PC-Windows.zip)을 바로 받은 뒤 압축을 풀고 `START_PC_COLLECTOR.bat`을 실행합니다. 첫 다운로드에는 포함된 Node.js 실행 파일 때문에 시간이 걸릴 수 있지만, 같은 파일을 다시 받을 필요는 없습니다. 별도의 Node.js 설치는 필요하지 않습니다. 개발 환경에서는 `cd local_collector && npm ci && node attach.mjs`로 실행할 수 있습니다. 디버깅 포트는 로컬 PC에서만 열어야 합니다.
+3. 대시보드의 **PC 수집기 설치 파일 다운로드**를 눌러 [Windows 설치 파일](https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens-PC-Setup.exe)을 받고 실행합니다. 설치 후 시작 메뉴에서 **TraceLens PC Collector**를 클릭합니다. 압축 해제나 배치파일 선택, Node.js 별도 설치는 필요하지 않습니다. 설치된 실행 파일과 바로가기는 사용자 계정에만 생성하며 제거는 Windows 앱 설정에서 할 수 있습니다. 개발 환경에서는 `cd local_collector && npm ci && node attach.mjs`로 실행할 수 있습니다. 디버깅 포트는 로컬 PC에서만 열어야 합니다.
+
+현재 설치 파일은 코드 서명 인증서가 없어 Windows가 게시자를 확인할 수 없습니다. 설치 파일 형식만으로 신뢰가 생기지는 않으므로 공개 배포 전에 게시자 코드 서명을 준비해야 합니다. Node.js와 Playwright가 포함되어 최초 다운로드 용량도 여전히 큽니다.
 4. 대시보드에 **사용 중인 브라우저 연결됨**이 표시되면 사이트를 선택하고 **조회 시작**을 누릅니다. PC 수집기가 현재 브라우저의 로그인 세션에서 별도 조회 탭을 열고 결과만 서버 API로 보냅니다. 사이트 로그인 오류가 나온 경우에만 대시보드의 사이트 링크를 눌러 직접 로그인한 뒤 다시 조회하세요.
 
 Chrome 136 이상은 기본 프로필에 `--remote-debugging-port`를 적용하지 않습니다. 현재 로그인 상태를 유지하려면 새 프로필로 우회할 수 없으므로, Chrome에서는 기존 브라우저가 별도로 디버깅 연결을 허용한 경우에만 수집할 수 있습니다. 웨일도 로컬 DevTools 포트를 제공하는 환경에서만 연결할 수 있으며 실제 웨일 버전별 동작은 아직 검증되지 않았습니다. Firefox는 이 CDP 수집기에 연결되지 않습니다. 디버깅 연결을 열지 않은 일반 실행 중 브라우저에 PC 프로그램이 자동으로 붙을 수는 없습니다.

@@ -30,19 +30,43 @@ jobs:
           Copy-Item local_collector/node_modules dist/TraceLens-PC/local_collector/ -Recurse
           New-Item -ItemType Directory -Force -Path dist/TraceLens-PC/chrome_extension | Out-Null
           Copy-Item chrome_extension/background.js,chrome_extension/youtube_delete_page.js,chrome_extension/youtube_activity_collector.js dist/TraceLens-PC/chrome_extension/
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --version=6.7.1 --yes --no-progress
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $compiler = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $compiler) { throw 'Inno Setup compiler was not found.' }
+          & $compiler installer/TraceLens-PC.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify silent installation
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'TraceLens-PC'
+          $process = Start-Process -FilePath dist/TraceLens-PC-Setup.exe -ArgumentList '/VERYSILENT', '/NORESTART', "/DIR=`"$target`"" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          if (-not (Test-Path "$target\runtime\node.exe")) { throw 'Node runtime is missing.' }
+          if (-not (Test-Path "$target\START_PC_COLLECTOR.bat")) { throw 'Collector launcher is missing.' }
       - uses: actions/upload-artifact@v4
         with:
-          name: TraceLens-PC-Windows
-          path: dist/TraceLens-PC/
+          name: TraceLens-PC-Setup
+          path: dist/TraceLens-PC-Setup.exe
       - name: Create direct download
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          Compress-Archive -Path dist/TraceLens-PC -DestinationPath dist/TraceLens-PC-Windows.zip -CompressionLevel Optimal
           if (gh release view pc-collector --repo "$env:GITHUB_REPOSITORY" 2>$null) {
-            gh release upload pc-collector dist/TraceLens-PC-Windows.zip --clobber --repo "$env:GITHUB_REPOSITORY"
+            gh release upload pc-collector dist/TraceLens-PC-Setup.exe --clobber --repo "$env:GITHUB_REPOSITORY"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             gh release edit pc-collector --notes "Windows PC collector build: $env:GITHUB_SHA" --repo "$env:GITHUB_REPOSITORY"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $legacy = gh release view pc-collector --json assets --jq '.assets[].name' --repo "$env:GITHUB_REPOSITORY"
+            if ($legacy -contains 'TraceLens-PC-Windows.zip') {
+              gh release delete-asset pc-collector TraceLens-PC-Windows.zip --yes --repo "$env:GITHUB_REPOSITORY"
+            }
           } else {
-            gh release create pc-collector dist/TraceLens-PC-Windows.zip --target "$env:GITHUB_SHA" --title "TraceLens PC collector" --notes "Windows PC collector build: $env:GITHUB_SHA" --latest=false --repo "$env:GITHUB_REPOSITORY"
+            gh release create pc-collector dist/TraceLens-PC-Setup.exe --target "$env:GITHUB_SHA" --title "TraceLens PC collector" --notes "Windows PC collector build: $env:GITHUB_SHA" --latest=false --repo "$env:GITHUB_REPOSITORY"
           }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
