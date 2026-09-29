@@ -61,6 +61,18 @@ services:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
     restart: unless-stopped
+  maintenance:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tracelens:${POSTGRES_PASSWORD:-local-development-only}@db:5432/tracelens
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - .:/app
+    command: ["python", "maintenance.py"]
+    depends_on:
+      web: {condition: service_healthy}
+    restart: unless-stopped
 volumes:
   postgres_data:
   redis_data:

@@ -1,12 +1,14 @@
 # TraceLens 로컬 Docker 실행
 
-FastAPI, PostgreSQL, Redis, 작업자를 Docker Compose에서 실행합니다. 사용자는 확장 프로그램 대신 PC 수집기를 실행합니다. Windows 배포 묶음에는 Node.js 실행 파일이 포함되므로 별도로 설치하지 않습니다.
+FastAPI, PostgreSQL, Redis, 작업자, 유지보수 작업을 Docker Compose에서 실행합니다. 사용자는 확장 프로그램 대신 PC 수집기를 실행합니다. Windows 배포 묶음에는 Node.js 실행 파일이 포함되므로 별도로 설치하지 않습니다.
 
 최종 Linux 서버는 Docker 없이도 실행할 수 있습니다. 설치 순서와 systemd 설정은 [Linux 직접 실행 안내](deploy/linux/README.md)에 있습니다. 사용자 PC의 수집기는 서버 운영 방식과 관계없이 별도로 실행합니다.
 
 ## 서버 시작
 
 Windows 서버에서는 Docker Desktop을 실행한 뒤 `START_HERE.bat`을 실행합니다. Linux 또는 macOS 서버에서는 `.env.example`을 `.env`로 복사하고 `docker compose up --build -d`를 실행합니다.
+
+Windows에서 평소 누를 파일은 서버 PC의 `START_HERE.bat`, 수집할 사용자 PC의 다운로드 묶음에 든 `START_PC_COLLECTOR.bat` 두 개입니다. 같은 PC에서 서버와 수집기를 실행한다면 이 순서대로 한 번씩 실행합니다. Docker Compose가 웹·작업자·유지보수 작업을 함께 시작합니다.
 
 기본 웹 주소는 **http://localhost:8021**입니다. 현재 Compose 파일은 서버 자신의 `127.0.0.1`에만 포트를 엽니다. 다른 PC에서 접속시키려면 별도 네트워크·HTTPS 배포 설정이 필요합니다. 이 로컬 설정을 외부에 그대로 공개하지 마세요.
 
@@ -32,7 +34,7 @@ YouTube 댓글·실시간 채팅, Instagram 댓글, Threads 게시글·답글, F
 SMTP 발송 코드는 제거되어 있습니다. 인증번호는 로컬 화면에 표시되며 이메일 소유 여부를 검증하지 않습니다. `ADMIN_EMAILS`에 사용할 이메일을 넣으면 관리자로 동기화됩니다. 새 설치는 빈 데이터베이스로 시작합니다.
 
 ```bash
-docker compose logs -f web worker
+docker compose logs -f web worker maintenance
 docker compose down
 ```
 
