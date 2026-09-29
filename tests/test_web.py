@@ -195,48 +195,17 @@ def test_user_dashboard_contains_web_scan_controls() -> None:
         assert 'value="threads"' in response.text
 
 
-def test_server_browser_requires_login_and_csrf(monkeypatch) -> None:
+def test_dashboard_uses_pc_collector() -> None:
     reset_database()
     with TestClient(app) as client:
-        assert client.post("/api/browser/open", json={"site": "x"}).status_code == 401
+        assert client.post("/api/browser/open", json={"site": "x"}).status_code == 404
         login(client, "browser@example.com")
         dashboard = client.get("/app")
         assert dashboard.status_code == 200
-        site = client.get("/app/site?site=x")
-        assert site.status_code == 200
-        assert "로그인 상태는 서버의 사용자별 브라우저에 저장됩니다" in site.text
-        assert client.post("/api/browser/open", json={"site": "x"}).status_code == 400
-        csrf = extract_value(dashboard.text, "csrf")
-        calls = []
-
-        class FakeCollector:
-            def __init__(self, **kwargs):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *args):
-                pass
-
-            async def post(self, url, *, content, headers):
-                calls.append((url, content, headers))
-                if json.loads(content).get("revision") == "frame-1":
-                    return httpx.Response(204, headers={"x-frame-revision": "frame-1"})
-                return httpx.Response(200, content=b"image-bytes", headers={"content-type": "image/jpeg", "x-frame-revision": "frame-1"})
-
-        monkeypatch.setattr("app.main.httpx.AsyncClient", FakeCollector)
-        response = client.post("/api/browser/frame", json={"site": "x"}, headers={"X-TraceLens-CSRF": csrf})
-        assert response.status_code == 200 and response.content == b"image-bytes"
-        assert response.headers["content-type"] == "image/jpeg"
-        assert response.headers["x-frame-revision"] == "frame-1"
-        assert calls[0][0].endswith(":3080/frame")
-        assert calls[0][2]["Authorization"].startswith("Bearer ")
-        unchanged = client.post("/api/browser/frame", json={"site": "x", "revision": "frame-1"}, headers={"X-TraceLens-CSRF": csrf})
-        assert unchanged.status_code == 204
-        back = client.get("/app", follow_redirects=False)
-        assert back.status_code == 200
-        assert "내 활동" in back.text
+        assert "http://127.0.0.1:8765/scan" in dashboard.text
+        assert "https://x.com/home" in dashboard.text
+        assert "/api/browser/scan" not in dashboard.text
+        assert client.get("/app/site?site=x").status_code == 404
 
 
 

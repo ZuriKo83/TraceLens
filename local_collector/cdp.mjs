@@ -1,0 +1,21 @@
+import {setTimeout as delay} from 'node:timers/promises';
+
+export async function backgroundPage(browser, context) {
+  const session = await browser.newBrowserCDPSession();
+  let targetId;
+  try { ({targetId} = await session.send('Target.createTarget', {url: 'about:blank', background: true})); }
+  finally { await session.detach(); }
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    for (const page of context.pages()) {
+      if (page.isClosed() || page.url() !== 'about:blank') continue;
+      const pageSession = await context.newCDPSession(page).catch(() => null);
+      if (!pageSession) continue;
+      try {
+        const info = await pageSession.send('Target.getTargetInfo');
+        if (info.targetInfo?.targetId === targetId) return page;
+      } finally { await pageSession.detach().catch(() => {}); }
+    }
+    await delay(100);
+  }
+  throw new Error('백그라운드 조회 탭을 찾지 못했습니다.');
+}

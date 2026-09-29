@@ -34,13 +34,10 @@ services:
       SECURE_COOKIES: "false"
       DEBUG_MAGIC_LINKS: "true"
       EXTENSION_STORE_URL: ""
-      BROWSER_COLLECTOR_URL: http://collector:3080
-      BROWSER_PROFILE_DIR: /browser_profiles
     ports:
       - "127.0.0.1:8021:8021"
     volumes:
       - .:/app
-      - browser_profiles:/browser_profiles
     command: ["sh", "-c", "python -m alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8021 --reload"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8021/health', timeout=3)"]
@@ -64,21 +61,6 @@ services:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
     restart: unless-stopped
-  collector:
-    build:
-      context: .
-      dockerfile: Dockerfile.collector
-    environment:
-      TRACELENS_SERVER_URL: http://web:8021
-      TRACELENS_BROWSER: ${TRACELENS_BROWSER:-chromium}
-      TRACELENS_COLLECTOR_HOST: 0.0.0.0
-      BROWSER_PROFILE_DIR: /collector/profiles
-    volumes:
-      - browser_profiles:/collector/profiles
-    depends_on:
-      web: {condition: service_healthy}
-    restart: unless-stopped
 volumes:
   postgres_data:
   redis_data:
-  browser_profiles:

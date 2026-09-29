@@ -4,13 +4,13 @@ cd /d "%~dp0"
 where docker >nul 2>&1
 if errorlevel 1 goto docker_missing
 if not exist ".env" copy /Y ".env.example" ".env" >nul
-docker compose up --build -d
+docker compose up --build -d --remove-orphans
 if errorlevel 1 goto failed
 start "" "http://localhost:8021"
 echo Server started. Users open the TraceLens URL in their browser.
 exit /b 0
 :failed
-echo Startup failed. Check the message above and docker compose logs web collector.
+echo Startup failed. Check the message above and docker compose logs web worker.
 pause
 exit /b 1
 :docker_missing

@@ -10,7 +10,7 @@ export async function localFetch(url, options = {}) {
 
 // Implements only the collection APIs used by the existing audited extractors.
 // No extension is installed in the browser; page execution is done by Playwright.
-export async function createCollector(context, {transport = localFetch} = {}) {
+export async function createCollector(context, {transport = localFetch, newPage = () => context.newPage(), backgroundOnly = false} = {}) {
   const tabs = new Map();
   const listeners = new Set();
   let nextId = 1;
@@ -32,11 +32,11 @@ export async function createCollector(context, {transport = localFetch} = {}) {
     tabs: {
       async create({url, active}) {
         const id = nextId++;
-        const page = await context.newPage();
+        const page = await newPage();
         tabs.set(id, page);
         try {
           await navigate(id, url);
-          if (active) await page.bringToFront();
+          if (active && !backgroundOnly) await page.bringToFront();
           return info(id);
         } catch (error) { tabs.delete(id); await page.close().catch(() => {}); throw error; }
       },

@@ -2,8 +2,6 @@ import hashlib
 import json
 import re
 import secrets
-import shutil
-import httpx
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -11,7 +9,7 @@ from urllib.parse import quote, urlparse
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, inspect, or_, select, text
@@ -898,7 +896,6 @@ def user_dashboard(
     if isinstance(user, RedirectResponse):
         return user
     extension_token = issue_collector_token(db, user)
-    request.session["browser_collector_token"] = extension_token
     data = dashboard_data(db, user.id, q, platform, activity_type, account_label)
     db.commit()
     site_summary = {
@@ -925,67 +922,6 @@ def user_dashboard(
         selected_account_label=account_label,
         **data,
     )
-
-
-SITE_BROWSER_LABELS = {
-    "youtube": "YouTube", "instagram": "Instagram", "threads": "Threads",
-    "facebook": "Facebook", "x": "X", "naver_blog": "네이버 블로그", "naver_kin": "네이버 지식iN",
-}
-
-
-@app.get("/app/site", response_class=HTMLResponse)
-def browser_site(request: Request, site: str, db: Session = Depends(get_db)):
-    user = require_web_user(request, db)
-    if isinstance(user, RedirectResponse):
-        return user
-    if site not in SITE_BROWSER_LABELS:
-        raise HTTPException(404, "지원하지 않는 사이트입니다.")
-    if not request.session.get("browser_collector_token"):
-        request.session["browser_collector_token"] = issue_collector_token(db, user)
-        db.commit()
-    return render(request, "browser_site.html", db=db, session_user=user, site=site, site_label=SITE_BROWSER_LABELS[site])
-
-
-@app.get("/api/browser/health")
-async def browser_health(user: User = Depends(current_user)):
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            response = await client.get(f"{settings.browser_collector_url.rstrip('/')}/health")
-            response.raise_for_status()
-        return {"ok": True}
-    except httpx.HTTPError as exc:
-        raise HTTPException(503, "서버의 수집기를 시작하지 못했습니다.") from exc
-
-
-@app.post("/api/browser/{action}")
-async def browser_command(action: str, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    if action not in {"open", "frame", "input", "scan"}:
-        raise HTTPException(404, "지원하지 않는 요청입니다.")
-    require_csrf(request, request.headers.get("x-tracelens-csrf", ""))
-    data = await request.body()
-    if len(data) > 8192:
-        raise HTTPException(413, "요청 크기가 너무 큽니다.")
-    token = request.session.get("browser_collector_token")
-    if not token:
-        token = issue_collector_token(db, user)
-        db.commit()
-        request.session["browser_collector_token"] = token
-    try:
-        timeout = 900 if action == "scan" else 50
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                f"{settings.browser_collector_url.rstrip('/')}/{action}",
-                content=data,
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            )
-        response_headers = {"Cache-Control": "no-store"}
-        if action == "frame" and response.headers.get("x-frame-revision"):
-            response_headers["X-Frame-Revision"] = response.headers["x-frame-revision"]
-        return Response(content=response.content, status_code=response.status_code,
-                        media_type=response.headers.get("content-type", "application/json"),
-                        headers=response_headers)
-    except httpx.HTTPError as exc:
-        raise HTTPException(503, "서버의 수집기에 연결할 수 없습니다.") from exc
 
 
 @app.get("/app/account", response_class=HTMLResponse)
@@ -1062,17 +998,6 @@ def delete_account(
     if user.email in settings.admin_email_set:
         emails = list(db.scalars(select(UserEmail).where(UserEmail.user_id == user.id)))
         return render(request, "account.html", db=db, session_user=user, user=user, emails=emails, delete_error="환경 변수 ADMIN_EMAILS에 등록된 관리자 계정은 먼저 관리자 설정에서 제거해야 탈퇴할 수 있습니다.")
-
-    browser_token = request.session.get("browser_collector_token")
-    if browser_token:
-        try:
-            with httpx.Client(timeout=15) as client:
-                response = client.post(f"{settings.browser_collector_url.rstrip('/')}/purge", json={}, headers={"Authorization": f"Bearer {browser_token}"})
-                if response.status_code == 409:
-                    raise HTTPException(409, "조회가 끝난 뒤 탈퇴를 다시 시도하세요.")
-        except httpx.HTTPError:
-            pass
-    shutil.rmtree(Path(settings.browser_profile_dir) / str(user.id), ignore_errors=True)
 
     now = utcnow()
     db.execute(delete(AuthToken).where(AuthToken.user_id == user.id))

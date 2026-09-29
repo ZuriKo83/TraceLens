@@ -39,7 +39,6 @@ jobs:
       - run: docker compose config --quiet
       - run: docker compose up --build -d --wait
       - run: curl --fail --silent http://localhost:8021/health
-      - run: docker compose exec -T collector node -e "fetch('http://localhost:3080/health').then(r => {if (!r.ok) process.exit(1)})"
-      - run: docker compose exec -T web pytest -q tests/test_web.py -k server_browser_requires_login_and_csrf
+      - run: docker compose exec -T web pytest -q tests/test_web.py -k dashboard_uses_pc_collector
       - if: always()
-        run: docker compose logs --tail=120 web collector && docker compose down -v
+        run: docker compose logs --tail=120 web worker && docker compose down -v

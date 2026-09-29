@@ -1,0 +1,33 @@
+name: Windows PC collector
+
+on:
+  push:
+    branches: [local-docker-development]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: local_collector/package-lock.json
+      - run: npm ci --omit=dev
+        working-directory: local_collector
+      - name: Bundle Node runtime and collector
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/TraceLens-PC/runtime,dist/TraceLens-PC/local_collector | Out-Null
+          Copy-Item (Get-Command node).Source dist/TraceLens-PC/runtime/node.exe
+          Copy-Item START_PC_COLLECTOR.bat dist/TraceLens-PC/
+          Copy-Item local_collector/attach.mjs,local_collector/adapter.mjs,local_collector/cdp.mjs,local_collector/policy.mjs dist/TraceLens-PC/local_collector/
+          Copy-Item local_collector/node_modules dist/TraceLens-PC/local_collector/ -Recurse
+          New-Item -ItemType Directory -Force -Path dist/TraceLens-PC/chrome_extension | Out-Null
+          Copy-Item chrome_extension/background.js,chrome_extension/youtube_delete_page.js,chrome_extension/youtube_activity_collector.js dist/TraceLens-PC/chrome_extension/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TraceLens-PC-Windows
+          path: dist/TraceLens-PC/
