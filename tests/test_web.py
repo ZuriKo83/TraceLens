@@ -204,10 +204,14 @@ def test_dashboard_uses_pc_collector() -> None:
         assert dashboard.status_code == 200
         assert "window.traceLensLocal({type: 'START_SCAN'" in dashboard.text
         assert "/releases/download/pc-collector/TraceLens-PC-Setup.exe" in dashboard.text
-        assert 'value="youtube" disabled' in dashboard.text
+        assert 'value="youtube" checked' in dashboard.text
         assert 'data-local-login="youtube"' not in dashboard.text
         assert 'id="google-login-check"' not in dashboard.text
-        assert 'data-site-status="threads"' in dashboard.text
+        assert 'data-local-login="threads"' in dashboard.text
+        assert 'data-site-status=' not in dashboard.text
+        assert 'CHECK_SITES' not in dashboard.text
+        assert '최근 조회' not in dashboard.text
+        assert 'data-local-login="x"' not in dashboard.text
         assert "/api/browser/scan" not in dashboard.text
         assert client.get("/app/site?site=x").status_code == 404
 
@@ -236,7 +240,7 @@ def test_dashboard_groups_scans_and_activities_by_platform_account() -> None:
         assert first.status_code == 200 and second.status_code == 200
         page = client.get("/app")
         assert page.status_code == 200
-        assert page.text.count('class="scan-group"') == 1
+        assert page.text.count('class="scan-group"') == 0
         assert "<b>질문</b> 1" in page.text
         assert "<b>답변</b> 1" in page.text
         assert page.text.count('class="activity-group"') == 1

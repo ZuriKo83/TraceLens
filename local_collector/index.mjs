@@ -1,4 +1,4 @@
-import {mkdir} from 'node:fs/promises';
+import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
@@ -28,6 +28,7 @@ try {
   }
   if (!ready) throw new Error(`TraceLens 서버(${SERVER})에 연결되지 않습니다. 서버를 먼저 실행하세요.`);
   await mkdir(profile, {recursive: true, mode: 0o700});
+  if (process.env.LOCALAPPDATA) await writeFile(join(process.env.LOCALAPPDATA, 'TraceLens', 'collector-browser.txt'), browserName, {mode: 0o600});
   console.log(`사용 브라우저: ${browserName === 'edge' ? 'Microsoft Edge' : 'Google Chrome'}`);
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { context?.close().catch(() => {}); });
   for (;;) {
@@ -35,6 +36,21 @@ try {
     context = await playwright[selection.engine].launchPersistentContext(profile, {
       channel: selection.channel, headless: false, viewport: null, acceptDownloads: false,
     });
+    const sessionFile = join(profile, 'tracelens-session-cookies.json');
+    try {
+      const cookies = JSON.parse(await readFile(sessionFile, 'utf8'));
+      if (Array.isArray(cookies)) await context.addCookies(cookies.filter(cookie => cookie.expires === -1));
+    } catch (error) { if (error.code !== 'ENOENT') console.warn('저장된 세션을 복원하지 못했습니다.'); }
+    const activeContext = context;
+    let saving = null;
+    const saveSession = () => {
+      if (!saving) saving = activeContext.cookies().then(cookies => writeFile(sessionFile,
+        JSON.stringify(cookies.filter(cookie => cookie.expires === -1)), {mode: 0o600}))
+        .catch(() => {}).finally(() => { saving = null; });
+      return saving;
+    };
+    const sessionTimer = setInterval(saveSession, 2000);
+    activeContext.once('close', () => clearInterval(sessionTimer));
     const collector = await createCollector(context, {
       newPage: () => backgroundPage(context.browser(), context), backgroundOnly: true,
     });
@@ -44,7 +60,7 @@ try {
       const result = await controller(source, message);
       if (message?.type === 'GOOGLE_LOGIN' || message?.type === 'NORMAL_LOGIN') {
         // Let the binding response reach the dashboard before closing its tab.
-        setTimeout(() => { normalLoginSite = message.type === 'NORMAL_LOGIN' ? 'x' : 'youtube'; context.close().catch(() => {}); }, 500);
+        setTimeout(async () => { normalLoginSite = message.type === 'NORMAL_LOGIN' ? 'x' : 'youtube'; await saveSession(); context.close().catch(() => {}); }, 500);
       }
       return result;
     });
@@ -54,6 +70,7 @@ try {
     await new Promise(resolve => context.once('close', resolve));
     if (!normalLoginSite) break;
     console.log('일반 브라우저에서 로그인하세요. 완료 후 해당 브라우저 창을 모두 닫으면 TraceLens가 다시 열립니다.');
+    console.log('TRACELENS_LOGIN_HELP');
     try { await runNormalLogin(browserName, profile, normalLoginSite); }
     catch (error) { console.error(`로그인 창 오류: ${error.message}`); }
   }

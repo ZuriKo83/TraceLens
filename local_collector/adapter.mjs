@@ -64,7 +64,16 @@ export async function createCollector(context, {transport = localFetch, newPage 
       },
     },
   };
-  const sandbox = vm.createContext({chrome, URL, fetch: transport, setTimeout, clearTimeout, console});
+  const upload = (url, options = {}) => {
+    if (allowedApi(String(url)) && new URL(url).pathname === '/api/collector/import' && options.method === 'POST') {
+      const payload = JSON.parse(options.body);
+      payload.replace_existing = true;
+      for (const item of payload.items || []) item.metadata = {...item.metadata, tracelens_scan_scope: payload.scan_scope};
+      options = {...options, body: JSON.stringify(payload)};
+    }
+    return transport(url, options);
+  };
+  const sandbox = vm.createContext({chrome, URL, fetch: upload, setTimeout, clearTimeout, console});
   for (const name of ['background.js', 'youtube_delete_page.js', 'youtube_activity_collector.js']) {
     const path = fileURLToPath(new URL(`../chrome_extension/${name}`, import.meta.url));
     vm.runInContext(await readFile(path, 'utf8'), sandbox, {filename: name});

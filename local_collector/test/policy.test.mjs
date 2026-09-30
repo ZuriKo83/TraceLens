@@ -25,7 +25,7 @@ test('untrusted pages and invalid sessions cannot collect', async () => {
   await assert.rejects(fn(source(), {type: 'START_SCAN', sites: ['x'], token: 'a'.repeat(40)}));
   assert.equal(scans, 0);
 });
-test('Google collection requires a reachable activity page', async () => {
+test('Google collection remains available without automatic access checks', async () => {
   let googleUrl = 'https://accounts.google.com/v3/signin/rejected';
   const context = {newPage: async () => {
     let currentUrl;
@@ -36,7 +36,7 @@ test('Google collection requires a reachable activity page', async () => {
   const fn = createController(context, {scan: async () => ({lines: ['✓ 조회 완료']})},
     {browserName: 'edge', transport: async () => ({ok: true})});
   const token = 'a'.repeat(40);
-  await assert.rejects(fn(source(), {type: 'START_SCAN', sites: ['youtube'], token}), /Google 활동 페이지/);
+  assert.equal((await fn(source(), {type: 'START_SCAN', sites: ['youtube'], token})).completed, 1);
   assert.equal((await fn(source(), {type: 'CHECK_SITES', token})).statuses[0].state, 'login_required');
   assert.equal((await fn(source(), {type: 'GOOGLE_LOGIN', token})).ok, true);
   assert.equal((await fn(source(), {type: 'NORMAL_LOGIN', sites: ['x'], token})).ok, true);

@@ -39,6 +39,6 @@ jobs:
       - run: docker compose config --quiet
       - run: docker compose up --build -d --wait
       - run: curl --fail --silent http://localhost:8021/health
-      - run: docker compose exec -T web pytest -q tests/test_web.py -k dashboard_uses_pc_collector
+      - run: docker compose exec -T web pytest -q tests/test_web.py tests/test_collector_replace.py -k "dashboard_uses_pc_collector or replacement"
       - if: always()
         run: docker compose logs --tail=120 web worker && docker compose down -v
