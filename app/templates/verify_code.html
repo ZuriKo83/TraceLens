@@ -1,9 +1,8 @@
 {% extends "base.html" %}{% block title %}이메일 인증 · {{ app_name }}{% endblock %}
 {% block content %}<section class="auth-shell"><div class="auth-card">
-<p class="eyebrow">EMAIL VERIFICATION</p><h1>인증번호 입력</h1><p class="muted"><b>{{ email }}</b>로 보낸 6자리 번호를 입력하세요.</p>
+<p class="eyebrow">LOCAL VERIFICATION</p><h1>인증번호 입력</h1><p class="muted"><b>{{ email }}</b> 계정의 로컬 개발용 번호를 입력하세요. 이메일은 발송되지 않습니다.</p>
 {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
-{% if delivered %}<div class="alert success">인증번호를 발송했습니다.</div>{% endif %}
-{% if dev_code %}<div class="dev-link-box"><b>개발 모드 인증번호</b><p>{{ dev_code }}</p></div>{% endif %}
+{% if dev_code %}<div class="dev-link-box"><b>로컬 인증번호</b><p>{{ dev_code }}</p></div>{% endif %}
 <form method="post" action="/auth/signup/verify" class="stack-form"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="email" value="{{ email }}">
 <label>인증번호<input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"></label>
 <button class="button primary full" type="submit">인증하고 가입 완료</button></form><a class="text-link" href="/signup">처음부터 다시</a>

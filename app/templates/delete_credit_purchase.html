@@ -10,12 +10,8 @@
 </style>
 {% endblock %}
 {% block content %}
-<nav class="delete-page-nav" aria-label="삭제 페이지 구역"><a href="#delete-credit-purchase">삭제권 구매</a><a href="#delete-execute">삭제</a></nav>
-<section class="credit-hero" id="delete-credit-purchase"><div><h1>삭제권 구매</h1></div><div class="credit-balance"><span>보유 삭제권</span><strong>{{ balance }}개</strong></div></section>
-<section class="credit-grid">
-{% for package in packages %}<article class="credit-card{% if package.credits == 50 %} featured{% endif %}"><small>{% if package.credits == 50 %}추천{% endif %}</small><h2>{{ package.credits }}개</h2><div class="credit-price">{{ '{:,}'.format(package.price) }}<span>원</span></div><a class="button primary" href="/donate" target="_blank" rel="noopener">구매하기</a></article>{% endfor %}
-</section>
-<div class="purchase-note">결제 후 문의할 때 TraceLens 가입 이메일을 알려주세요. 입금 확인 후 삭제권이 충전됩니다.</div>
+<nav class="delete-page-nav" aria-label="삭제 페이지 구역"><a href="#delete-execute">삭제</a></nav>
+<section class="credit-hero"><div><h1>작성한 항목 삭제</h1><p>로컬 개발 환경에서는 삭제권 구매가 중단되었습니다.</p></div><div class="credit-balance"><span>보유 삭제권</span><strong>{{ balance }}개</strong></div></section>
 <section class="archive-section" id="delete-execute">
 <div class="archive-head"><h2>작성한 항목 삭제</h2></div>
 <div class="delete-platform-grid" aria-label="삭제 지원 플랫폼">

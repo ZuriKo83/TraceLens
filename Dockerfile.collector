@@ -1,0 +1,9 @@
+FROM node:22-bookworm
+WORKDIR /collector
+COPY local_collector/package*.json ./
+RUN npm ci --omit=dev && npx playwright install --with-deps chromium firefox
+COPY local_collector/ ./
+COPY chrome_extension/ /chrome_extension/
+ENV TRACELENS_SERVER_URL=http://web:8021
+EXPOSE 3080
+CMD ["node", "server.mjs"]

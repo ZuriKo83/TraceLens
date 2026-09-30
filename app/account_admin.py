@@ -3,9 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
-import smtplib
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -112,21 +110,8 @@ def cooldown_until(db: Session, email: str) -> datetime | None:
 
 
 def send_code(recipient: str, code: str, label: str = "회원가입") -> bool:
-    if not settings.smtp_host or not settings.smtp_from:
-        print(f"[VERIFICATION CODE] {recipient}: {code}")
-        return False
-    message = EmailMessage()
-    message["From"] = settings.smtp_from
-    message["To"] = recipient
-    message["Subject"] = f"TraceLens {label} 인증번호"
-    message.set_content(f"TraceLens {label} 인증번호는 {code}입니다.\n\n인증번호는 5분 동안 유효합니다.")
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as smtp:
-        if settings.smtp_starttls:
-            smtp.starttls()
-        if settings.smtp_username:
-            smtp.login(settings.smtp_username, settings.smtp_password)
-        smtp.send_message(message)
-    return True
+    # Local development: display the code in the response instead.
+    return False
 
 
 def create_signup_code(db: Session, user: User, email: str) -> str:
@@ -241,7 +226,7 @@ def access_code_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/admin/access-codes", response_class=HTMLResponse)
-def create_access_code(request: Request, email: str = Form(...), send_email: bool = Form(False), csrf: str = Form(...), db: Session = Depends(get_db)):
+def create_access_code(request: Request, email: str = Form(...), csrf: str = Form(...), db: Session = Depends(get_db)):
     admin = require_admin(request, db)
     if isinstance(admin, RedirectResponse):
         return admin
@@ -254,14 +239,8 @@ def create_access_code(request: Request, email: str = Form(...), send_email: boo
     code = f"{secrets.randbelow(1_000_000):06d}"
     db.add(AdminAccessCode(email=normalized, code_hash=hash_token(code), created_by=admin.id, expires_at=utcnow() + timedelta(minutes=ADMIN_CODE_MINUTES)))
     db.commit()
-    delivered = False
-    if send_email:
-        try:
-            delivered = send_code(normalized, code, "관리자 승인")
-        except Exception:
-            delivered = False
     recent = list(db.scalars(select(AdminAccessCode).order_by(AdminAccessCode.created_at.desc()).limit(50)))
-    return templates.TemplateResponse(request=request, name="admin_access_codes.html", context={"request": request, "app_name": settings.app_name, "session_user": admin, "csrf_token": csrf_token(request), "recent": recent, "generated_email": normalized, "generated_code": code, "delivered": delivered})
+    return templates.TemplateResponse(request=request, name="admin_access_codes.html", context={"request": request, "app_name": settings.app_name, "session_user": admin, "csrf_token": csrf_token(request), "recent": recent, "generated_email": normalized, "generated_code": code})
 
 
 @router.get("/admin-invite", response_class=HTMLResponse)

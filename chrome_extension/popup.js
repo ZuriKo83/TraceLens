@@ -87,7 +87,9 @@ function setLog(message) {
 }
 
 function normalizeServer(value) {
-  return String(value || "https://tracelens.kr").trim().replace(/\/$/, "");
+  const server = String(value || "http://localhost:8021").trim().replace(/\/$/, "");
+  return ["http://localhost:8021", "http://127.0.0.1:8021"].includes(server)
+    ? server : "http://localhost:8021";
 }
 
 function normalizedSites(value) {

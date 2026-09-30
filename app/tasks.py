@@ -195,7 +195,7 @@ def _reconcile_complete_youtube_snapshot(
 def process_collector_import(payload_data: dict, user_id: int) -> dict:
     payload = CollectorImport.model_validate(payload_data)
     with Session(engine) as db:
-        user = db.get(User, user_id)
+        user = db.scalar(select(User).where(User.id == user_id).with_for_update())
         if not user or user.deleted_at is not None:
             raise RuntimeError("사용자 계정을 찾을 수 없습니다.")
 
@@ -215,6 +215,23 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             accepted.append(item)
 
         prepared = [(item, _fingerprint_candidates(payload.platform, item), item.external_id[:500]) for item in accepted]
+        account = (payload.account_label or "").strip()[:160] or None
+        replaced = 0
+        if (payload.replace_existing and payload.status == "success"
+                and payload.scan_scope in VISIBLE_ACTIVITY_TYPES
+                and (accepted or not payload.items)):
+            rows = db.scalars(select(Activity).where(
+                Activity.user_id == user.id, Activity.platform == payload.platform,
+                Activity.account_label == account,
+            ))
+            for row in rows:
+                scope = _load_metadata(row.metadata_json).get("tracelens_scan_scope")
+                if scope is None:
+                    scope = _youtube_activity_kind(row) if payload.platform == "youtube" else row.activity_type
+                if scope == payload.scan_scope:
+                    db.delete(row)
+                    replaced += 1
+            db.flush()
         snapshot_fingerprints = {fingerprint for _, candidates, _ in prepared for fingerprint in candidates}
         by_ext, by_fp = {}, {}
         if prepared:
@@ -314,6 +331,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
             "updated": updated,
             "pending_recheck": pending_recheck,
             "pruned": pruned,
+            "replaced": replaced,
             "ignored": len(payload.items) - len(accepted),
             "account_label": account,
             "user": user.email,

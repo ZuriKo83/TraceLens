@@ -6,11 +6,12 @@ Requires=postgresql.service redis-server.service
 
 [Service]
 Type=simple
-User=zuri
-Group=zuri
-WorkingDirectory=/home/zuri/Desktop/TraceLens
-EnvironmentFile=/home/zuri/Desktop/TraceLens/.env
-ExecStart=/home/zuri/Desktop/TraceLens/start_web.sh
+User=tracelens
+Group=tracelens
+WorkingDirectory=/opt/tracelens
+EnvironmentFile=/etc/tracelens/tracelens.env
+ExecStartPre=/opt/tracelens/.venv/bin/alembic upgrade head
+ExecStart=/opt/tracelens/start_web.sh
 Restart=always
 RestartSec=5
 TimeoutStopSec=30

@@ -19,6 +19,8 @@ QR_PATH = Path(__file__).resolve().parent / "templates" / "AQR.png"
 
 @router.get("/donate", response_class=HTMLResponse)
 def donate_page(request: Request, db: Session = Depends(get_db)):
+    if settings.public_base_url.startswith(("http://localhost:", "http://127.0.0.1:")):
+        raise HTTPException(status_code=404)
     session_user = None
     user_id = request.session.get("user_id")
     if user_id:
@@ -37,13 +39,15 @@ def donate_page(request: Request, db: Session = Depends(get_db)):
             "app_name": settings.app_name,
             "session_user": session_user,
             "csrf_token": request.session.get("csrf_token", ""),
-            "donate_url": "https://aq.gy/f/I9J3b",
+            "donate_url": "",
         },
     )
 
 
 @router.get("/donate/qr", response_class=FileResponse)
 def donate_qr():
+    if settings.public_base_url.startswith(("http://localhost:", "http://127.0.0.1:")):
+        raise HTTPException(status_code=404)
     if not QR_PATH.is_file():
         raise HTTPException(status_code=404, detail="후원 QR 이미지를 찾을 수 없습니다.")
     return FileResponse(

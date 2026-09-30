@@ -1,112 +1,66 @@
-# TraceLens
+# TraceLens 로컬 Docker 실행
 
-TraceLens는 여러 플랫폼에 흩어진 사용자의 게시글·댓글·질문·답변을 수집해 개인 보관함에서 조회하고 검색할 수 있게 하는 웹 애플리케이션과 Chrome 확장 프로그램입니다.
+FastAPI, PostgreSQL, Redis, 작업자, 유지보수 작업을 Docker Compose에서 실행합니다. 사용자는 확장 프로그램 대신 PC 수집기를 실행합니다. Windows 배포 묶음에는 Node.js 실행 파일이 포함되므로 별도로 설치하지 않습니다.
 
-## 주요 기능
+최종 Linux 서버는 Docker 없이도 실행할 수 있습니다. 설치 순서와 systemd 설정은 [Linux 직접 실행 안내](deploy/linux/README.md)에 있습니다. 사용자 PC의 수집기는 서버 운영 방식과 관계없이 별도로 실행합니다.
 
-- 이메일·비밀번호 로그인, 이메일 인증 및 비밀번호 재설정
-- 사용자별 활동 보관함과 플랫폼·계정·활동 유형별 검색
-- YouTube, Instagram, Threads, Facebook, X, 네이버 블로그, 네이버 지식iN 지원
-- Chrome 확장 프로그램 기반 활동 수집
-- 관리자 도구, 커뮤니티, 신고 및 이용 제한 기능
-- PostgreSQL, Redis 세션, RQ 백그라운드 작업 지원
+## 서버 시작
 
-## 디렉터리 구성
+Windows 서버에서는 Docker Desktop을 실행한 뒤 `START_HERE.bat`을 실행합니다. Linux 또는 macOS 서버에서는 `.env.example`을 `.env`로 복사하고 `docker compose up --build -d`를 실행합니다.
 
-- `app/`: FastAPI 웹 애플리케이션
-- `chrome_extension/`: Chrome 확장 프로그램
-- `alembic/`: 데이터베이스 마이그레이션
-- `scripts/`: 백업·검증·마이그레이션 도구
-- `systemd/`: Linux 서비스 정의
-- `tests/`: 자동화 테스트
+Windows에서 서버 PC는 `START_HERE.bat`을 실행합니다. 사용자 PC는 설치 파일을 한 번 실행한 뒤 시작 메뉴의 **TraceLens**를 클릭합니다. 같은 PC에서 서버와 수집기를 실행한다면 서버를 먼저 시작합니다. Docker Compose가 웹·작업자·유지보수 작업을 함께 시작합니다.
 
-## 환경 설정
+기본 웹 주소는 **http://localhost:8021**입니다. 현재 Compose 파일은 서버 자신의 `127.0.0.1`에만 포트를 엽니다. 다른 PC에서 접속시키려면 별도 네트워크·HTTPS 배포 설정이 필요합니다. 이 로컬 설정을 외부에 그대로 공개하지 마세요.
 
-저장소를 받은 뒤 예제 환경 파일을 복사하고 실제 값을 입력합니다.
+## 사용자 PC에서 조회
 
-```bash
-cp .env.example .env
-```
+1. Docker 서버를 먼저 실행합니다. 현재 개발 주소는 `http://localhost:8021`입니다.
+2. [Windows 설치 파일](https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens.exe)을 설치하고 시작 메뉴의 **TraceLens**를 실행합니다. 설치된 Edge를 우선 사용하고 없으면 설치된 Chrome을 사용합니다. 둘 다 없으면 실행을 중단하고 안내합니다. 이미 열린 다른 브라우저 창을 닫을 필요는 없습니다. 압축 해제나 배치파일 선택, Node.js 별도 설치는 필요하지 않습니다.
+3. 새로 열린 창에서 TraceLens에 로그인합니다. 사이트 로그인 카드의 모든 사이트 버튼을 펼쳐 두었습니다. 각 사이트에서 한 번씩 로그인하고, Meta 계정 연결이나 네이버 추가 보안 확인을 완료하세요. Google·X는 일반 브라우저로 전환됩니다. 안내 알림에 따라 로그인 후 수집용 브라우저 창을 모두 닫으면 대시보드가 다시 열립니다. 다른 사이트는 로그인 후 대시보드 탭으로 돌아오세요.
+4. 사이트를 선택하고 **조회 시작**을 누릅니다. 접근 상태 자동 검사와 YouTube 선택 제한은 없습니다. 조회 실패 이유는 조회 결과에 표시됩니다. 성공한 조회는 같은 사용자·사이트 계정·활동 유형의 기존 보관함 기록을 새 결과로 교체합니다. 실패한 조회와 선택하지 않은 범위의 기록은 유지합니다. 실제 원본 사이트의 게시물은 삭제하지 않습니다.
 
-최소한 다음 항목은 운영 환경에 맞게 변경해야 합니다.
+현재 설치 파일은 코드 서명 인증서가 없어 Windows가 게시자를 확인할 수 없습니다. 설치 파일 형식만으로 신뢰가 생기지는 않으므로 공개 배포 전에 게시자 코드 서명을 준비해야 합니다. Node.js와 Playwright가 포함되어 최초 다운로드 용량도 여전히 큽니다. 개발 환경에서는 `cd local_collector && npm ci && node index.mjs --browser=edge`로 실행할 수 있습니다.
 
-- `DATABASE_URL`
-- `REDIS_URL`
-- `SESSION_SECRET`
-- `PUBLIC_BASE_URL`
-- `SMTP_PASSWORD`
-- `ADMIN_EMAILS`
+시작 메뉴의 수집기는 CMD 창 없이 실행됩니다. 최초 실행은 화면에 열린 Edge 또는 Chrome을 우선 사용하고, 없으면 Edge → Chrome 순서로 선택합니다. 이후에는 로그인 프로필이 달라지지 않도록 선택한 브라우저를 유지합니다. 이 경우에도 수집용 전용 프로필은 별도 창으로 열립니다. 실행 오류는 알림으로 표시하며 로그는 `%LOCALAPPDATA%\TraceLens\logs\collector.log`에 저장합니다. 수집기가 이미 실행 중이면 추가 창을 만들지 않고 기존 TraceLens 브라우저를 사용하라는 안내를 표시합니다.
 
-`.env`와 API 키, 비밀번호는 Git에 커밋하지 않습니다.
+전용 프로필은 Windows의 `%LOCALAPPDATA%\TraceLens\collector-profile\edge`에 저장됩니다. Windows 앱 설정에서 수집기를 제거해도 로그인 데이터가 남으므로, 완전히 삭제하려면 모든 수집기 창을 닫은 뒤 이 폴더도 직접 지우세요.
 
-## Linux 설치 및 실행
+Linux 서버로 이전할 때는 PC 수집기 실행 환경의 `TRACELENS_SERVER_URL`을 실제 HTTPS 웹 주소로 설정해야 합니다. 서버는 브라우저 쿠키나 비밀번호를 받지 않고 수집 결과만 저장합니다. 같은 PC에서 여러 사이트를 조회할 때에는 한 작업이 끝난 뒤 다음 작업을 시작합니다.
+
+## 지원 범위
+
+Instagram 댓글, Threads 게시글·답글, Facebook 게시글·댓글, X, 네이버 블로그·지식iN의 기존 추출 코드를 재사용합니다. 조회 시작을 누를 때만 읽고 저장합니다. 각 사이트의 로그인과 추출 성공 여부는 실제 계정으로 확인해야 합니다. YouTube는 일반 브라우저로 Google에 로그인한 전용 프로필을 수집기에서 다시 여는 시험적 방식입니다.  사이트 정책에 따라 다시 차단될 수 있습니다. PC 수집기에서는 원본 사이트 삭제와 상시 수집을 지원하지 않습니다.
+
+Threads는 계정 메뉴의 내 프로필 링크를 하나로 확인할 수 있을 때만 조회합니다. 추천 계정이나 피드 작성자의 프로필 링크로는 본인 계정을 추정하지 않으며, 내 프로필을 식별하지 못하면 저장하지 않습니다. 이 변경 이전에 잘못 저장된 기록은 자동으로 삭제하지 않습니다.
+
+## 로컬 설정
+
+`.env`의 `SESSION_SECRET`을 임의의 긴 값으로 바꾸세요. `POSTGRES_PASSWORD`는 최초 실행 전에 영문·숫자 값으로 설정하세요. 이미 생성된 DB 볼륨의 암호는 환경 변수만 바꿔도 변경되지 않습니다.
+
+SMTP 발송 코드는 제거되어 있습니다. 인증번호는 로컬 화면에 표시되며 이메일 소유 여부를 검증하지 않습니다. `ADMIN_EMAILS`에 사용할 이메일을 넣으면 관리자로 동기화됩니다. 새 설치는 빈 데이터베이스로 시작합니다.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-./scripts/migrate.sh
+docker compose logs -f web worker maintenance
+docker compose down
 ```
 
-개별 프로세스 실행:
+`docker compose down -v`는 DB와 Redis 볼륨을 삭제합니다.
+
+## 검사
+
+브라우저 통합 검사는 합성 페이지로 추출 어댑터의 조회와 업로드를 확인합니다. 사용자 PC 수집기는 `local_collector/`의 동일한 추출 어댑터를 사용합니다.
 
 ```bash
-./start_web.sh
-./start_worker.sh
-./start_maintenance.sh
+cd local_collector
+npm ci
+npx playwright install --with-deps chromium
+npm test
 ```
 
-systemd 서비스 설치:
+기존 Python 테스트는 `docker compose exec web pytest -q`로 실행합니다.
 
-```bash
-chmod +x install_tracelens_services.sh
-APP_DIR="$PWD" APP_USER="$USER" APP_GROUP="$(id -gn)" ./install_tracelens_services.sh
-```
+수집용 브라우저 선택은 `%LOCALAPPDATA%\TraceLens\collector-browser.txt`에, 세션 쿠키는 각 수집용 프로필의 `tracelens-session-cookies.json`에 저장합니다. 외부 사이트 로그인 쿠키와 비밀번호를 서버로 보내지 않습니다. TraceLens 자체 로그인은 서버 Redis 세션을 사용합니다.
 
-상태 확인:
+다운로드 파일 이름은 `TraceLens.exe`입니다. 처음 실행하면 설치하고, 같은 버전의 다운로드 파일을 다시 실행하면 설치 화면 없이 설치된 프로그램을 엽니다. 새 버전은 한 번 업데이트 설치하며, 이후에는 시작 메뉴의 TraceLens를 실행하면 됩니다.
 
-```bash
-sudo systemctl status tracelens-web tracelens-worker tracelens-maintenance --no-pager
-sudo journalctl -u tracelens-web -n 100 --no-pager
-```
-
-## Windows 개발 실행
-
-```bat
-copy .env.example .env
-py -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-START_HERE.bat
-```
-
-## Chrome 확장 프로그램
-
-1. Chrome에서 `chrome://extensions`를 엽니다.
-2. 개발자 모드를 활성화합니다.
-3. `압축해제된 확장 프로그램을 로드합니다`를 선택합니다.
-4. `chrome_extension` 폴더를 지정합니다.
-
-Web Store 제출 정보는 `CHROME_WEB_STORE.md`를 참고합니다.
-
-## 공개 배포
-
-Cloudflare Tunnel을 사용하는 경우 공개 호스트의 원본 서비스는 다음과 같이 설정합니다.
-
-```text
-http://localhost:8021
-```
-
-외부 주소는 `.env`의 `PUBLIC_BASE_URL`과 일치해야 하며, 운영 환경에서는 `SECURE_COOKIES=true`를 유지합니다.
-
-## 테스트
-
-```bash
-pytest -q
-```
-
-## 관련 문서
-
-- `OPERATIONS.md`: 백업, 모니터링, Redis 및 운영 구성
-- `CHROME_WEB_STORE.md`: Chrome Web Store 등록 정보
-- `PRIVACY_POLICY.md`: 개인정보처리방침
+관리자 이메일은 `ADMIN_EMAILS=drkoby0803@gmail.com`으로 지정합니다. 관리자 계정을 자동 생성하지 않습니다. 새 DB에서는 회원가입 후 해당 이메일에 관리자 권한이 연결됩니다. `20260930_0002` 마이그레이션은 해당 계정의 기존 비밀번호와 로그인 토큰을 한 번 초기화하므로, 적용 후 회원가입에서 새 비밀번호를 설정하세요. Linux에서도 `python -m alembic upgrade head`를 실행한 뒤 서버를 시작해야 합니다. 기존 `.env`는 자동으로 덮어쓰지 않으므로 ADMIN_EMAILS 값을 확인하세요.

@@ -1,6 +1,7 @@
 import multiprocessing
+import os
 
-bind = '0.0.0.0:8021'
+bind = os.getenv('TRACELENS_WEB_BIND', '127.0.0.1:8021')
 workers = 4
 worker_class = 'uvicorn.workers.UvicornWorker'
 timeout = 60

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.session_identity import session_identity
+
 import logging
 import secrets
 from datetime import timedelta, timezone
@@ -284,6 +286,7 @@ def secure_signup_verify(
     _clear_verify_failures(request)
     request.session.clear()
     request.session["user_id"] = user.id
+    request.session["account_identity"] = session_identity(user)
     request.session["csrf_token"] = secrets.token_urlsafe(24)
     return RedirectResponse("/app", status_code=303)
 

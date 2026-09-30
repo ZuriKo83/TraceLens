@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./tracelens.db"
     session_secret: str = "change-this-before-public-deployment"
     public_base_url: str = "http://127.0.0.1:8021"
+    browser_collector_url: str = "http://127.0.0.1:3080"
+    browser_profile_dir: str = "./browser_profiles"
     extension_store_url: str = ""
     admin_emails: str = ""
     first_user_is_admin: bool = False
@@ -31,13 +33,6 @@ class Settings(BaseSettings):
     scan_archive_delete_delay_hours: int = 24
     backup_dir: str = "./backups"
     backup_retention_days: int = 14
-
-    smtp_host: str = ""
-    smtp_port: int = 587
-    smtp_username: str = ""
-    smtp_password: str = ""
-    smtp_from: str = ""
-    smtp_starttls: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

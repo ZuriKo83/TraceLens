@@ -6,11 +6,11 @@ Requires=postgresql.service redis-server.service
 
 [Service]
 Type=simple
-User=zuri
-Group=zuri
-WorkingDirectory=/home/zuri/Desktop/TraceLens
-EnvironmentFile=/home/zuri/Desktop/TraceLens/.env
-ExecStart=/home/zuri/Desktop/TraceLens/start_maintenance.sh
+User=tracelens
+Group=tracelens
+WorkingDirectory=/opt/tracelens
+EnvironmentFile=/etc/tracelens/tracelens.env
+ExecStart=/opt/tracelens/start_maintenance.sh
 Restart=always
 RestartSec=10
 

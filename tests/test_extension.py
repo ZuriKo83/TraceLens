@@ -164,9 +164,10 @@ def test_tracelens_brand_and_icons() -> None:
     assert (EXTENSION / "icons" / "icon128.png").exists()
 
 
-def test_public_domain_is_connected() -> None:
+def test_local_server_is_connected() -> None:
     manifest = json.loads(read("manifest.json"))
-    assert "https://tracelens.kr/*" in manifest["host_permissions"]
-    assert "https://tracelens.kr/*" in manifest["content_scripts"][0]["matches"]
-    assert "https://tracelens.kr" in read("popup.js")
-    assert "https://tracelens.kr" in read("background.js")
+    assert "http://localhost:8021/*" in manifest["host_permissions"]
+    assert "http://localhost:8021/*" in manifest["content_scripts"][0]["matches"]
+    assert "http://localhost:8021" in read("popup.js")
+    assert "http://localhost:8021" in read("background.js")
+    assert not any("tracelens.kr" in url for url in manifest["host_permissions"])

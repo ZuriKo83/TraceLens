@@ -1,5 +1,7 @@
 from urllib.parse import urlsplit
 import re
+import json
+import httpx
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -58,7 +60,7 @@ def test_public_landing_and_login_flow() -> None:
         login(client, "owner@example.com")
         app_page = client.get("/app")
         assert "owner@example.com" in app_page.text
-        assert "확장 프로그램" in app_page.text
+        assert "서버 수집기" in app_page.text
         admin = client.get("/admin")
         assert admin.status_code == 200
         assert "ADMIN CONSOLE" in admin.text
@@ -193,6 +195,27 @@ def test_user_dashboard_contains_web_scan_controls() -> None:
         assert 'value="threads"' in response.text
 
 
+def test_dashboard_uses_pc_collector() -> None:
+    reset_database()
+    with TestClient(app) as client:
+        assert client.post("/api/browser/open", json={"site": "x"}).status_code == 404
+        login(client, "browser@example.com")
+        dashboard = client.get("/app")
+        assert dashboard.status_code == 200
+        assert "window.traceLensLocal({type: 'START_SCAN'" in dashboard.text
+        assert "/releases/download/pc-collector/TraceLens.exe" in dashboard.text
+        assert 'value="youtube" checked' in dashboard.text
+        assert 'data-local-login="youtube"' not in dashboard.text
+        assert 'id="google-login-check"' not in dashboard.text
+        assert 'data-local-login="threads"' in dashboard.text
+        assert 'data-site-status=' not in dashboard.text
+        assert 'CHECK_SITES' not in dashboard.text
+        assert '최근 조회' not in dashboard.text
+        assert 'data-local-login="x"' not in dashboard.text
+        assert "/api/browser/scan" not in dashboard.text
+        assert client.get("/app/site?site=x").status_code == 404
+
+
 
 def test_dashboard_groups_scans_and_activities_by_platform_account() -> None:
     reset_database()
@@ -217,7 +240,7 @@ def test_dashboard_groups_scans_and_activities_by_platform_account() -> None:
         assert first.status_code == 200 and second.status_code == 200
         page = client.get("/app")
         assert page.status_code == 200
-        assert page.text.count('class="scan-group"') == 1
+        assert page.text.count('class="scan-group"') == 0
         assert "<b>질문</b> 1" in page.text
         assert "<b>답변</b> 1" in page.text
         assert page.text.count('class="activity-group"') == 1

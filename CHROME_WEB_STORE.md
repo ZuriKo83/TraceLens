@@ -57,7 +57,7 @@ TraceLens는 사용자가 조회를 실행한 경우에만 작동합니다. 비�
 
 ## 개인정보처리방침
 
-https://tracelens.kr/privacy
+공개 서비스 중단 중. 로컬 개발용 확장 프로그램은 Web Store에 제출하지 않습니다.
 
 ## 제출 전 확인
 

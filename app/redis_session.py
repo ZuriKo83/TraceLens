@@ -28,6 +28,7 @@ from app.delete_credit_adjustment import router as delete_credit_adjustment_rout
 from app.delete_credits import router as delete_credits_router
 from app.donate import router as donate_router
 from app.models import User, utcnow
+from app.session_identity import session_identity
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,14 @@ class RedisSessionMiddleware:
         except Exception:
             logger.exception("Redis session read failed")
             session = {}
+        initial_session = session.copy()
+        if session.get("user_id"):
+            with Session(engine) as db:
+                account = db.get(User, int(session["user_id"]))
+                if (account is None or account.deleted_at is not None or not account.is_verified
+                        or not account.password_hash
+                        or session.get("account_identity") != session_identity(account)):
+                    session.clear()
         scope["session"] = session
 
         path = scope.get("path", "")
@@ -176,10 +185,16 @@ class RedisSessionMiddleware:
                         logger.exception("Failed to persist account deletion history for user_id=%s", old_user_id)
                 try:
                     if session:
-                        await self.redis.delete(key)
-                        await self.redis.hset(key, mapping={k: str(v) for k, v in session.items()})
-                        await self.redis.expire(key, self.max_age)
-                    else:
+                        if session == initial_session:
+                            await self.redis.expire(key, self.max_age)
+                        else:
+                            # Concurrent frames must never see the hash between writes.
+                            async with self.redis.pipeline(transaction=True) as pipe:
+                                pipe.delete(key)
+                                pipe.hset(key, mapping={k: str(v) for k, v in session.items()})
+                                pipe.expire(key, self.max_age)
+                                await pipe.execute()
+                    elif initial_session:
                         await self.redis.delete(key)
                 except Exception:
                     logger.exception("Failed to persist Redis session")

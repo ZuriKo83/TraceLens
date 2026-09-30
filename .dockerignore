@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+.venv
+__pycache__
+.pytest_cache
+*.db
+*.sqlite3
+*.log
+backups
+archives
+
+node_modules/
+.local-browser/
+browser_profiles/

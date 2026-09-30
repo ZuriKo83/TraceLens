@@ -1,0 +1,44 @@
+name: Local collector
+
+on:
+  push:
+    branches: [local-docker-development]
+  pull_request:
+    paths:
+      - 'local_collector/**'
+      - 'chrome_extension/**'
+      - '.github/workflows/local-collector.yml'
+
+jobs:
+  browser-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: local_collector
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: local_collector/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - run: |
+          TRACELENS_COLLECTOR_PORT=3081 BROWSER_PROFILE_DIR="$RUNNER_TEMP/tracelens-profiles" node server.mjs &
+          service_pid=$!
+          trap 'kill "$service_pid"' EXIT
+          curl --fail --retry 20 --retry-connrefused --retry-delay 1 --silent http://127.0.0.1:3081/health
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose config --quiet
+      - run: docker compose up --build -d --wait
+      - run: curl --fail --silent http://localhost:8021/health
+      - run: docker compose exec -T web pytest -q tests/test_web.py tests/test_collector_replace.py tests/test_session_identity.py -k "dashboard_uses_pc_collector or replacement or session_identity"
+      - if: always()
+        run: docker compose logs --tail=120 web worker && docker compose down -v
