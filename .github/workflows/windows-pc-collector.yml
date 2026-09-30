@@ -26,7 +26,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist/TraceLens-PC/runtime,dist/TraceLens-PC/local_collector | Out-Null
           Copy-Item (Get-Command node).Source dist/TraceLens-PC/runtime/node.exe
           $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-          & $compiler /nologo /target:winexe /reference:System.Windows.Forms.dll /out:dist/TraceLens-PC/TraceLens-PC.exe installer/CollectorLauncher.cs
+          & $compiler /nologo /target:winexe /reference:System.Windows.Forms.dll /out:dist\TraceLens-PC\TraceLens-PC.exe installer\CollectorLauncher.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item local_collector/index.mjs,local_collector/controller.mjs,local_collector/adapter.mjs,local_collector/cdp.mjs,local_collector/policy.mjs,local_collector/google_login.mjs,local_collector/site_status.mjs dist/TraceLens-PC/local_collector/
           Copy-Item local_collector/node_modules dist/TraceLens-PC/local_collector/ -Recurse
