@@ -21,7 +21,7 @@ Windows에서 서버 PC는 `START_HERE.bat`을 실행합니다. 사용자 PC는 
 
 현재 설치 파일은 코드 서명 인증서가 없어 Windows가 게시자를 확인할 수 없습니다. 설치 파일 형식만으로 신뢰가 생기지는 않으므로 공개 배포 전에 게시자 코드 서명을 준비해야 합니다. Node.js와 Playwright가 포함되어 최초 다운로드 용량도 여전히 큽니다. 개발 환경에서는 `cd local_collector && npm ci && node index.mjs --browser=edge`로 실행할 수 있습니다.
 
-시작 메뉴의 수집기는 CMD 창 없이 실행됩니다. 실행 오류는 알림으로 표시하며 로그는 `%LOCALAPPDATA%\TraceLens\logs\collector.log`에 저장합니다. 수집기가 이미 실행 중이면 추가 창을 만들지 않고 기존 TraceLens 브라우저를 사용하라는 안내를 표시합니다.
+시작 메뉴의 수집기는 CMD 창 없이 실행됩니다. 화면에 열린 Edge 또는 Chrome이 있으면 해당 브라우저 종류를 우선 사용하고, 없으면 Edge → Chrome 순서로 선택합니다. 이 경우에도 수집용 전용 프로필은 별도 창으로 열립니다. 실행 오류는 알림으로 표시하며 로그는 `%LOCALAPPDATA%\TraceLens\logs\collector.log`에 저장합니다. 수집기가 이미 실행 중이면 추가 창을 만들지 않고 기존 TraceLens 브라우저를 사용하라는 안내를 표시합니다.
 
 전용 프로필은 Windows의 `%LOCALAPPDATA%\TraceLens\collector-profile\edge`에 저장됩니다. Windows 앱 설정에서 수집기를 제거해도 로그인 데이터가 남으므로, 완전히 삭제하려면 모든 수집기 창을 닫은 뒤 이 폴더도 직접 지우세요.
 

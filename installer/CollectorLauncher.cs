@@ -2,11 +2,47 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
 internal static class CollectorLauncher
 {
+    private delegate bool WindowCallback(IntPtr window, IntPtr parameter);
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(WindowCallback callback, IntPtr parameter);
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    private static string OpenBrowser()
+    {
+        string browser = "auto";
+        // Prefer a supported browser with a visible window rather than Edge
+        // background startup processes.
+        EnumWindows((window, parameter) =>
+        {
+            if (!IsWindowVisible(window)) return true;
+            uint processId;
+            GetWindowThreadProcessId(window, out processId);
+            try
+            {
+                using (var process = Process.GetProcessById((int)processId))
+                {
+                    string name = process.ProcessName;
+                    if (name == "msedge") browser = "edge";
+                    else if (name == "chrome") browser = "chrome";
+                    else return true;
+                }
+                return false;
+            }
+            catch (ArgumentException) { return true; }
+            catch (System.ComponentModel.Win32Exception) { return true; }
+        }, IntPtr.Zero);
+        return browser;
+    }
+
     [STAThread]
     private static int Main()
     {
@@ -36,7 +72,7 @@ internal static class CollectorLauncher
                     process.StartInfo = new ProcessStartInfo
                     {
                         FileName = Path.Combine(directory, "runtime", "node.exe"),
-                        Arguments = "\"" + Path.Combine(directory, "local_collector", "index.mjs") + "\" --browser=auto",
+                        Arguments = "\"" + Path.Combine(directory, "local_collector", "index.mjs") + "\" --browser=" + OpenBrowser(),
                         WorkingDirectory = directory,
                         UseShellExecute = false,
                         CreateNoWindow = true,
