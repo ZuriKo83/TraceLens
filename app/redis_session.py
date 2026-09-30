@@ -28,6 +28,7 @@ from app.delete_credit_adjustment import router as delete_credit_adjustment_rout
 from app.delete_credits import router as delete_credits_router
 from app.donate import router as donate_router
 from app.models import User, utcnow
+from app.session_identity import session_identity
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,13 @@ class RedisSessionMiddleware:
             logger.exception("Redis session read failed")
             session = {}
         initial_session = session.copy()
+        if session.get("user_id"):
+            with Session(engine) as db:
+                account = db.get(User, int(session["user_id"]))
+                if (account is None or account.deleted_at is not None or not account.is_verified
+                        or not account.password_hash
+                        or session.get("account_identity") != session_identity(account)):
+                    session.clear()
         scope["session"] = session
 
         path = scope.get("path", "")

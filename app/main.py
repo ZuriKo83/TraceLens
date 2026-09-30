@@ -23,6 +23,7 @@ from app.db import Base, engine, get_db
 from app.dependencies import collector_user, current_user
 from app.models import Activity, AuthToken, CollectorToken, ScanArchiveBatch, ScanLog, User, UserEmail, VerificationCode, utcnow
 from app.schemas import CollectorImport
+from app.session_identity import session_identity
 from app.rate_limit import client_key, enforce_rate_limit
 from app.redis_session import RedisSessionMiddleware
 from app.supported_sites import (
@@ -115,31 +116,6 @@ def ensure_schema_columns() -> None:
 def bootstrap_users(db: Session) -> None:
     configured_admin_list = settings.admin_email_list
     configured_admins = set(configured_admin_list)
-    first_admin = configured_admin_list[0] if configured_admin_list else None
-    legacy = db.scalar(select(User).where(User.email == "local@digital-footprint.local"))
-    if legacy and first_admin:
-        target = db.scalar(select(User).where(User.email == first_admin))
-        if target and target.id != legacy.id:
-            db.execute(text("UPDATE activities SET user_id=:target WHERE user_id=:legacy"), {"target": target.id, "legacy": legacy.id})
-            db.execute(text("UPDATE scan_logs SET user_id=:target WHERE user_id=:legacy"), {"target": target.id, "legacy": legacy.id})
-            db.delete(legacy)
-        else:
-            legacy.email = first_admin
-            legacy.is_verified = True
-            legacy.is_admin = True
-
-    for admin_email in configured_admin_list:
-        user = db.scalar(select(User).where(User.email == admin_email))
-        if user is None:
-            user = User(email=admin_email, is_verified=True, is_admin=True)
-            db.add(user)
-            db.flush()
-        else:
-            user.is_admin = True
-        email_row = db.scalar(select(UserEmail).where(UserEmail.email == admin_email))
-        if email_row is None:
-            db.add(UserEmail(user_id=user.id, email=admin_email, is_verified=True, is_primary=True, verified_at=utcnow()))
-
     users = list(db.scalars(select(User)))
     for user in users:
         if user.deleted_at is not None:
@@ -355,7 +331,8 @@ def get_session_user(request: Request, db: Session | None) -> User | None:
     if not user_id:
         return None
     user = db.get(User, int(user_id))
-    if user is None or user.deleted_at is not None:
+    if (user is None or user.deleted_at is not None or not user.is_verified
+            or not user.password_hash or request.session.get("account_identity") != session_identity(user)):
         request.session.clear()
         return None
     return user
@@ -725,6 +702,7 @@ def password_login(
     user.last_login_at = utcnow()
     request.session.clear()
     request.session["user_id"] = user.id
+    request.session["account_identity"] = session_identity(user)
     request.session["csrf_token"] = secrets.token_urlsafe(24)
     db.commit()
     return RedirectResponse(next_path if next_path.startswith("/") else "/app", status_code=303)
@@ -782,6 +760,7 @@ def signup_verify(request: Request, email: str = Form(...), code: str = Form(...
     user.last_login_at = utcnow()
     request.session.clear()
     request.session["user_id"] = user.id
+    request.session["account_identity"] = session_identity(user)
     request.session["csrf_token"] = secrets.token_urlsafe(24)
     db.commit()
     return RedirectResponse("/app", status_code=303)
@@ -863,6 +842,7 @@ def verify_magic_link(token: str, request: Request, db: Session = Depends(get_db
     next_path = request.session.get("login_next") or "/app"
     request.session.clear()
     request.session["user_id"] = user.id
+    request.session["account_identity"] = session_identity(user)
     request.session["csrf_token"] = secrets.token_urlsafe(24)
     db.commit()
     return RedirectResponse(next_path if str(next_path).startswith("/") else "/app", status_code=303)

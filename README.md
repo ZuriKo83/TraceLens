@@ -8,14 +8,14 @@ FastAPI, PostgreSQL, Redis, 작업자, 유지보수 작업을 Docker Compose에�
 
 Windows 서버에서는 Docker Desktop을 실행한 뒤 `START_HERE.bat`을 실행합니다. Linux 또는 macOS 서버에서는 `.env.example`을 `.env`로 복사하고 `docker compose up --build -d`를 실행합니다.
 
-Windows에서 서버 PC는 `START_HERE.bat`을 실행합니다. 사용자 PC는 설치 파일을 한 번 실행한 뒤 시작 메뉴의 **TraceLens PC Collector**를 클릭합니다. 같은 PC에서 서버와 수집기를 실행한다면 서버를 먼저 시작합니다. Docker Compose가 웹·작업자·유지보수 작업을 함께 시작합니다.
+Windows에서 서버 PC는 `START_HERE.bat`을 실행합니다. 사용자 PC는 설치 파일을 한 번 실행한 뒤 시작 메뉴의 **TraceLens**를 클릭합니다. 같은 PC에서 서버와 수집기를 실행한다면 서버를 먼저 시작합니다. Docker Compose가 웹·작업자·유지보수 작업을 함께 시작합니다.
 
 기본 웹 주소는 **http://localhost:8021**입니다. 현재 Compose 파일은 서버 자신의 `127.0.0.1`에만 포트를 엽니다. 다른 PC에서 접속시키려면 별도 네트워크·HTTPS 배포 설정이 필요합니다. 이 로컬 설정을 외부에 그대로 공개하지 마세요.
 
 ## 사용자 PC에서 조회
 
 1. Docker 서버를 먼저 실행합니다. 현재 개발 주소는 `http://localhost:8021`입니다.
-2. [Windows 설치 파일](https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens-PC-Setup.exe)을 설치하고 시작 메뉴의 **TraceLens PC Collector**를 실행합니다. 설치된 Edge를 우선 사용하고 없으면 설치된 Chrome을 사용합니다. 둘 다 없으면 실행을 중단하고 안내합니다. 이미 열린 다른 브라우저 창을 닫을 필요는 없습니다. 압축 해제나 배치파일 선택, Node.js 별도 설치는 필요하지 않습니다.
+2. [Windows 설치 파일](https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens.exe)을 설치하고 시작 메뉴의 **TraceLens**를 실행합니다. 설치된 Edge를 우선 사용하고 없으면 설치된 Chrome을 사용합니다. 둘 다 없으면 실행을 중단하고 안내합니다. 이미 열린 다른 브라우저 창을 닫을 필요는 없습니다. 압축 해제나 배치파일 선택, Node.js 별도 설치는 필요하지 않습니다.
 3. 새로 열린 창에서 TraceLens에 로그인합니다. 사이트 로그인 카드의 모든 사이트 버튼을 펼쳐 두었습니다. 각 사이트에서 한 번씩 로그인하고, Meta 계정 연결이나 네이버 추가 보안 확인을 완료하세요. Google·X는 일반 브라우저로 전환됩니다. 안내 알림에 따라 로그인 후 수집용 브라우저 창을 모두 닫으면 대시보드가 다시 열립니다. 다른 사이트는 로그인 후 대시보드 탭으로 돌아오세요.
 4. 사이트를 선택하고 **조회 시작**을 누릅니다. 접근 상태 자동 검사와 YouTube 선택 제한은 없습니다. 조회 실패 이유는 조회 결과에 표시됩니다. 성공한 조회는 같은 사용자·사이트 계정·활동 유형의 기존 보관함 기록을 새 결과로 교체합니다. 실패한 조회와 선택하지 않은 범위의 기록은 유지합니다. 실제 원본 사이트의 게시물은 삭제하지 않습니다.
 
@@ -60,3 +60,7 @@ npm test
 기존 Python 테스트는 `docker compose exec web pytest -q`로 실행합니다.
 
 수집용 브라우저 선택은 `%LOCALAPPDATA%\TraceLens\collector-browser.txt`에, 세션 쿠키는 각 수집용 프로필의 `tracelens-session-cookies.json`에 저장합니다. 외부 사이트 로그인 쿠키와 비밀번호를 서버로 보내지 않습니다. TraceLens 자체 로그인은 서버 Redis 세션을 사용합니다.
+
+다운로드 파일 이름은 `TraceLens.exe`입니다. 처음 실행하면 설치하고, 같은 버전의 다운로드 파일을 다시 실행하면 설치 화면 없이 설치된 프로그램을 엽니다. 새 버전은 한 번 업데이트 설치하며, 이후에는 시작 메뉴의 TraceLens를 실행하면 됩니다.
+
+관리자 이메일은 `ADMIN_EMAILS=drkoby0803@gmail.com`으로 지정합니다. 관리자 계정을 자동 생성하지 않습니다. 새 DB에서는 회원가입 후 해당 이메일에 관리자 권한이 연결됩니다. `20260930_0002` 마이그레이션은 해당 계정의 기존 비밀번호와 로그인 토큰을 한 번 초기화하므로, 적용 후 회원가입에서 새 비밀번호를 설정하세요. Linux에서도 `python -m alembic upgrade head`를 실행한 뒤 서버를 시작해야 합니다. 기존 `.env`는 자동으로 덮어쓰지 않으므로 ADMIN_EMAILS 값을 확인하세요.
