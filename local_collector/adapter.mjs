@@ -80,6 +80,12 @@ export async function createCollector(context, {transport = localFetch, newPage 
   }
   return {
     scan: (sites, config) => sandbox.scanSites(sites, config),
+    processYouTubePage: async (tabId, targets, options) => {
+      const results = await chrome.scripting.executeScript({target: {tabId},
+        func: sandbox.traceLensProcessYouTubeActivityPage, args: [targets, options]});
+      if (!results[0]?.result) throw new Error('유튜브 삭제 결과를 확인하지 못했습니다.');
+      return results[0].result;
+    },
     // Exposed to local tests, never to the browser binding.
     runExtractor: (...args) => sandbox.runExtractor(...args),
     resolveTaskTarget: (...args) => sandbox.resolveTaskTarget(...args),

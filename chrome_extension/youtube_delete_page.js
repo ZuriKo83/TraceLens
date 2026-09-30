@@ -185,6 +185,11 @@ globalThis.traceLensProcessYouTubeActivityPage = async function(targets, options
   const score = (target, item) => {
     const locator = target.locator || {};
     const targetId = clean(target.commentId || locator.comment_id);
+    // PC deletion never falls back to similar text or a different comment ID.
+    if (target.strictMatch) {
+      return {value: targetId && targetId === item.commentId ? 1000 : -1000,
+        strong: Boolean(targetId && targetId === item.commentId)};
+    }
     const wantedContent = norm(target.content || locator.content);
     const wantedContentLoose = loose(target.content || locator.content);
     const wantedTitle = norm(target.title || locator.title).replace(/^\[실시간 채팅\]\s*/, "");

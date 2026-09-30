@@ -37,6 +37,6 @@ export function allowedApi(url) {
   try {
     const u = new URL(url);
     return u.origin === SERVER && !u.username && !u.password && !u.search && !u.hash &&
-      /^\/api\/collector\/(status|import|jobs\/[a-zA-Z0-9-]+)$/.test(u.pathname);
+      /^\/api\/collector\/(status|import|jobs\/[a-zA-Z0-9-]+|youtube\/delete-(targets|confirm))$/.test(u.pathname);
   } catch { return false; }
 }

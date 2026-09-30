@@ -17,6 +17,7 @@ test('managed browser opens site login and scans without a debugging port', {tim
     await context.exposeBinding('traceLensLocal', async (_source, command) => {
       commands.push(command);
       if (command.type === 'START_SCAN') return {ok: true, failed: 1, completed: 0, lines: ['로그인 확인']};
+      if (command.type === 'DELETE_YOUTUBE') return {ok: true, deleted_ids: [1], removed_ids: [1], failed: [], lines: ['1개 삭제 확인']};
       return {ok: true};
     });
     const page = await context.newPage();
@@ -31,6 +32,8 @@ test('managed browser opens site login and scans without a debugging port', {tim
       <button id="select-all-sites"></button><button id="clear-all-sites"></button><span id="web-selection-count"></span>
       <button id="web-start-scan" disabled></button>
       <section id="web-scan-progress" hidden><b id="web-progress-title"></b><span id="web-progress-state"></span><div id="web-progress-bar"></div><pre id="web-scan-log"></pre></section>
+      <article data-activity-id="1"><h3>Video</h3><p>My comment</p><input type="checkbox" data-youtube-delete-id="1"><button data-delete-youtube="1" disabled>댓글 삭제</button></article>
+      <dialog id="youtube-delete-dialog"><ul id="youtube-delete-preview"></ul><p id="youtube-delete-summary"></p><button id="youtube-confirm-delete">삭제하기</button></dialog>
       <script>${script}</script>`}));
     await page.goto('http://localhost:8021/app');
     await page.waitForFunction(() => document.getElementById('web-start-scan').disabled === false);
@@ -41,6 +44,14 @@ test('managed browser opens site login and scans without a debugging port', {tim
     await page.waitForFunction(() => document.querySelector('#web-scan-log').textContent === '로그인 확인');
     assert.deepEqual(commands.map(command => command.type), ['PING', 'OPEN_SITE', 'START_SCAN']);
     assert.deepEqual(commands[2].sites, ['naver_blog']);
+    await page.locator('[data-delete-youtube]').click();
+    assert.equal(await page.locator('#youtube-delete-dialog').isVisible(), true);
+    assert.equal(commands.length, 3, 'Preview must not delete before user confirmation');
+    await page.locator('#youtube-confirm-delete').click();
+    await page.waitForFunction(() => document.querySelector('#web-scan-log').textContent.startsWith('1개 삭제 확인'));
+    assert.equal(commands[3].type, 'DELETE_YOUTUBE');
+    assert.deepEqual(commands[3].activityIds, [1]);
+    assert.equal(await page.locator('[data-activity-id="1"]').count(), 0);
     await context.close();
   } finally { await browser.close(); }
 });
