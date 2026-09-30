@@ -8,6 +8,34 @@ using System.Windows.Forms;
 
 internal static class CollectorLauncher
 {
+    private static void ShowLoginNotification()
+    {
+        // A notification has its own message loop; it never blocks Node output
+        // or opens a dialog behind the browser the user is signing into.
+        var thread = new Thread(() =>
+        {
+            using (var notification = new NotifyIcon())
+            using (var timer = new System.Windows.Forms.Timer())
+            {
+                notification.Icon = System.Drawing.SystemIcons.Information;
+                notification.Text = "TraceLens";
+                notification.Visible = true;
+                notification.BalloonTipTitle = "TraceLens 로그인 안내";
+                notification.BalloonTipText = "로그인 후 수집용 브라우저 창을 모두 닫으세요. 로그인 상태를 저장하고 대시보드가 다시 열립니다. 개인 브라우저는 닫지 않아도 됩니다.";
+                notification.BalloonTipIcon = ToolTipIcon.Info;
+                timer.Interval = 30000;
+                timer.Tick += (sender, args) => Application.ExitThread();
+                timer.Start();
+                notification.ShowBalloonTip(20000);
+                Application.Run();
+                notification.Visible = false;
+            }
+        });
+        thread.IsBackground = true;
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+    }
+
     private delegate bool WindowCallback(IntPtr window, IntPtr parameter);
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(WindowCallback callback, IntPtr parameter);
@@ -76,7 +104,7 @@ internal static class CollectorLauncher
                     {
                         if (args.Data != null) lock (logLock) log.WriteLine(args.Data);
                         if (args.Data == "TRACELENS_LOGIN_HELP")
-                            MessageBox.Show("로그인을 완료한 뒤 수집용 브라우저 창을 모두 닫으세요. 로그인 상태를 저장하고 TraceLens 대시보드가 다시 열립니다. 개인 브라우저 창은 닫지 않아도 됩니다.", "TraceLens 로그인 안내");
+                            ShowLoginNotification();
                     };
                     process.StartInfo = new ProcessStartInfo
                     {
