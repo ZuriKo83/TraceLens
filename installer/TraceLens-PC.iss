@@ -18,7 +18,7 @@ Source: "..\dist\TraceLens-PC\*"; DestDir: "{app}"; Flags: ignoreversion recurse
 Source: "..\app\static\favicon.ico"; DestDir: "{app}"; DestName: "TraceLens.ico"; Flags: ignoreversion
 
 [Icons]
-Name: "{userprograms}\TraceLens PC Collector"; Filename: "{cmd}"; Parameters: "/c ""{app}\START_PC_COLLECTOR.bat"""; WorkingDir: "{app}"; IconFilename: "{app}\TraceLens.ico"
+Name: "{userprograms}\TraceLens PC Collector"; Filename: "{app}\TraceLens-PC.exe"; WorkingDir: "{app}"; IconFilename: "{app}\TraceLens.ico"
 
 [Run]
-Filename: "{cmd}"; Parameters: "/c ""{app}\START_PC_COLLECTOR.bat"""; Description: "TraceLens PC Collector 실행"; WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\TraceLens-PC.exe"; Description: "TraceLens PC Collector 실행"; WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent

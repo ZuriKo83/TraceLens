@@ -25,7 +25,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist/TraceLens-PC/runtime,dist/TraceLens-PC/local_collector | Out-Null
           Copy-Item (Get-Command node).Source dist/TraceLens-PC/runtime/node.exe
-          Copy-Item START_PC_COLLECTOR.bat dist/TraceLens-PC/
+          $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+          & $compiler /nologo /target:winexe /reference:System.Windows.Forms.dll /out:dist/TraceLens-PC/TraceLens-PC.exe installer/CollectorLauncher.cs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Copy-Item local_collector/index.mjs,local_collector/controller.mjs,local_collector/adapter.mjs,local_collector/cdp.mjs,local_collector/policy.mjs,local_collector/google_login.mjs,local_collector/site_status.mjs dist/TraceLens-PC/local_collector/
           Copy-Item local_collector/node_modules dist/TraceLens-PC/local_collector/ -Recurse
           New-Item -ItemType Directory -Force -Path dist/TraceLens-PC/chrome_extension | Out-Null
@@ -47,7 +49,10 @@ jobs:
           $process = Start-Process -FilePath dist/TraceLens-PC-Setup.exe -ArgumentList '/VERYSILENT', '/NORESTART', "/DIR=`"$target`"" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
           if (-not (Test-Path "$target\runtime\node.exe")) { throw 'Node runtime is missing.' }
-          if (-not (Test-Path "$target\START_PC_COLLECTOR.bat")) { throw 'Collector launcher is missing.' }
+          if (-not (Test-Path "$target\TraceLens-PC.exe")) { throw 'Collector launcher is missing.' }
+          $launcher = [IO.File]::ReadAllBytes("$target\TraceLens-PC.exe")
+          $peOffset = [BitConverter]::ToInt32($launcher, 0x3c)
+          if ([BitConverter]::ToUInt16($launcher, $peOffset + 24 + 68) -ne 2) { throw 'Collector launcher must use the Windows GUI subsystem.' }
           if (-not (Test-Path "$target\local_collector\index.mjs")) { throw 'Managed browser entry point is missing.' }
       - uses: actions/upload-artifact@v4
         with:
