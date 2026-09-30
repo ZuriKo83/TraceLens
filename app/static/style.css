@@ -232,12 +232,6 @@ td a { color: var(--primary); font-weight: 700; }
 .site-login-groups details .chip-button { margin: 8px 5px 0 0; }
 @media (max-width: 700px) { .site-login-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .web-scan-card { overflow: hidden; }
-.youtube-delete-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
-.youtube-delete-toolbar > span { margin-right: auto; }
-.youtube-delete-toolbar small { display: block; margin-top: 4px; color: var(--muted); }
-.youtube-comment-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 8px 0; }
-.youtube-comment-actions label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-.chip-button.danger { color: #b42318; border-color: #fecdca; }
 .youtube-delete-dialog { width: min(540px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; border: 1px solid var(--border); border-radius: 16px; padding: 24px; color: var(--text); box-shadow: var(--shadow); }
 .youtube-delete-dialog::backdrop { background: rgb(16 24 40 / 45%); }
 .youtube-delete-dialog h2 { margin-top: 0; }

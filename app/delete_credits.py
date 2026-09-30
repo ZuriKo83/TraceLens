@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.db import Base, get_db
 from app.dependencies import collector_user
 from app.models import Activity, CollectorToken, User, utcnow
+from app.youtube_delete import youtube_target
 from app.supported_sites import ACTIVITY_TYPE_LABELS, PLATFORM_LABELS, VISIBLE_ACTIVITY_TYPES
 
 settings = get_settings()
@@ -144,7 +145,7 @@ def issue_collector_token(db: Session, user: User) -> str:
     db.add(CollectorToken(
         user_id=user.id,
         token_hash=hashlib.sha256(raw.encode("utf-8")).hexdigest(),
-        label="Chrome extension delete page",
+        label="PC collector delete page",
         expires_at=now + timedelta(days=settings.collector_token_days),
     ))
     db.flush()
@@ -197,6 +198,7 @@ def purchase_page(request: Request, db: Session = Depends(get_db)):
                 {"price": 5000, "credits": 100},
             ],
             "activities": activities,
+            "youtube_delete_ids": {row.id for row in activities if youtube_target(row)},
             "platform_labels": PLATFORM_LABELS,
             "activity_type_labels": ACTIVITY_TYPE_LABELS,
             "extension_token": extension_token,

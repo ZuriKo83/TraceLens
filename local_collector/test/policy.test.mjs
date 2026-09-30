@@ -57,3 +57,13 @@ test('concurrent scans are rejected and lock released after failure', async () =
   await assert.rejects(fn(source(), command), /scan failure/);
   assert.equal(scans, 2);
 });
+
+test('the same-origin deletion page may connect but cannot initiate collection or site login', async () => {
+  const deletionSource = source('http://localhost:8021/delete-credits/purchase');
+  assert.equal(dashboardSource(deletionSource), true);
+  assert.equal(dashboardSource(source('https://evil.example/delete-credits/purchase')), false);
+  const fn = createController({}, {}, {transport: async () => ({ok: true})});
+  assert.equal((await fn(deletionSource, {type: 'PING'})).ok, true);
+  await assert.rejects(fn(deletionSource, {type: 'START_SCAN', sites: ['youtube'], token: 'a'.repeat(40)}), /삭제 페이지/);
+  await assert.rejects(fn(deletionSource, {type: 'GOOGLE_LOGIN', token: 'a'.repeat(40)}), /삭제 페이지/);
+});

@@ -9,6 +9,8 @@ export function createController(context, collector, {transport = localFetch, br
   const loginPages = new Map();
   return async (source, message) => {
     if (!dashboardSource(source)) throw new Error('TraceLens 대시보드에서만 실행할 수 있습니다.');
+    if (new URL(source.frame.url()).pathname === '/delete-credits/purchase'
+        && !['PING', 'DELETE_YOUTUBE'].includes(message?.type)) throw new Error('삭제 페이지에서는 댓글 삭제만 실행할 수 있습니다.');
     if (message?.type === 'PING') return {ok: true, browserName};
     if (!['OPEN_SITE', 'START_SCAN', 'GOOGLE_LOGIN', 'NORMAL_LOGIN', 'CHECK_SITES', 'DELETE_YOUTUBE'].includes(message?.type)) throw new Error('지원하지 않는 요청입니다.');
     const sites = ['GOOGLE_LOGIN', 'CHECK_SITES', 'DELETE_YOUTUBE'].includes(message.type) ? [] : selectedSites(message.sites);

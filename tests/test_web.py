@@ -213,6 +213,13 @@ def test_dashboard_uses_pc_collector() -> None:
         assert '최근 조회' not in dashboard.text
         assert 'data-local-login="x"' not in dashboard.text
         assert "/api/browser/scan" not in dashboard.text
+        assert 'id="youtube-delete-dialog"' not in dashboard.text
+        assert 'data-delete-youtube=' not in dashboard.text
+        assert 'DELETE_YOUTUBE' not in dashboard.text
+        deletion_page = client.get("/delete-credits/purchase")
+        assert deletion_page.status_code == 200
+        assert '/static/pc_youtube_delete.js' in deletion_page.text
+        assert 'id="youtube-delete-dialog"' in deletion_page.text
         assert client.get("/app/site?site=x").status_code == 404
 
 

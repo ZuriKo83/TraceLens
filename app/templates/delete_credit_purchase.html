@@ -15,16 +15,16 @@
 <section class="archive-section" id="delete-execute">
 <div class="archive-head"><h2>작성한 항목 삭제</h2></div>
 <div class="delete-platform-grid" aria-label="삭제 지원 플랫폼">
-<section class="delete-platform-card active"><div><b>YouTube</b><span>사용 가능</span></div><button class="youtube-kind-filter active" data-kind="comment" type="button">댓글</button><button class="youtube-kind-filter" data-kind="live_chat" type="button">실시간 채팅</button></section>
+<section class="delete-platform-card active"><div><b>YouTube</b><span>사용 가능</span></div><button class="youtube-kind-filter active" data-kind="comment" type="button">댓글</button><button class="youtube-kind-filter" data-kind="live_chat" type="button" disabled>실시간 채팅 · 준비 중</button></section>
 <section class="delete-platform-card"><div><b>Instagram</b><span>준비 중</span></div><button type="button" disabled>댓글</button></section><section class="delete-platform-card"><div><b>Threads</b><span>준비 중</span></div><button type="button" disabled>게시글</button><button type="button" disabled>답글</button></section><section class="delete-platform-card"><div><b>Facebook</b><span>준비 중</span></div><button type="button" disabled>게시글</button><button type="button" disabled>댓글</button></section><section class="delete-platform-card"><div><b>X</b><span>준비 중</span></div><button type="button" disabled>게시글·답글</button></section><section class="delete-platform-card"><div><b>네이버</b><span>준비 중</span></div><button type="button" disabled>블로그 게시글</button><button type="button" disabled>지식iN 질문·답변</button></section>
 </div>
 <p class="delete-operation-status" id="delete-operation-status" hidden></p>
 {% if activities %}
 <div class="delete-toolbar"><input id="delete-search" type="search" placeholder="제목, 내용 또는 URL 검색"><select id="delete-platform-filter" aria-label="플랫폼 필터"><option value="">모든 플랫폼</option>{% for platform in activities|map(attribute='platform')|unique %}<option value="{{ platform }}">{{ platform_labels.get(platform, platform) }}</option>{% endfor %}</select><select id="delete-type-filter" aria-label="활동 유형 필터"><option value="">모든 활동 유형</option>{% for activity_type in activities|map(attribute='activity_type')|unique %}<option value="{{ activity_type }}">{{ activity_type_labels.get(activity_type, activity_type) }}</option>{% endfor %}</select><button class="button" id="reset-delete-filters" type="button">초기화</button></div>
-<div class="selection-bar"><div><strong id="youtube-selection-title">YouTube 댓글</strong><div class="archive-summary"><span id="visible-count">0</span>개 · <span id="selected-count">0</span>개 선택 · 삭제권 {{ balance }}개</div></div><div class="selection-actions"><button class="button secondary" id="select-visible" type="button">모두 선택</button><button class="button secondary" id="clear-selected" type="button">선택 해제</button><button class="button primary selected-delete-button" id="selected-delete-button" type="button" disabled>삭제</button></div></div>
+<div class="selection-bar"><div><strong id="youtube-selection-title">YouTube 댓글</strong><div class="archive-summary"><span id="visible-count">0</span>개 · <span id="selected-count">0</span>개 선택 · 최대 100개</div></div><div class="selection-actions"><button class="button secondary" id="select-visible" type="button">모두 선택</button><button class="button secondary" id="clear-selected" type="button">선택 해제</button><button class="button primary selected-delete-button" id="selected-delete-button" type="button" disabled>삭제</button></div></div>
 <div class="activity-delete-list" id="activity-delete-list">
 {% for activity in activities %}
-{% set parts = activity.content.split('\n', 1) %}{% set metadata_text = activity.metadata_json or '' %}{% set live_chat = '"youtube_activity_kind": "live_chat"' in metadata_text or activity.content.lstrip().startswith('[실시간 채팅]') %}{% set youtube_kind = 'live_chat' if live_chat else 'comment' %}{% set supported = activity.platform == 'youtube' and activity.activity_type == 'comment' %}
+{% set parts = activity.content.split('\n', 1) %}{% set metadata_text = activity.metadata_json or '' %}{% set live_chat = '"youtube_activity_kind": "live_chat"' in metadata_text or activity.content.lstrip().startswith('[실시간 채팅]') %}{% set youtube_kind = 'live_chat' if live_chat else 'comment' %}{% set supported = activity.id in youtube_delete_ids %}
 <label class="delete-activity-row{% if not supported %} unsupported{% endif %}" data-platform="{{ activity.platform }}" data-type="{{ activity.activity_type }}" data-youtube-kind="{{ youtube_kind }}" data-search="{{ (activity.content ~ ' ' ~ (activity.source_url or ''))|lower|e }}" data-supported="{{ 1 if supported else 0 }}" data-activity-id="{{ activity.id }}" data-metadata="{{ metadata_text|e }}">
 <input class="delete-activity-checkbox" type="checkbox" value="{{ activity.id }}"{% if not supported %} disabled{% endif %}><div><div class="delete-item-top"><div class="delete-item-badges"><span class="delete-badge">{{ platform_labels.get(activity.platform, activity.platform) }}</span><span class="delete-type">{% if live_chat %}실시간 채팅{% else %}{{ activity_type_labels.get(activity.activity_type, activity.activity_type) }}{% endif %}</span>{% if not supported %}<span class="delete-wait">준비 중</span>{% endif %}</div><time class="delete-date" data-utc="{% if activity.occurred_at %}{{ activity.occurred_at.isoformat() }}{% else %}{{ activity.imported_at.isoformat() }}{% endif %}">{% if activity.occurred_at %}{{ activity.occurred_at.strftime('%Y-%m-%d %H:%M') }}{% else %}{{ activity.imported_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}</time></div><h3>{{ parts[0] if parts else '내용 없음' }}</h3>{% if parts|length > 1 and parts[1] %}<p>{{ parts[1] }}</p>{% endif %}{% if activity.source_url %}<a class="delete-source" href="{{ activity.source_url }}" target="_blank" rel="noopener" onclick="event.stopPropagation()">원문 열기 →</a>{% endif %}</div>
 </label>
@@ -32,6 +32,14 @@
 </div>
 {% else %}<div class="empty-archive"><strong>삭제할 기록이 없습니다.</strong><div>‘내 활동’에서 먼저 조회해 주세요.</div></div>{% endif %}
 </section>
+<dialog id="youtube-delete-dialog" class="youtube-delete-dialog" aria-labelledby="youtube-delete-title" aria-describedby="youtube-delete-warning">
+  <form method="dialog">
+    <h2 id="youtube-delete-title">유튜브 댓글을 삭제할까요?</h2>
+    <p id="youtube-delete-warning">선택한 댓글을 실제 유튜브에서 삭제합니다. 삭제한 댓글은 복구할 수 없습니다.</p>
+    <ul id="youtube-delete-preview"></ul><p id="youtube-delete-summary"></p>
+    <div class="youtube-dialog-actions"><button class="chip-button" value="cancel">취소</button><button class="button primary" type="button" id="youtube-confirm-delete">삭제하기</button></div>
+  </form>
+</dialog>
 {% endblock %}
 {% block scripts %}
 {% if activities %}
@@ -49,14 +57,14 @@
   const selectVisibleButton = document.getElementById('select-visible');
   const selectionTitle = document.getElementById('youtube-selection-title');
   const kindButtons = [...document.querySelectorAll('.youtube-kind-filter')];
-  const balance = {{ balance|int }};
+
   let activeKind = 'comment';
   let lastChecked = null;
-  let extensionReady = document.documentElement.dataset.tracelensDeleteBridge === 'ready';
+  let collectorReady = false;
   const kindLabel = () => activeKind === 'live_chat' ? '실시간 채팅' : '댓글';
-  const visibleRows = () => rows.filter((row) => !row.hidden);
+  const visibleRows = () => rows.filter((row) => row.isConnected && !row.hidden);
   const selectableVisibleRows = () => visibleRows().filter((row) => row.dataset.supported === '1' && row.dataset.youtubeKind === activeKind);
-  const selected = () => checks.filter((check) => check.checked && !check.disabled);
+  const selected = () => checks.filter((check) => check.isConnected && check.checked && !check.disabled);
 
   function refreshSelection() {
     rows.forEach((row) => row.classList.toggle('selected', row.querySelector('input').checked));
@@ -66,9 +74,8 @@
     selectionTitle.textContent = `YouTube ${label}`;
     selectVisibleButton.textContent = `${label} 모두 선택`;
     actionButton.textContent = count ? `${count}개 삭제` : '삭제';
-    actionButton.disabled = !extensionReady || count === 0 || count > MAX_SELECTION || count > balance || actionButton.dataset.running === '1';
-    if (count > balance) actionButton.title = `삭제권이 ${count - balance}개 부족합니다.`;
-    else if (count > MAX_SELECTION) actionButton.title = `한 번에 최대 ${MAX_SELECTION}개까지 선택할 수 있습니다.`;
+    actionButton.disabled = !collectorReady || count === 0 || count > MAX_SELECTION || actionButton.dataset.running === '1';
+    if (count > MAX_SELECTION) actionButton.title = `한 번에 최대 ${MAX_SELECTION}개까지 선택할 수 있습니다.`;
     else actionButton.title = '';
   }
 
@@ -115,7 +122,7 @@
   });
   search.addEventListener('input', applyFilters); platform.addEventListener('change', applyFilters); type.addEventListener('change', applyFilters);
   selectVisibleButton.addEventListener('click', () => {
-    const limit = Math.min(MAX_SELECTION, balance);
+    const limit = MAX_SELECTION;
     checks.forEach((check) => { if (!check.disabled) check.checked = false; });
     selectableVisibleRows().slice(0, limit).forEach((row) => { row.querySelector('input').checked = true; });
     lastChecked = null; refreshSelection();
@@ -124,16 +131,16 @@
   document.getElementById('reset-delete-filters').addEventListener('click', () => { search.value = ''; platform.value = ''; type.value = ''; applyFilters(); });
   actionButton.addEventListener('click', () => {
     const count = selected().length;
-    if (!extensionReady) { alert('삭제 기능을 준비하지 못했습니다. 페이지를 새로고침해 주세요.'); return; }
-    if (count > balance) { alert(`삭제권이 ${count - balance}개 부족합니다.`); return; }
+    if (!collectorReady) { alert('삭제 기능을 준비하지 못했습니다. 페이지를 새로고침해 주세요.'); return; }
     if (count > MAX_SELECTION) { alert(`한 번에 최대 ${MAX_SELECTION}개까지 선택할 수 있습니다.`); return; }
     actionButton.dataset.running = '1'; refreshSelection();
-    window.dispatchEvent(new CustomEvent('TRACELENS_DELETE_REQUEST', {detail: {platform: 'youtube', activityType: activeKind}}));
+    window.dispatchEvent(new CustomEvent('TRACELENS_PC_DELETE_REQUEST', {detail: {platform: 'youtube', activityType: activeKind}}));
   });
-  window.addEventListener('TRACELENS_DELETE_READY', () => { extensionReady = true; refreshSelection(); });
-  window.addEventListener('TRACELENS_DELETE_FINISHED', () => { delete actionButton.dataset.running; refreshSelection(); });
+  window.addEventListener('TRACELENS_PC_DELETE_READY', () => { collectorReady = true; refreshSelection(); });
+  window.addEventListener('TRACELENS_PC_DELETE_FINISHED', () => { delete actionButton.dataset.running; applyFilters(); });
   applyFilters();
 })();
 </script>
 {% endif %}
+<script src="/static/pc_youtube_delete.js"></script>
 {% endblock %}

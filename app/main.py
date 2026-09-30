@@ -24,7 +24,7 @@ from app.dependencies import collector_user, current_user
 from app.models import Activity, AuthToken, CollectorToken, ScanArchiveBatch, ScanLog, User, UserEmail, VerificationCode, utcnow
 from app.schemas import CollectorImport
 from app.session_identity import session_identity
-from app.youtube_delete import router as youtube_delete_router, youtube_target
+from app.youtube_delete import router as youtube_delete_router
 from app.rate_limit import client_key, enforce_rate_limit
 from app.redis_session import RedisSessionMiddleware
 from app.supported_sites import (
@@ -902,7 +902,6 @@ def user_dashboard(
         selected_platform=platform,
         selected_activity_type=activity_type,
         selected_account_label=account_label,
-        youtube_delete_ids={row.id for row in data["activities"] if youtube_target(row)},
         **data,
     )
 

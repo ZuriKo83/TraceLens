@@ -24,7 +24,7 @@ export function allowedPage(url) {
 }
 export function dashboardSource(source) {
   if (!source.page || source.frame !== source.page.mainFrame()) return false;
-  try { const u = new URL(source.frame.url()); return u.origin === SERVER && u.pathname === '/app'; }
+  try { const u = new URL(source.frame.url()); return u.origin === SERVER && ['/app', '/delete-credits/purchase'].includes(u.pathname); }
   catch { return false; }
 }
 export function selectedSites(value) {

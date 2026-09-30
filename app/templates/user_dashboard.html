@@ -85,14 +85,6 @@
     <select name="activity_type" aria-label="활동 유형 선택"><option value="">모든 활동 유형</option>{% for value in activity_types %}<option value="{{ value }}" {% if selected_activity_type == value %}selected{% endif %}>{{ activity_type_labels.get(value, value) }}</option>{% endfor %}</select>
     <button class="button filter-button" type="submit">검색</button>
   </form>
-  {% if youtube_delete_ids %}
-  <div class="youtube-delete-toolbar">
-    <span><b>YouTube 댓글 삭제</b><small>댓글 ID를 확인한 항목만 선택할 수 있습니다.</small></span>
-    <button class="chip-button" type="button" id="youtube-select-comments">현재 목록 선택</button>
-    <button class="chip-button" type="button" id="youtube-clear-comments">선택 해제</button>
-    <button class="chip-button danger" type="button" id="youtube-delete-selected" disabled>선택 삭제 (0)</button>
-  </div>
-  {% endif %}
   <div class="activity-group-list" id="activity-group-list">
     {% for group in activity_groups %}
       <details class="activity-group">
@@ -104,9 +96,8 @@
         </summary>
         <div class="activity-group-items">
           {% for activity in group.activities %}
-          <article class="activity-row" data-activity-id="{{ activity.id }}">
+          <article class="activity-row">
             <div class="activity-meta"><span>{{ activity_type_labels.get(activity.activity_type, activity.activity_type) }}</span><time>{% if activity.occurred_at %}{{ activity.occurred_at.strftime('%Y-%m-%d %H:%M') }}{% else %}날짜 미확인{% endif %}</time></div>
-            {% if activity.id in youtube_delete_ids %}<div class="youtube-comment-actions"><label><input type="checkbox" data-youtube-delete-id="{{ activity.id }}"> 삭제 선택</label><button class="chip-button danger" type="button" data-delete-youtube="{{ activity.id }}" disabled>댓글 삭제</button></div>{% elif activity.platform == 'youtube' %}<small class="browser-note">자동 삭제 대상 ID를 확인하지 못했습니다. 원문에서 직접 확인하세요. 현재 일반 댓글만 지원합니다.</small>{% endif %}
             {% set parts = activity.content.split('\n', 1) %}<h3>{{ parts[0] if parts else '내용 없음' }}</h3>{% if parts|length > 1 and parts[1] %}<p>{{ parts[1] }}</p>{% endif %}{% if activity.source_url %}<a class="source-link" href="{{ activity.source_url }}" target="_blank" rel="noopener">원문 열기 →</a>{% endif %}
           </article>
           {% endfor %}
@@ -115,15 +106,6 @@
     {% else %}<div class="empty"><strong>표시할 기록이 없습니다.</strong>{% if q or selected_platform or selected_activity_type or selected_account_label %}<span>검색 조건을 변경해 주세요.</span>{% endif %}</div>{% endfor %}
   </div>
 </section>
-<dialog id="youtube-delete-dialog" class="youtube-delete-dialog" aria-labelledby="youtube-delete-title" aria-describedby="youtube-delete-warning">
-  <form method="dialog">
-    <h2 id="youtube-delete-title">유튜브 댓글을 삭제할까요?</h2>
-    <p id="youtube-delete-warning">선택한 댓글을 실제 유튜브에서 삭제합니다. 삭제한 댓글은 복구할 수 없습니다.</p>
-    <ul id="youtube-delete-preview"></ul>
-    <p id="youtube-delete-summary"></p>
-    <div class="youtube-dialog-actions"><button class="chip-button" value="cancel">취소</button><button class="button primary" type="button" id="youtube-confirm-delete">삭제하기</button></div>
-  </form>
-</dialog>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -141,16 +123,13 @@
   const scanLog = document.getElementById('web-scan-log');
   let connected = false;
   let scanning = false;
-  let deleting = false;
-  let pendingDeleteIds = [];
 
   const inputs = () => [...siteGrid.querySelectorAll('input[type="checkbox"]')];
   const selectedSites = () => inputs().filter((input) => !input.disabled && input.checked).map((input) => input.value);
   const refreshSelection = () => {
     const count = selectedSites().length;
     countLabel.textContent = `${count}개 선택`;
-    startButton.disabled = !connected || scanning || deleting || count === 0;
-    refreshDeleteControls();
+    startButton.disabled = !connected || scanning || count === 0;
   };
 
   function setConnected() {
@@ -181,7 +160,7 @@
   document.getElementById('clear-all-sites').addEventListener('click', () => { inputs().forEach((input) => input.checked = false); refreshSelection(); });
 
   startButton.addEventListener('click', () => {
-    if (!connected || scanning || deleting) return;
+    if (!connected || scanning) return;
     const sites = selectedSites();
     if (!sites.length) return;
     scanning = true;
@@ -202,11 +181,6 @@
 
   window.addEventListener('TRACELENS_PC_EVENT', (event) => {
     const detail = event.detail || {};
-    if (detail.type === 'DELETE_PROGRESS' && deleting) {
-      scanLog.textContent = detail.text;
-      progressBar.style.width = '65%';
-      return;
-    }
     if (detail.type === 'CONNECTION') {
       detail.connected ? setConnected() : setDisconnected(detail.error);
       return;
@@ -242,82 +216,6 @@
       startButton.textContent = '다시 시도';
       refreshSelection();
     }
-  });
-
-  const deleteInputs = () => [...document.querySelectorAll('[data-youtube-delete-id]')];
-  function refreshDeleteControls() {
-    const busy = !connected || scanning || deleting;
-    const selected = document.querySelectorAll('[data-youtube-delete-id]:checked').length;
-    document.querySelectorAll('[data-delete-youtube], #youtube-select-comments, #youtube-clear-comments, [data-youtube-delete-id]').forEach(control => { control.disabled = busy; });
-    const button = document.getElementById('youtube-delete-selected');
-    if (button) { button.disabled = busy || !selected; button.textContent = `선택 삭제 (${selected})`; }
-  }
-  function confirmDelete(ids) {
-    if (!connected || scanning || deleting || !ids.length) return;
-    if (ids.length > 100) { alert('한 번에 100개까지 삭제할 수 있습니다.'); return; }
-    pendingDeleteIds = ids;
-    const preview = document.getElementById('youtube-delete-preview');
-    preview.replaceChildren();
-    for (const id of ids.slice(0, 5)) {
-      const row = document.querySelector(`[data-activity-id="${id}"]`);
-      const item = document.createElement('li');
-      item.textContent = [row?.querySelector('h3')?.textContent, row?.querySelector('p')?.textContent].filter(Boolean).join(' · ').slice(0, 240);
-      preview.append(item);
-    }
-    document.getElementById('youtube-delete-summary').textContent = `${ids.length}개 선택${ids.length > 5 ? ' · 처음 5개 미리보기' : ''}. 수집할 때 사용한 Google 계정으로 로그인되어 있어야 합니다.`;
-    document.getElementById('youtube-delete-dialog').showModal();
-  }
-  document.addEventListener('change', event => {
-    if (event.target.matches('[data-youtube-delete-id]')) refreshDeleteControls();
-  });
-  document.addEventListener('click', event => {
-    const single = event.target.closest('[data-delete-youtube]');
-    if (single) confirmDelete([Number(single.dataset.deleteYoutube)]);
-    if (event.target.closest('#youtube-delete-selected')) confirmDelete(deleteInputs().filter(input => input.checked).map(input => Number(input.dataset.youtubeDeleteId)));
-    if (event.target.closest('#youtube-select-comments') && connected && !scanning && !deleting) {
-      deleteInputs().forEach((input, index) => { input.checked = index < 100; }); refreshDeleteControls();
-    }
-    if (event.target.closest('#youtube-clear-comments')) { deleteInputs().forEach(input => { input.checked = false; }); refreshDeleteControls(); }
-  });
-  document.getElementById('youtube-confirm-delete')?.addEventListener('click', async () => {
-    if (!connected || scanning || deleting || !pendingDeleteIds.length) return;
-    const ids = pendingDeleteIds;
-    pendingDeleteIds = [];
-    document.getElementById('youtube-delete-dialog').close();
-    deleting = true;
-    refreshSelection();
-    progress.hidden = false;
-    progress.classList.remove('error');
-    progressTitle.textContent = '유튜브 댓글 삭제 중';
-    progressState.textContent = `${ids.length}개 선택`;
-    progressBar.style.width = '20%';
-    scanLog.textContent = '선택한 댓글을 확인합니다. 이 탭과 수집기를 닫지 마세요.';
-    progress.scrollIntoView({behavior: 'smooth', block: 'center'});
-    try {
-      const result = await window.traceLensLocal({type: 'DELETE_YOUTUBE', activityIds: ids, token: collectorToken()});
-      if (!result.ok) throw new Error(result.error || '삭제 결과를 확인하지 못했습니다.');
-      progressTitle.textContent = result.sync_pending ? '삭제 확인 · 목록 갱신 필요' : result.failed.length ? '일부 댓글 삭제 미완료' : '댓글 삭제 완료';
-      progressState.textContent = `${result.deleted_ids.length}개 삭제 확인`;
-      scanLog.textContent = result.lines.join('\n');
-      if (result.failed.length || result.sync_pending) progress.classList.add('error');
-      for (const id of result.removed_ids) document.querySelector(`[data-activity-id="${id}"]`)?.remove();
-      if (!result.sync_pending && result.deleted_ids.length) {
-        try {
-          const response = await fetch(location.href, {credentials: 'same-origin'});
-          if (!response.ok || new URL(response.url).pathname !== '/app') throw new Error('목록 갱신 실패');
-          const updated = new DOMParser().parseFromString(await response.text(), 'text/html');
-          for (const selector of ['.stats', '.result-card']) {
-            const next = updated.querySelector(selector);
-            if (next) document.querySelector(selector)?.replaceWith(next);
-          }
-        } catch { scanLog.textContent += '\n목록은 새로고침하면 확인할 수 있습니다.'; }
-      }
-    } catch (error) {
-      progressTitle.textContent = '삭제 확인 필요';
-      progressState.textContent = '';
-      scanLog.textContent = error.message;
-      progress.classList.add('error');
-    } finally { deleting = false; progressBar.style.width = '100%'; refreshSelection(); }
   });
 
   document.querySelectorAll('[data-local-login]').forEach(button => {
