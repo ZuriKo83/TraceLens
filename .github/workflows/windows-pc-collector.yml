@@ -46,14 +46,24 @@ jobs:
         shell: pwsh
         run: |
           $target = Join-Path $env:RUNNER_TEMP 'TraceLens-PC'
+          # Upgrades remove known legacy code while preserving unrelated user files.
+          New-Item -ItemType Directory -Force -Path "$target\local_collector" | Out-Null
+          $obsolete = @('START_PC_COLLECTOR.bat', 'local_collector\server.mjs', 'local_collector\attach.mjs', 'local_collector\bridge.mjs', 'local_collector\site_status.mjs')
+          foreach ($file in $obsolete) { Set-Content (Join-Path $target $file) 'obsolete' }
+          Set-Content "$target\preserved.txt" 'keep'
           $process = Start-Process -FilePath dist/TraceLens.exe -ArgumentList '/VERYSILENT', '/NORESTART', "/DIR=`"$target`"" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          foreach ($file in $obsolete) {
+            if (Test-Path (Join-Path $target $file)) { throw "Obsolete file survived installation: $file" }
+          }
+          if (-not (Test-Path "$target\preserved.txt")) { throw 'Installation removed an unrelated file.' }
           if (-not (Test-Path "$target\runtime\node.exe")) { throw 'Node runtime is missing.' }
           if (-not (Test-Path "$target\TraceLens.exe")) { throw 'Collector launcher is missing.' }
           $launcher = [IO.File]::ReadAllBytes("$target\TraceLens.exe")
           $peOffset = [BitConverter]::ToInt32($launcher, 0x3c)
           if ([BitConverter]::ToUInt16($launcher, $peOffset + 24 + 68) -ne 2) { throw 'Collector launcher must use the Windows GUI subsystem.' }
           if (-not (Test-Path "$target\local_collector\index.mjs")) { throw 'Managed browser entry point is missing.' }
+          if (-not (Test-Path "$target\local_collector\session.mjs")) { throw 'Session persistence module is missing.' }
           # A second click on the downloaded file must launch the installed app.
           $stub = Join-Path $env:RUNNER_TEMP 'InstalledLauncher.cs'
           'using System; using System.IO; class InstalledLauncher { static void Main() { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "launched.txt"), "ok"); } }' | Set-Content $stub

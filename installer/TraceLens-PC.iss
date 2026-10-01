@@ -24,6 +24,11 @@ Source: "..\app\static\favicon.ico"; DestDir: "{app}"; DestName: "TraceLens.ico"
 [InstallDelete]
 Type: files; Name: "{userprograms}\TraceLens PC Collector.lnk"
 Type: files; Name: "{app}\TraceLens-PC.exe"
+Type: files; Name: "{app}\START_PC_COLLECTOR.bat"
+Type: files; Name: "{app}\local_collector\server.mjs"
+Type: files; Name: "{app}\local_collector\attach.mjs"
+Type: files; Name: "{app}\local_collector\bridge.mjs"
+Type: files; Name: "{app}\local_collector\site_status.mjs"
 
 [Icons]
 Name: "{userprograms}\TraceLens"; Filename: "{app}\TraceLens.exe"; WorkingDir: "{app}"; IconFilename: "{app}\TraceLens.ico"
