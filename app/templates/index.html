@@ -12,13 +12,15 @@
     <h1>흩어진 게시글과 댓글을<br>내 계정에서 한 번에 확인</h1>
     <p class="lead">로컬에서 계정을 만든 뒤 로컬 수집기가 선택한 브라우저에서 로그인된 사이트의 내 활동 페이지를 조회합니다. 다른 사용자의 기록은 계정별로 분리됩니다.</p>
     <div class="hero-actions">
+      <a class="button primary" id="collector-download" href="https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens.exe">Windows 수집기 다운로드</a>
       {% if session_user %}
-        <a class="button primary" href="/app">내 활동 열기</a>
+        <a class="button secondary" href="/app">내 활동 열기</a>
       {% else %}
-        <a class="button primary" href="/login">로그인하기</a>
+        <a class="button secondary" href="/login">로그인하기</a>
       {% endif %}
       <a class="button secondary" href="/supported-sites">지원 범위 확인</a>
     </div>
+    <p class="muted">처음에는 수집기를 설치하고 실행한 뒤 TraceLens에 로그인하세요. 설치 후에는 시작 메뉴의 TraceLens를 실행하면 됩니다.</p>
     <ul class="trust-list">
       <li>비밀번호를 수집하지 않습니다.</li>
       <li>선택한 수집용 브라우저의 로그인 세션을 사용합니다.</li>

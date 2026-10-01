@@ -11,7 +11,7 @@
   <div class="extension-status-card" id="extension-status-card">
     <span class="status-dot"></span>
     <div><b id="extension-status-title">PC 수집기 연결 확인 중</b><small id="extension-status-text">TraceLens 전용 브라우저를 확인합니다.</small></div>
-    <a class="chip-button" id="collector-download" href="https://github.com/ZuriKo83/TraceLens/releases/download/pc-collector/TraceLens.exe">TraceLens 다운로드 · 최초 설치</a>
+    <a class="chip-button" id="collector-install-guide" href="/#collector-download">설치 안내</a>
   </div>
 </section>
 
@@ -134,7 +134,7 @@
 
   function setConnected() {
     connected = true;
-    document.getElementById('collector-download')?.setAttribute('hidden', '');
+    document.getElementById('collector-install-guide')?.setAttribute('hidden', '');
     card.hidden = false;
     card.classList.add('connected');
     card.classList.remove('install-link');
@@ -146,7 +146,7 @@
 
   function setDisconnected(message) {
     connected = false;
-    document.getElementById('collector-download')?.removeAttribute('hidden');
+    document.getElementById('collector-install-guide')?.removeAttribute('hidden');
     card.hidden = false;
     card.classList.remove('connected');
     title.textContent = 'PC 수집기를 실행하세요';

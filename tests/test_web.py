@@ -198,12 +198,17 @@ def test_user_dashboard_contains_web_scan_controls() -> None:
 def test_dashboard_uses_pc_collector() -> None:
     reset_database()
     with TestClient(app) as client:
+        landing = client.get("/")
+        assert landing.status_code == 200
+        assert 'id="collector-download"' in landing.text
+        assert "/releases/download/pc-collector/TraceLens.exe" in landing.text
         assert client.post("/api/browser/open", json={"site": "x"}).status_code == 404
         login(client, "browser@example.com")
         dashboard = client.get("/app")
         assert dashboard.status_code == 200
         assert "window.traceLensLocal({type: 'START_SCAN'" in dashboard.text
-        assert "/releases/download/pc-collector/TraceLens.exe" in dashboard.text
+        assert "/releases/download/pc-collector/TraceLens.exe" not in dashboard.text
+        assert 'href="/#collector-download"' in dashboard.text
         assert 'value="youtube" checked' in dashboard.text
         assert 'data-local-login="youtube"' not in dashboard.text
         assert 'id="google-login-check"' not in dashboard.text
