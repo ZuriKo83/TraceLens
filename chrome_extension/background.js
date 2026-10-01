@@ -476,21 +476,44 @@ async function resolveTaskTarget(tabId, resolver) {
     const results = await chrome.scripting.executeScript({
       target: {tabId, allFrames: true},
       func: () => {
-        if (location.hostname !== "blog.naver.com") return [];
+        if (location.hostname !== "blog.naver.com") return {direct: [], self: [], menu: [], fallback: []};
         const found = new Set();
+        const self = new Set();
+        const menu = new Set();
         const reserved = new Set([
           "myblog.naver", "postlist.naver", "postview.naver", "blogprofile.naver",
           "blog", "www", "section", "prologue"
         ]);
-        const add = (value) => {
+        const add = (value, destination = found) => {
           const candidate = decodeURIComponent(String(value || "")).trim().replace(/^\/+|\/+$/g, "");
-          if (/^[A-Za-z0-9_-]{2,50}$/.test(candidate) && !reserved.has(candidate.toLowerCase())) found.add(candidate);
+          if (/^[A-Za-z0-9_-]{2,50}$/.test(candidate) && !reserved.has(candidate.toLowerCase())) destination.add(candidate.toLowerCase());
         };
         try {
           const current = new URL(location.href);
           add(current.searchParams.get("blogId"));
           if (current.hostname === "blog.naver.com") add(current.pathname.split("/").filter(Boolean)[0]);
         } catch {}
+        const direct = [...found];
+        // These are own-blog/profile controls, not arbitrary post links.
+        for (const anchor of document.querySelectorAll("a[href]")) {
+          const labels = [anchor.textContent, anchor.getAttribute("title"), anchor.getAttribute("aria-label")]
+            .map(value => String(value || "").replace(/\s+/g, " ").trim());
+          const ownControl = labels.some(label => /^(내\s*(블로그|프로필)(?:\s*(가기|바로가기))?|my\s*blog)$/i.test(label));
+          const listControl = labels.some(label => /^(블로그|전체\s*(보기|글|글\s*보기)|글\s*목록)(?:\s*\(\s*\d+\s*\))?$/i.test(label));
+          if (!ownControl && !listControl) continue;
+          try {
+            const link = new URL(anchor.getAttribute("href"), location.href);
+            if (link.protocol !== "https:" || link.hostname !== "blog.naver.com" || link.username || link.password || link.port) continue;
+            if (ownControl) {
+              if (!/^\/[A-Za-z0-9_-]{2,50}\/?$/.test(link.pathname)
+                  && !/^\/(MyBlog|PostList|BlogProfile)\.naver$/i.test(link.pathname)) continue;
+              add(link.searchParams.get("blogId"), self);
+              add(link.pathname.split("/").filter(Boolean)[0], self);
+            } else if (link.pathname.toLowerCase() === "/postlist.naver") {
+              add(link.searchParams.get("blogId"), menu);
+            }
+          } catch {}
+        }
         const ogUrl = document.querySelector("meta[property='og:url']")?.content;
         if (ogUrl) {
           try {
@@ -501,12 +524,19 @@ async function resolveTaskTarget(tabId, resolver) {
             }
           } catch {}
         }
-        return [...found];
+        return {direct, self: [...self], menu: [...menu], fallback: [...found]};
       }
     });
-    const blogIds = [...new Set((results || []).flatMap((entry) => entry.result || []).map(id => id.toLowerCase()))];
+    const identities = (results || []).map(entry => entry.result).filter(Boolean);
+    const main = identities[0] || {};
+    const candidates = [main.direct, main.self, main.menu,
+      identities.flatMap(identity => identity.direct || []),
+      identities.flatMap(identity => identity.self || []),
+      identities.flatMap(identity => identity.menu || []),
+      identities.flatMap(identity => identity.fallback || [])];
+    const blogIds = [...new Set(candidates.find(ids => ids?.length) || [])];
     const blogId = blogIds.length === 1 ? blogIds[0] : null;
-    if (!blogId) throw new Error("로그인된 네이버 블로그 ID를 찾지 못했습니다.");
+    if (!blogId) throw new Error("내 블로그 또는 글 목록 메뉴에서 본인 블로그 ID를 확인하지 못했습니다. 네이버 블로그에서 로그인과 추가 보안 확인을 완료한 뒤 다시 조회하세요.");
     const postListUrl = `https://blog.naver.com/PostList.naver?blogId=${encodeURIComponent(blogId)}&from=postList&categoryNo=0`;
     await chrome.tabs.update(tabId, {url: postListUrl});
     await waitForTabComplete(tabId);

@@ -46,3 +46,28 @@ test('Naver blog resolver never takes ownership from help or neighbor links', {t
     await context.close();
   } finally { await browser.close(); }
 });
+
+test('Naver MyBlog pages resolve identity from own navigation when the address and metadata contain no ID', {timeout: 30000}, async t => {
+  try { await access(chromium.executablePath()); }
+  catch { return t.skip('Playwright Chromium is not installed locally'); }
+  const browser = await chromium.launch({headless: true});
+  try {
+    const context = await browser.newContext();
+    const collector = await createCollector(context);
+    for (const navigation of [
+      '<a href="https://blog.naver.com/mine">내 블로그</a>',
+      '<a href="/PostList.naver?blogId=mine">블로그</a>',
+      '<a href="/PostList.naver?blogId=mine&amp;categoryNo=0">전체보기 (0)</a>',
+    ]) {
+      await context.route('https://blog.naver.com/**', route => route.fulfill({contentType: 'text/html; charset=utf-8', body: `
+        <nav>${navigation}</nav><a href="/PostView.naver?blogId=blogpeople&amp;logNo=150109857428">프롤로그에 등록 도움말</a>
+        <aside><a href="https://blog.naver.com/other">이웃 블로그</a></aside>`}));
+      const tab = await collector.tabs.create({url: 'https://blog.naver.com/MyBlog.naver'});
+      assert.equal((await collector.resolveTaskTarget(tab.id, 'naver_blog_posts')).accountLabel, 'mine');
+      await collector.tabs.remove(tab.id);
+      await context.unroute('https://blog.naver.com/**');
+    }
+    await collector.close();
+    await context.close();
+  } finally { await browser.close(); }
+});
