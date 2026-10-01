@@ -145,8 +145,10 @@ async function scanSites(sites, config) {
       tab = await chrome.tabs.create({url: task.url, active: needsVisibleTab});
       await waitForTabComplete(tab.id);
       await waitForPageSettled(tab.id);
-      resolved = task.resolver ? await resolveTaskTarget(tab.id, task.resolver) : null;
-      await waitForPageSettled(tab.id);
+      if (task.resolver) {
+        resolved = await resolveTaskTarget(tab.id, task.resolver);
+        await waitForPageSettled(tab.id);
+      }
       await assertOwnedTaskUrl(tab.id, task);
       const extraction = await runExtractor(
         tab.id,

@@ -28,7 +28,7 @@ jobs:
           $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
           & $compiler /nologo /target:winexe /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /out:dist\TraceLens-PC\TraceLens.exe installer\CollectorLauncher.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Copy-Item local_collector/index.mjs,local_collector/controller.mjs,local_collector/adapter.mjs,local_collector/cdp.mjs,local_collector/policy.mjs,local_collector/google_login.mjs,local_collector/site_status.mjs,local_collector/youtube_delete.mjs dist/TraceLens-PC/local_collector/
+          Copy-Item local_collector/index.mjs,local_collector/controller.mjs,local_collector/adapter.mjs,local_collector/cdp.mjs,local_collector/policy.mjs,local_collector/google_login.mjs,local_collector/session.mjs,local_collector/youtube_delete.mjs dist/TraceLens-PC/local_collector/
           Copy-Item local_collector/node_modules dist/TraceLens-PC/local_collector/ -Recurse
           New-Item -ItemType Directory -Force -Path dist/TraceLens-PC/chrome_extension | Out-Null
           Copy-Item chrome_extension/background.js,chrome_extension/youtube_delete_page.js,chrome_extension/youtube_activity_collector.js dist/TraceLens-PC/chrome_extension/

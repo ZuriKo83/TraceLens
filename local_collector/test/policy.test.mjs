@@ -26,22 +26,14 @@ test('untrusted pages and invalid sessions cannot collect', async () => {
   assert.equal(scans, 0);
 });
 test('Google collection remains available without automatic access checks', async () => {
-  let googleUrl = 'https://accounts.google.com/v3/signin/rejected';
-  const context = {newPage: async () => {
-    let currentUrl;
-    return {goto: async url => { currentUrl = url.includes('myactivity') ? googleUrl : url; },
-      waitForTimeout: async () => {}, url: () => currentUrl, close: async () => {},
-      evaluate: async () => ({hasPassword: false, profileUrls: [], xProfile: null, securityScreen: false})};
-  }};
+  const context = {};
   const fn = createController(context, {scan: async () => ({lines: ['✓ 조회 완료']})},
     {browserName: 'edge', transport: async () => ({ok: true})});
   const token = 'a'.repeat(40);
   assert.equal((await fn(source(), {type: 'START_SCAN', sites: ['youtube'], token})).completed, 1);
-  assert.equal((await fn(source(), {type: 'CHECK_SITES', token})).statuses[0].state, 'login_required');
+  await assert.rejects(fn(source(), {type: 'CHECK_SITES', token}), /지원하지 않는 요청/);
   assert.equal((await fn(source(), {type: 'GOOGLE_LOGIN', token})).ok, true);
   assert.equal((await fn(source(), {type: 'NORMAL_LOGIN', sites: ['x'], token})).ok, true);
-  googleUrl = 'https://myactivity.google.com/page?page=youtube_comments';
-  assert.equal((await fn(source(), {type: 'CHECK_SITES', token})).statuses[0].state, 'accessible');
   assert.equal((await fn(source(), {type: 'START_SCAN', sites: ['youtube'], token})).completed, 1);
 });
 test('concurrent scans are rejected and lock released after failure', async () => {

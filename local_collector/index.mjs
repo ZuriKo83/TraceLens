@@ -9,6 +9,7 @@ import {createCollector} from './adapter.mjs';
 import {createController} from './controller.mjs';
 import {backgroundPage} from './cdp.mjs';
 import {runNormalLogin, selectInstalledBrowser} from './google_login.mjs';
+import {createSessionSaver} from './session.mjs';
 
 const {values} = parseArgs({options: {browser: {type: 'string', default: 'auto'}}});
 const browserName = values.browser === 'auto' ? selectInstalledBrowser() : values.browser;
@@ -42,20 +43,14 @@ try {
       if (Array.isArray(cookies)) await context.addCookies(cookies.filter(cookie => cookie.expires === -1));
     } catch (error) { if (error.code !== 'ENOENT') console.warn('저장된 세션을 복원하지 못했습니다.'); }
     const activeContext = context;
-    let saving = null;
-    const saveSession = () => {
-      if (!saving) saving = activeContext.cookies().then(cookies => writeFile(sessionFile,
-        JSON.stringify(cookies.filter(cookie => cookie.expires === -1)), {mode: 0o600}))
-        .catch(() => {}).finally(() => { saving = null; });
-      return saving;
-    };
-    const sessionTimer = setInterval(saveSession, 2000);
+    const persistSession = createSessionSaver(activeContext, sessionFile);
+    const saveSession = () => persistSession().catch(() => {});
+    const sessionTimer = setInterval(saveSession, 2000).unref();
     activeContext.once('close', () => clearInterval(sessionTimer));
     const collector = await createCollector(context, {
       newPage: () => backgroundPage(context.browser(), context), backgroundOnly: true,
     });
-    const controller = createController(context, collector, {browserName,
-      probePage: () => backgroundPage(context.browser(), context, {hidden: true})});
+    const controller = createController(context, collector, {browserName});
     await context.exposeBinding('traceLensLocal', async (source, message) => {
       const result = await controller(source, message);
       if (message?.type === 'GOOGLE_LOGIN' || message?.type === 'NORMAL_LOGIN') {
