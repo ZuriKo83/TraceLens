@@ -476,6 +476,7 @@ async function resolveTaskTarget(tabId, resolver) {
     const results = await chrome.scripting.executeScript({
       target: {tabId, allFrames: true},
       func: () => {
+        if (location.hostname !== "blog.naver.com") return [];
         const found = new Set();
         const reserved = new Set([
           "myblog.naver", "postlist.naver", "postview.naver", "blogprofile.naver",
@@ -494,23 +495,17 @@ async function resolveTaskTarget(tabId, resolver) {
         if (ogUrl) {
           try {
             const parsed = new URL(ogUrl, location.href);
-            add(parsed.searchParams.get("blogId"));
-            if (parsed.hostname === "blog.naver.com") add(parsed.pathname.split("/").filter(Boolean)[0]);
-          } catch {}
-        }
-        for (const anchor of [...document.querySelectorAll("a[href]")].slice(0, 500)) {
-          try {
-            const parsed = new URL(anchor.getAttribute("href"), location.href);
-            if (!parsed.hostname.endsWith("naver.com")) continue;
-            add(parsed.searchParams.get("blogId"));
-            if (parsed.hostname === "blog.naver.com") add(parsed.pathname.split("/").filter(Boolean)[0]);
+            if (parsed.hostname === "blog.naver.com") {
+              add(parsed.searchParams.get("blogId"));
+              add(parsed.pathname.split("/").filter(Boolean)[0]);
+            }
           } catch {}
         }
         return [...found];
       }
     });
-    const blogIds = (results || []).flatMap((entry) => entry.result || []);
-    const blogId = blogIds.find(Boolean);
+    const blogIds = [...new Set((results || []).flatMap((entry) => entry.result || []).map(id => id.toLowerCase()))];
+    const blogId = blogIds.length === 1 ? blogIds[0] : null;
     if (!blogId) throw new Error("로그인된 네이버 블로그 ID를 찾지 못했습니다.");
     const postListUrl = `https://blog.naver.com/PostList.naver?blogId=${encodeURIComponent(blogId)}&from=postList&categoryNo=0`;
     await chrome.tabs.update(tabId, {url: postListUrl});
@@ -1527,9 +1522,22 @@ async function extractPage(requestedPlatform, defaultActivityType, ownershipScop
   }
 
   let elements = [];
+  const ownBlogPost = (href) => {
+    if (platform !== "naver_blog" || !/^[A-Za-z0-9_-]{2,50}$/.test(accountLabel || "")) return null;
+    try {
+      const url = new URL(href, location.href);
+      if (url.protocol !== "https:" || url.hostname !== "blog.naver.com" || url.port || url.username || url.password) return null;
+      const pretty = url.pathname.match(/^\/([A-Za-z0-9_-]{2,50})\/(\d+)\/?$/);
+      const isPostView = url.pathname.toLowerCase() === "/postview.naver";
+      const blogId = pretty?.[1] || (isPostView && url.searchParams.getAll("blogId").length === 1 ? url.searchParams.get("blogId") : "");
+      const logNo = pretty?.[2] || (isPostView && url.searchParams.getAll("logNo").length === 1 ? url.searchParams.get("logNo") : "");
+      if (!/^\d+$/.test(logNo || "") || String(blogId).toLowerCase() !== accountLabel.toLowerCase()) return null;
+      return `https://blog.naver.com/${blogId.toLowerCase()}/${logNo}`;
+    } catch { return null; }
+  };
   if (platform === "naver_blog") {
-    const postPattern = /(PostView\.naver\?.*logNo=|blog\.naver\.com\/[A-Za-z0-9_-]+\/\d+)/i;
-    const postAnchors = [...document.querySelectorAll("a[href]")].filter((anchor) => postPattern.test(absolute(anchor.getAttribute("href")) || ""));
+    if (!/^[A-Za-z0-9_-]{2,50}$/.test(accountLabel || "")) throw new Error("본인 블로그 ID를 확인하지 못했습니다.");
+    const postAnchors = [...document.querySelectorAll("a[href]")].filter((anchor) => ownBlogPost(anchor.getAttribute("href")));
     elements = [...new Set(postAnchors.map((anchor) => anchor.closest("li, article, div[id^='post_'], .post, .blog2_series, .wrap_post") || anchor))];
   } else if (platform === "naver_kin") {
     const qnaPattern = /kin\.naver\.com\/qna\/detail\.naver/i;
@@ -1573,7 +1581,7 @@ async function extractPage(requestedPlatform, defaultActivityType, ownershipScop
       ? anchors.find((anchor) => pattern.test(absolute(anchor.getAttribute("href")) || ""))
       : anchors[0];
     if (platform === "naver_blog" && pattern) {
-      const postLinks = anchors.filter((anchor) => pattern.test(absolute(anchor.getAttribute("href")) || ""));
+      const postLinks = anchors.filter((anchor) => ownBlogPost(anchor.getAttribute("href")));
       linkElement = postLinks.find((anchor) => {
         const text = clean(anchor.innerText || anchor.textContent);
         return text.length >= 2 && !/^(공감|댓글|수정|삭제|목록|더보기|이웃추가|블로그)$/i.test(text);
@@ -1581,7 +1589,8 @@ async function extractPage(requestedPlatform, defaultActivityType, ownershipScop
     }
 
     if (requiresLink.has(platform) && !linkElement) continue;
-    const sourceUrl = absolute(linkElement?.getAttribute("href")) || location.href;
+    const sourceUrl = platform === "naver_blog" ? ownBlogPost(linkElement?.getAttribute("href")) : (absolute(linkElement?.getAttribute("href")) || location.href);
+    if (platform === "naver_blog" && !sourceUrl) continue;
     const heading = element.querySelector?.("h1,h2,h3,h4,[role='heading'],strong");
     let title = clip(heading?.innerText || linkElement?.innerText || document.title, 2000);
     let content = rawText;

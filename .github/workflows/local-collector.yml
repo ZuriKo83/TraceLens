@@ -39,6 +39,6 @@ jobs:
       - run: docker compose config --quiet
       - run: docker compose up --build -d --wait
       - run: curl --fail --silent http://localhost:8021/health
-      - run: docker compose exec -T web pytest -q tests/test_web.py tests/test_collector_replace.py tests/test_session_identity.py tests/test_pc_youtube_delete.py -k "dashboard_uses_pc_collector or replacement or session_identity or pc_youtube_delete"
+      - run: docker compose exec -T web pytest -q tests/test_web.py tests/test_collector_replace.py tests/test_session_identity.py tests/test_pc_youtube_delete.py tests/test_naver_blog_owner.py -k "dashboard_uses_pc_collector or replacement or session_identity or pc_youtube_delete or naver_blog_owner"
       - if: always()
         run: docker compose logs --tail=120 web worker && docker compose down -v

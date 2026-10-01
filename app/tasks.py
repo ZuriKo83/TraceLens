@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlparse
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
+from app.naver_blog import is_own_blog_post
 
 from app.db import engine
 from app.models import Activity, ScanLog, User, utcnow
@@ -202,6 +203,7 @@ def process_collector_import(payload_data: dict, user_id: int) -> dict:
         raw = [] if payload.platform in EXCLUDED_PLATFORMS else [
             item for item in payload.items
             if item.activity_type in VISIBLE_ACTIVITY_TYPES and _verified_self_activity(payload.platform, item)
+            and (payload.platform != "naver_blog" or is_own_blog_post(item.source_url, payload.account_label))
         ]
         accepted = []
         seen_fp, seen_ext = set(), set()

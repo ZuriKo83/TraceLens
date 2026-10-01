@@ -24,6 +24,7 @@ from app.dependencies import collector_user, current_user
 from app.models import Activity, AuthToken, CollectorToken, ScanArchiveBatch, ScanLog, User, UserEmail, VerificationCode, utcnow
 from app.schemas import CollectorImport
 from app.session_identity import session_identity
+from app.naver_blog import post_blog_id
 from app.youtube_delete import router as youtube_delete_router
 from app.rate_limit import client_key, enforce_rate_limit
 from app.redis_session import RedisSessionMiddleware
@@ -206,6 +207,11 @@ def backfill_and_dedupe_records(db: Session) -> None:
 
 
 def cleanup_legacy_records(db: Session) -> None:
+    # Remove only proven cross-blog links from the TraceLens archive.
+    for row in db.scalars(select(Activity).where(Activity.platform == "naver_blog", Activity.account_label.is_not(None))):
+        owner = post_blog_id(row.source_url)
+        if owner and owner != row.account_label.lower():
+            db.delete(row)
     db.execute(delete(Activity).where(Activity.platform.in_(EXCLUDED_PLATFORMS)))
     db.execute(delete(ScanLog).where(ScanLog.platform.in_(EXCLUDED_PLATFORMS)))
     db.execute(delete(Activity).where(
