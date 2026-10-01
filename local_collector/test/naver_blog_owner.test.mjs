@@ -19,8 +19,8 @@ test('Naver blog collection excludes help, neighbor and deceptive post links', {
     const collector = await createCollector(context);
     const tab = await collector.tabs.create({url: 'https://blog.naver.com/PostList.naver?blogId=mine'});
     const result = await collector.runExtractor(tab.id, 'naver_blog', 'post', 'self_activity', {accountLabel: 'mine'});
-    assert.deepEqual(result.items.map(item => item.source_url).sort(), ['https://blog.naver.com/mine/123456', 'https://blog.naver.com/mine/789']);
-    assert.deepEqual(result.items.map(item => item.title).sort(), ['내 두 번째 글', '내가 작성한 글'].sort());
+    assert.deepEqual(Array.from(result.items, item => item.source_url).sort(), ['https://blog.naver.com/mine/123456', 'https://blog.naver.com/mine/789']);
+    assert.deepEqual(Array.from(result.items, item => item.title).sort(), ['내 두 번째 글', '내가 작성한 글'].sort());
     await assert.rejects(collector.runExtractor(tab.id, 'naver_blog', 'post', 'self_activity', null), /블로그 ID/);
     await collector.close();
     await context.close();
